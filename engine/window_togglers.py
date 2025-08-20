@@ -1,11 +1,15 @@
 # engine/window_togglers.py
 from __future__ import annotations
+
 import sqlite3
 import tkinter as tk
-from typing import Callable, Dict, Optional
+from tkinter import messagebox
+from typing import Any, Callable, Optional, Mapping
 
 from .app_context import AppContext
 from .event_bus import EventBus
+from . import world
+
 # UI windows
 from .ui.map_window import MapWindow
 from .ui.hangar_window import HangarWindow
@@ -15,9 +19,18 @@ from .ui.cargo_window import CargoWindow
 from .ui.player_window import PlayerWindow
 from .ui.quests_window import QuestsWindow
 
-# controllers
-from .controllers.quest_controller import QuestController
-from .route_controller import TravelController
+# NOTE: Do not import controllers at module scope; import lazily inside functions if needed.
+
+
+def _as_toplevel(obj: Any) -> Optional[tk.Toplevel]:
+    """Return a Tk Toplevel for objects that *are* a Toplevel or that wrap one."""
+    if isinstance(obj, tk.Toplevel):
+        return obj
+    for attr in ("win", "top", "window", "toplevel"):
+        w = getattr(obj, attr, None)
+        if isinstance(w, tk.Toplevel):
+            return w
+    return None
 
 
 def _has_world(conn: Optional[sqlite3.Connection]) -> bool:
@@ -25,73 +38,83 @@ def _has_world(conn: Optional[sqlite3.Connection]) -> bool:
 
 
 class WindowTogglers:
+    """Opens/toggles single-instance windows and tracks them in `ctx.windows`.
+    Handles Optional[sqlite3.Connection] and wrapper windows robustly.
     """
-    Centralized open/toggle logic. Ensures only one instance of each window id.
-    Stores/retrieves the *actual* tk.Toplevel in ctx.windows[win_id].
-    """
-    def __init__(self, ctx: AppContext):
-        self.ctx = ctx  # has .root, .conn, .bus, .wsm, .windows, .travel, .qc
 
-    # ---- helpers -------------------------------------------------------------
+    def __init__(self, ctx: AppContext, bus: EventBus):
+        self.ctx = ctx
+        self.bus = bus
 
-    def _toggle_top(self, win_id: str, opener: Callable[[], tk.Toplevel]) -> None:
-        """
-        Toggle a specific window. If open => close. If closed => open and register in ctx.
-        Always guarantees ctx.windows[win_id] is accurate.
-        """
-        existing: Optional[tk.Toplevel] = self.ctx.windows.get(win_id)
-        if existing and isinstance(existing, tk.Toplevel) and existing.winfo_exists():
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+    def _toggle_top(self, key: str, opener: Callable[[], object]) -> None:
+        existing = self.ctx.windows.get(key)
+        win = _as_toplevel(existing) if existing is not None else None
+        if win is not None and win.winfo_exists():
             try:
-                existing.destroy()
-            finally:
-                self.ctx.windows.pop(win_id, None)
+                win.deiconify()
+                win.lift()
+                win.focus_force()
+            except Exception:
+                pass
             return
 
-        top = opener()
-        # safety: ensure we remove from registry when user closes via [X]
-        def on_close(wid=win_id, t=top):
+        obj = opener()
+        self.ctx.windows[key] = obj
+        win2 = _as_toplevel(obj)
+        if win2 is not None:
             try:
-                t.destroy()
-            finally:
-                self.ctx.windows.pop(wid, None)
-
-        top.protocol("WM_DELETE_WINDOW", on_close)
-        self.ctx.windows[win_id] = top
+                win2.lift()
+                win2.focus_force()
+            except Exception:
+                pass
 
     def _current_station_id(self) -> Optional[int]:
         conn = self.ctx.conn
-        if not _has_world(conn):
+        if conn is None:
             return None
         try:
-            row = conn.execute("SELECT location_id FROM player WHERE id=1").fetchone()
-            return int(row["location_id"]) if row and row["location_id"] is not None else None
+            p: Mapping[str, Any] = world.get_player(conn)
+            if p.get("location_type") == "station":
+                v = p.get("location_id")
+                if isinstance(v, int):
+                    return v
+                if isinstance(v, str) and v.isdigit():
+                    return int(v)
         except Exception:
             return None
+        return None
 
-    # ---- public toggles ------------------------------------------------------
-
+    # ------------------------------------------------------------------
+    # Public togglers
+    # ------------------------------------------------------------------
     def toggle_map(self) -> None:
         if not _has_world(self.ctx.conn):
+            messagebox.showwarning("No Save Open", "Open or start a game first.")
             return
-        if self.ctx.travel is None:
-            # Build a travel controller on-demand
-            self.ctx.travel = TravelController(self.ctx.root, self.ctx.conn, self.ctx.bus, ask_yes_no=self.ctx.ask_yes_no)
 
-        def _open() -> tk.Toplevel:
+        def _open() -> object:
+            conn = self.ctx.conn
+            assert conn is not None
             return MapWindow(
-                self.ctx.root, self.ctx.conn, self.ctx.bus, self.ctx.travel, self.ctx.wsm,
-                on_close=lambda: self.ctx.windows.pop("galaxy_map", None)
+                self.ctx.root, conn, self.ctx.bus, self.ctx.wsm,
+                on_close=lambda: self.ctx.windows.pop("map", None)
             )
 
-        self._toggle_top("galaxy_map", _open)
+        self._toggle_top("map", _open)
 
     def toggle_hangar(self) -> None:
         if not _has_world(self.ctx.conn):
+            messagebox.showwarning("No Save Open", "Open or start a game first.")
             return
 
-        def _open() -> tk.Toplevel:
+        def _open() -> object:
+            conn = self.ctx.conn
+            assert conn is not None
             return HangarWindow(
-                self.ctx.root, self.ctx.conn, self.ctx.bus, self.ctx.wsm,
+                self.ctx.root, conn, self.ctx.bus, self.ctx.wsm,
                 on_close=lambda: self.ctx.windows.pop("hangar", None)
             )
 
@@ -99,14 +122,18 @@ class WindowTogglers:
 
     def toggle_market(self) -> None:
         if not _has_world(self.ctx.conn):
+            messagebox.showwarning("No Save Open", "Open or start a game first.")
             return
         station_id = self._current_station_id()
         if station_id is None:
+            messagebox.showinfo("Market", "You must be docked at a station to view the market.")
             return
 
-        def _open() -> tk.Toplevel:
+        def _open() -> object:
+            conn = self.ctx.conn
+            assert conn is not None
             return MarketWindow(
-                self.ctx.root, self.ctx.conn, self.ctx.bus, station_id, self.ctx.wsm,
+                self.ctx.root, conn, self.ctx.bus, station_id, self.ctx.wsm,
                 on_close=lambda: self.ctx.windows.pop("market", None)
             )
 
@@ -114,11 +141,14 @@ class WindowTogglers:
 
     def toggle_status(self) -> None:
         if not _has_world(self.ctx.conn):
+            messagebox.showwarning("No Save Open", "Open or start a game first.")
             return
 
-        def _open() -> tk.Toplevel:
+        def _open() -> object:
+            conn = self.ctx.conn
+            assert conn is not None
             return StatusWindow(
-                self.ctx.root, self.ctx.conn, self.ctx.bus, self.ctx.wsm,
+                self.ctx.root, conn, self.ctx.bus, self.ctx.wsm,
                 on_close=lambda: self.ctx.windows.pop("status", None)
             )
 
@@ -126,11 +156,14 @@ class WindowTogglers:
 
     def toggle_cargo(self) -> None:
         if not _has_world(self.ctx.conn):
+            messagebox.showwarning("No Save Open", "Open or start a game first.")
             return
 
-        def _open() -> tk.Toplevel:
+        def _open() -> object:
+            conn = self.ctx.conn
+            assert conn is not None
             return CargoWindow(
-                self.ctx.root, self.ctx.conn, self.ctx.bus, self.ctx.wsm,
+                self.ctx.root, conn, self.ctx.bus, self.ctx.wsm,
                 on_close=lambda: self.ctx.windows.pop("cargo", None)
             )
 
@@ -138,11 +171,14 @@ class WindowTogglers:
 
     def toggle_player(self) -> None:
         if not _has_world(self.ctx.conn):
+            messagebox.showwarning("No Save Open", "Open or start a game first.")
             return
 
-        def _open() -> tk.Toplevel:
+        def _open() -> object:
+            conn = self.ctx.conn
+            assert conn is not None
             return PlayerWindow(
-                self.ctx.root, self.ctx.conn, self.ctx.bus, self.ctx.wsm,
+                self.ctx.root, conn, self.ctx.bus, self.ctx.wsm,
                 on_close=lambda: self.ctx.windows.pop("player", None)
             )
 
@@ -150,25 +186,36 @@ class WindowTogglers:
 
     def toggle_quests(self) -> None:
         if not _has_world(self.ctx.conn):
+            messagebox.showwarning("No Save Open", "Open or start a game first.")
             return
-        # ensure quest controller exists
-        if self.ctx.qc is None:
-            self.ctx.qc = QuestController(self.ctx.conn, self.ctx.bus)
 
-        def _open() -> tk.Toplevel:
+        def _open() -> object:
+            conn = self.ctx.conn
+            assert conn is not None
+            qc = getattr(self.ctx, "qc", None)
+            if qc is None:
+                from .controllers.quest_controller import QuestController  # local import to avoid cycles
+                qc = QuestController(conn, self.ctx.bus)
+                try:
+                    self.ctx.qc = qc  # type: ignore[attr-defined]
+                except Exception:
+                    pass
             return QuestsWindow(
-                self.ctx.root, self.ctx.conn, self.ctx.bus, self.ctx.qc, self.ctx.wsm,
+                self.ctx.root, conn, self.ctx.bus, qc, self.ctx.wsm,
                 on_close=lambda: self.ctx.windows.pop("quests", None)
             )
 
         self._toggle_top("quests", _open)
 
     def bring_all_to_front(self) -> None:
-        # “View → Bring All to Front”
-        for t in list(self.ctx.windows.values()):
+        # View → Bring All to Front
+        for obj in list(self.ctx.windows.values()):
+            win = _as_toplevel(obj)
+            if win is None:
+                continue
             try:
-                if isinstance(t, tk.Toplevel) and t.winfo_exists():
-                    t.lift()
-                    t.focus_force()
+                if win.winfo_exists():
+                    win.lift()
+                    win.focus_force()
             except Exception:
                 pass
