@@ -6,7 +6,7 @@
 Repo URL: https://github.com/xclenvicturus/Victurus
 
 ## Goal
-When I (the AI) am asked to debug, add features, or refactor, I must **first review this repository** and then propose **complete, ready-to-paste file updates**—not partial snippets.
+When I (the AI) am asked to debug, add features, or refactor, I must **first review this repository** and then propose **complete, ready-to-paste file updates** — not partial snippets.
 
 ## Always-Check Rule
 Before producing any analysis or code:
