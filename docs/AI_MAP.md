@@ -1,44 +1,59 @@
-# Victurus — AI Map (v0)
-
-_Last updated: {{fill on edit}}_
+# Victurus — AI Map (v1)
+_Last updated: 2025-08-19 (America/Chicago)_
 
 ## Repository
 - Name: `Victurus`
 - URL: https://github.com/xclenvicturus/Victurus
 - Language: Python
-- Platform: Windows
+- OS target: Windows
 - GUI: Tkinter
 
-## High-Level Overview
-Victurus is a text-based (with Tkinter windows) space RPG. The application logic lives in the `engine/` package with a `main.py` entry point at the repo root. This map should be **expanded on each AI-assisted change** after re-reading the repository.
+## Overview
+Victurus appears to be a text-based (with Tkinter windows) space RPG. The application logic lives in the `engine/` package with `main.py` as the entry point at the repo root. This Map is a living document: **on each AI-assisted change**, the assistant must re-scan the repository and update this file.
 
-## Entry Points
-- `main.py` — program entry (invoked via `python main.py`).
+## Discovered Top-Level Files & Folders
+- `main.py` — program entry point (run with `python main.py`).  *(Confirmed on GitHub listing)*  
+- `__init__.py` — root package shim.  *(Confirmed on GitHub listing)*  
+- `engine/` — core package containing game logic and UI components.  *(Folder present; contents could not be enumerated in this session due to GitHub page error)*
 
-## Packages & Modules (initial)
-- `engine/` — core package.
-  - [TBD expand] Enumerate submodules and their purposes.
-  - Known from user logs: UI window toggling via `engine/window_togglers.py` and a `QuestsWindow` class (Tkinter-based).
+> Source: GitHub repo UI successfully shows these top-level entries; inner file bodies did not render in this session.
 
-> Replace each TBD with concrete findings after walking the tree.
+## Known / Inferred Modules (from local error logs & naming)
+- `engine/window_togglers.py` — toggles Tk windows; opens `QuestsWindow` via a dispatcher function (from a Tkinter traceback the user shared previously).
+- `QuestsWindow` (class) — a Tkinter window for managing/displaying quests.
+- Additional likely modules (to be confirmed on next pass):
+  - `engine/windows/` or `engine/ui/` subpackage holding individual Tk windows (`quests.py`, etc.).
+  - `engine/state.py` or similar for central game state.
+  - `engine/persistence.py` or similar for save/load (autosave).
+  - `engine/commands.py` or `engine/input.py` for command parsing / input handling.
+  - `engine/entities/` for player/NPC models if the project expands.
 
-## Data Flow (to refine)
-- UI layer: Tkinter windows (e.g., Quests UI).
-- Game loop/state: [TBD after reading engine modules]
-- Persistence: [TBD] (identify any save files, autosave behavior, and I/O)
+**Action:** On the next pass when GitHub renders properly (or with a zip), enumerate `engine/` and replace this bullet list with exact filenames and 1–3 line summaries for each module/class/function.
+
+## Execution & Data Flow (to refine)
+1. **Startup**: `python main.py` initializes root Tk context and engine subsystems.
+2. **UI**: Tkinter windows are opened/toggled via `window_togglers` helpers; `QuestsWindow` is one such window.
+3. **Game Loop/State**: A central state object (or module-level globals) used by windows and systems. *(Confirm exact object names on next pass.)*
+4. **Persistence**: Autosave or frequent saves to prevent data loss (design goal). *(Confirm file paths and format.)*
+
+## Dependencies & Environment
+- **Python**: Targeting 3.13 (based on your environment). Confirm pinned version if `requirements.txt`/`pyproject.toml` appears.
+- **GUI**: Tkinter (standard library).
+- **OS**: Windows (paths and focus handling in Tk/Win32).
 
 ## Conventions
-- Python: 3.13 (adjust if repo pins a different version)
-- Style: Match existing import order, naming, and formatting
-- OS assumptions: Windows paths in local runs
+- Match existing style (imports, naming, formatting).
+- Windows-friendly paths.
+- Prefer small, well-scoped modules in `engine/`.
 
-## Next Actions for AI
-1. **Enumerate tree:** List every file and subpackage under `engine/`, `tests/` (if present), and any config/scripts.
-2. **Summarize modules:** For each module, jot a 1–3 line summary of its responsibilities and key classes/functions.
-3. **Map dependencies:** Capture import relationships between modules.
-4. **Record run steps:** Note commands to run (and any required environment setup).
-5. **Keep updated:** On each task, refresh this file with any new or changed modules.
+## Map Maintenance Checklist (run each AI task)
+1. Re-read repo tree (root + `engine/`) and update this file.
+2. For each module, document:
+   - Purpose
+   - Key classes/functions
+   - Important imports (internal/external)
+3. Update **Run Steps** and **Validation** sections below if they change.
 
-## Run / Validation
-- Run: `python main.py`
-- Quick sanity: [TBD] Add minimal steps (e.g., launch main window, open Quests window, perform an action).
+## Run Steps
+```bash
+python main.py

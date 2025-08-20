@@ -7,7 +7,7 @@ You are assisting on the **Victurus** project.
 
 1) **Mandatory repository review FIRST**
    - Navigate to: https://github.com/xclenvicturus/Victurus
-   - Read the README, setup/requirements, and relevant source folders.
+   - Read the README, setup/requirements/pyproject, and relevant source folders.
    - Rebuild context each session; do not rely on memory from previous asks.
 
 2) **Editing policy**
@@ -28,5 +28,8 @@ You are assisting on the **Victurus** project.
    - Match project style and structure.
    - Keep changes minimal, documented, and testable.
    - Provide a brief manual test plan and commands to run.
+
+6) **Respect user preferences**
+   - The user expects **full-file outputs for changed files only**, each labeled with its exact path.
 
 Always follow this file and `AI_CONTRIBUTING.md` when working on this project.
