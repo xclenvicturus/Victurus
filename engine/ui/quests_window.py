@@ -1,4 +1,3 @@
-# engine/ui/quests_window.py
 from __future__ import annotations
 
 import sqlite3
@@ -91,7 +90,7 @@ class QuestsWindow(tk.Toplevel):
     # ------------------------------------------------------------------
     def _current_location_id(self) -> Optional[int]:
         try:
-            p: Mapping[str, Any] = world.get_player(self.conn)  # treat as mapping to avoid 'Unknown'
+            p: Mapping[str, Any] = world.get_player(self.conn)  # type: ignore[assignment]
             if p.get("location_type") == "station":
                 v = p.get("location_id")
                 if isinstance(v, int):
