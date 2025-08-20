@@ -34,9 +34,8 @@ class GameApp:
         # --- Event bus ---
         self.bus = EventBus()
 
-        # --- App context (be tolerant of different __init__ signatures) ---
+        # --- App context ---
         self.ctx = self._make_app_context(Path(save_root_dir))
-        # Ensure expected context attributes exist
         if not hasattr(self.ctx, "windows"):
             self.ctx.windows = {}  # type: ignore[attr-defined]
         if not hasattr(self.ctx, "ask_yes_no"):
@@ -66,7 +65,6 @@ class GameApp:
         # Try (root, settings, wsm, bus)
         try:
             ctx = AppContext(self.root, self.settings, self.wsm, self.bus)  # type: ignore[arg-type]
-            # attach save_root & ask_yes_no if not present
             ctx.save_root = save_root  # type: ignore[attr-defined]
             ctx.ask_yes_no = self._ask_yes_no  # type: ignore[attr-defined]
             return ctx
@@ -76,7 +74,7 @@ class GameApp:
         try:
             return AppContext(None, self.root, self.settings, self.wsm, self.bus, save_root, self._ask_yes_no)  # type: ignore[arg-type]
         except TypeError:
-            # Last-resort minimal shim
+            # Minimal shim
             ctx = AppContext()  # type: ignore[call-arg]
             ctx.root = self.root  # type: ignore[attr-defined]
             ctx.settings = self.settings  # type: ignore[attr-defined]
@@ -88,16 +86,9 @@ class GameApp:
             return ctx
 
     def _make_save_manager(self, ctx: AppContext) -> SaveManager:
-        """Construct SaveManager, adapting to constructor variants."""
-        try:
-            return SaveManager(ctx, on_world_opened=self._on_world_opened)  # type: ignore[arg-type]
-        except TypeError:
-            # Fallback to (ctx,)
-            sm = SaveManager(ctx)  # type: ignore[call-arg]
-            # If it exposes a callback setter, wire it
-            if hasattr(sm, "set_on_world_opened"):
-                sm.set_on_world_opened(self._on_world_opened)  # type: ignore[attr-defined]
-            return sm
+        """Construct SaveManager with the expected on_world_opened callback signature."""
+        # SaveManager expects on_world_opened(save_name: str, conn: sqlite3.Connection)
+        return SaveManager(ctx, on_world_opened=self._on_world_opened)  # type: ignore[arg-type]
 
     # -------------------------------------------------------------------------
     # Menu / commands
@@ -124,62 +115,38 @@ class GameApp:
         )
 
     def _new_game(self) -> None:
-        if hasattr(self.save_manager, "do_clone"):
-            getattr(self.save_manager, "do_clone")()  # type: ignore[misc]
-        elif hasattr(self.save_manager, "new_game"):
-            getattr(self.save_manager, "new_game")()
-        else:
-            messagebox.showinfo("New Game", "New game not available in this build.")
+        """Delegate to SaveManager's new-game dialog."""
+        self.save_manager.open_new_game_dialog()
 
     def _save_game(self) -> None:
-        if hasattr(self.save_manager, "save"):
-            getattr(self.save_manager, "save")()
-        else:
-            messagebox.showinfo("Save", "Save not available in this build.")
+        self.save_manager.menu_save()
 
     def _save_game_as(self) -> None:
-        if hasattr(self.save_manager, "save_as"):
-            getattr(self.save_manager, "save_as")()
-        else:
-            messagebox.showinfo("Save As", "Save As not available in this build.")
+        self.save_manager.menu_save_as()
 
     def _load_game(self) -> None:
-        if hasattr(self.save_manager, "do_open"):
-            getattr(self.save_manager, "do_open")()
-        elif hasattr(self.save_manager, "open"):
-            getattr(self.save_manager, "open")()
-        else:
-            messagebox.showinfo("Open", "Open not available in this build.")
+        self.save_manager.menu_open_save_dialog()
 
     def _delete_game(self) -> None:
-        if hasattr(self.save_manager, "do_delete"):
-            getattr(self.save_manager, "do_delete")()
-        elif hasattr(self.save_manager, "delete"):
-            getattr(self.save_manager, "delete")()
-        else:
-            messagebox.showinfo("Delete", "Delete not available in this build.")
+        self.save_manager.menu_delete_save()
 
     def _toggle_topmost_menu(self, wid: str) -> None:
-        # Use Any at the call site to satisfy differing stubs/signatures across builds.
         settings_any = cast(Any, self.settings)
         meta = settings_any.get_window(wid)
         new_val = not bool(meta.get("always_on_top", False))
-        # Some builds accept (wid, payload); some accept a single dict. Try both.
         try:
             settings_any.set_window(wid, {"always_on_top": new_val})
         except TypeError:
             settings_any.set_window({"id": wid, "always_on_top": new_val})
-        # Update the "dot" in the Window menu entry
         self.ui.update_topmost_dot(wid, "•" if new_val else "")
 
     # -------------------------------------------------------------------------
     # Callbacks
     # -------------------------------------------------------------------------
-    def _on_world_opened(self, conn: sqlite3.Connection, save_name: str) -> None:
-        # Expose connection on context for windows/controllers
+    def _on_world_opened(self, save_name: str, conn: sqlite3.Connection) -> None:
+        """Matches SaveManager's callback: (save_name, conn)."""
         self.ctx.conn = conn  # type: ignore[attr-defined]
         self.bus.emit("log", "system", f"Save loaded: {save_name}")
-        # Refresh panels/windows that depend on world
         self.actions_panel.refresh()
 
     def _ask_yes_no(self, title: str, question: str) -> bool:
