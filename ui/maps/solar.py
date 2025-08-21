@@ -64,7 +64,8 @@ class SolarMapWidget(PanZoomView):
 
     # ---------- External list helpers ----------
     def get_entities(self) -> List[Dict]:
-        """Expose entities for list panes, with icon_path set to the assigned GIFs."""
+        """Expose entities for list panes, with icon_path set to the assigned GIFs.
+        Stars get a deterministic star GIF consistent with load()."""
         if self._system_id is None:
             return []
         # base rows
@@ -75,19 +76,24 @@ class SolarMapWidget(PanZoomView):
             if lid in self._assigned_icons:
                 p = self._assigned_icons.get(lid)
                 r["icon_path"] = str(p) if p is not None else None
-        # inject star row at the top
+        # inject star row at the top, with a deterministic star GIF
         star_row = db.get_system(self._system_id)
         if star_row:
+            star_icon: Optional[Path] = None
+            star_gifs = list_gifs(STARS_DIR)
+            if star_gifs:
+                rng = random.Random(10_000 + self._system_id)
+                star_icon = star_gifs[rng.randrange(len(star_gifs))]
             sdict = dict(star_row)
             rows.insert(0, {
                 "id": -self._system_id,
                 "system_id": self._system_id,
                 "name": sdict.get("name", "") + " (Star)",
                 "kind": "star",
-                "icon_path": None  # not used by list (we can add one if needed later)
+                "icon_path": str(star_icon) if star_icon is not None else None
             })
         return rows
-
+    
     def center_on_entity(self, entity_id: int) -> None:
         if entity_id < 0:
             self.center_on_system(self._system_id)

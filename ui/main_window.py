@@ -6,13 +6,16 @@ Supports:
 - Idle boot (no DB work) until a save is New/Loaded
 - File menu: New Game | Save | Save As… | Load Game
 - Window state persistence to Documents/Victurus_game/Config/ui_windows.json
+- Status Sheet dock with player/ship bars and jump range
+- Green text on current location in selection lists
+- Status dock stays at its minimum width unless the user drags it wider
 """
 
 from __future__ import annotations
 
 from typing import Optional, cast
 
-from PySide6.QtCore import Qt, QEvent
+from PySide6.QtCore import Qt, QEvent, QTimer
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QDockWidget,
@@ -26,6 +29,8 @@ from PySide6.QtWidgets import (
 from data import db
 from ui.menus.file_menu import install_file_menu
 from ui.state import window_state
+from ui.panels.status_sheet import StatusSheet
+from ui.maps.highlighting import apply_green_text_to_current_location
 
 
 # Lazy import MapView to avoid DB usage at idle
@@ -58,6 +63,15 @@ class MainWindow(QMainWindow):
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, log_dock)
         self._register_dock(log_dock)
 
+        # --- Status Sheet dock ---
+        self.status_panel = StatusSheet(self)
+        self.status_dock = QDockWidget("Status", self)
+        self.status_dock.setObjectName("dock_Status")
+        self.status_dock.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
+        self.status_dock.setWidget(self.status_panel)
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.status_dock)
+        self._register_dock(self.status_dock)
+
         # --- Status bar ---
         sb = QStatusBar(self)
         self.setStatusBar(sb)
@@ -70,21 +84,28 @@ class MainWindow(QMainWindow):
 
         # --- Menus ---
         menubar = self.menuBar()
-        # Settings menu (preserve previous toggle if existed)
+        # File menu (New/Load/Save)
+        install_file_menu(self)
+        # Settings menu (Animations toggle)
         settings_menu = menubar.addMenu("&Settings")
         self.actAnimations = QAction("Enable &Animations", self, checkable=True)
         self.actAnimations.setChecked(self._animations_enabled)
         self.actAnimations.toggled.connect(self._on_toggle_animations)
         settings_menu.addAction(self.actAnimations)
 
-        # File menu (New/Load/Save)
-        install_file_menu(self)
-
-        # Restore window layout if possible
+        # Restore saved geometry/state
         window_state.restore_mainwindow_state(self, self.WIN_ID)
 
         # Mark main window open
         window_state.set_window_open(self.WIN_ID, True)
+
+        # After restore, pin the status dock to its minimum width for this layout pass
+        QTimer.singleShot(0, self._pin_status_dock_for_transition)
+
+        # periodic status refresh (only meaningful once a save is active)
+        self._status_timer = QTimer(self)
+        self._status_timer.setInterval(1500)
+        self._status_timer.timeout.connect(self._safe_refresh_status)
 
     # ---------- helper ----------
 
@@ -99,6 +120,34 @@ class MainWindow(QMainWindow):
             window_state.save_mainwindow_state(self.WIN_ID, self.saveGeometry(), self.saveState())
         return super().eventFilter(obj, event)
 
+    # ----- size management for Status dock -----
+
+    def _status_min_width(self) -> int:
+        # Reasonable floor; respect panel’s own hint
+        return max(220, self.status_panel.minimumSizeHint().width())
+
+    def _pin_status_dock_for_transition(self) -> None:
+        """
+        Keep Status dock at min width during layout transitions (restore, New/Load).
+        We:
+          1) resize the dock to min width,
+          2) temporarily set maximumWidth to that min so splitter can't expand it,
+          3) release the max after a tick so player can drag it wider.
+        """
+        w = self._status_min_width()
+        try:
+            # nudge the left/right splitter so the Status dock is w wide
+            self.resizeDocks([self.status_dock], [w], Qt.Orientation.Horizontal)
+        except Exception:
+            pass
+
+        # Temporarily cap it so any late layout pass can't blow it up
+        self.status_dock.setMinimumWidth(w)
+        self.status_dock.setMaximumWidth(w)
+
+        # Release the cap shortly after layout settles; player can then drag it wider
+        QTimer.singleShot(150, lambda: self.status_dock.setMaximumWidth(16777215))
+
     # ---------- Idle <-> Live transitions ----------
 
     def start_game_ui(self) -> None:
@@ -106,7 +155,15 @@ class MainWindow(QMainWindow):
         if self._map_view is None:
             self._map_view = cast(QWidget, _make_map_view(self.append_log))
             self.setCentralWidget(self._map_view)
+
         self.refresh_status_counts()
+        self.status_panel.refresh()
+        apply_green_text_to_current_location(self._map_view)  # color current location text
+        self._status_timer.start()
+
+        # After switching central widget, pin the status dock so it doesn't jump
+        QTimer.singleShot(0, self._pin_status_dock_for_transition)
+
         # Flush any pending logs captured before log constructed
         for m in self._pending_logs:
             self.log.appendPlainText(m)
@@ -123,6 +180,7 @@ class MainWindow(QMainWindow):
         window_state.save_mainwindow_state(self.WIN_ID, self.saveGeometry(), self.saveState())
 
     def closeEvent(self, e):
+        self._status_timer.stop()
         window_state.set_window_open(self.WIN_ID, False)
         window_state.save_mainwindow_state(self.WIN_ID, self.saveGeometry(), self.saveState())
         super().closeEvent(e)
@@ -130,7 +188,6 @@ class MainWindow(QMainWindow):
     # ---------- Logging & stats ----------
 
     def append_log(self, msg: str) -> None:
-        # Be robust if called extremely early
         if hasattr(self, "log") and isinstance(self.log, QPlainTextEdit):
             self.log.appendPlainText(str(msg))
         else:
@@ -145,11 +202,19 @@ class MainWindow(QMainWindow):
             ps = db.get_player_summary()
             self.lbl_credits.setText(f"Credits: {ps.get('credits', 0)}")
         except Exception:
-            # No active DB yet
             self.lbl_systems.setText("Systems: —")
             self.lbl_items.setText("Items: —")
             self.lbl_ships.setText("Ships: —")
             self.lbl_credits.setText("Credits: —")
+
+    def _safe_refresh_status(self) -> None:
+        try:
+            self.status_panel.refresh()
+            self.refresh_status_counts()
+            if self._map_view is not None:
+                apply_green_text_to_current_location(self._map_view)  # keep text up to date
+        except Exception:
+            pass
 
     # ---------- Settings ----------
 

@@ -6,7 +6,8 @@ Adds:
 - Per-save DB path override (SaveManager sets it)
 - systems.star_icon_path column (created if missing)
 - One-time random star/planet/station icon assignment
-- get_locations() fixed to use schema columns x,y (aliased as local_x_au/local_y_au)
+- get_locations(): uses x,y aliased as local_x_au/local_y_au
+- get_status_snapshot(): unified player + active ship + jump info for StatusSheet
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ from __future__ import annotations
 import random
 import sqlite3
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple, Any
 
 ROOT = Path(__file__).resolve().parents[1]
 DB_DIR = ROOT / "database"
@@ -52,7 +53,6 @@ def _is_connection_open(conn: Optional[sqlite3.Connection]) -> bool:
         return False
 
 def _open_new_connection() -> sqlite3.Connection:
-    # Ensure parent exists for whichever DB path is active
     ap = get_active_db_path()
     ap.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(ap))
@@ -121,7 +121,6 @@ def _list_image_files(p: Path) -> List[Path]:
     return [q for q in p.iterdir() if q.suffix.lower() in exts]
 
 def _assign_for_kind(conn: sqlite3.Connection, system_id: int, kind: str, candidates: List[Path]) -> None:
-    """Assign icons in a deterministic cycle for a given system & kind."""
     cur = conn.execute(
         "SELECT id, icon_path FROM locations WHERE system_id=? AND kind=? ORDER BY id",
         (system_id, kind),
@@ -133,21 +132,18 @@ def _assign_for_kind(conn: sqlite3.Connection, system_id: int, kind: str, candid
 
     idx = 0
     for r in rows:
-        if r["icon_path"]:
-            continue  # already assigned
+        if r.get("icon_path"):
+            continue
         chosen = cycle[idx % len(cycle)]
         idx += 1
-        # store path relative to repo root for portability
         rel = chosen.relative_to(ROOT).as_posix()
         conn.execute("UPDATE locations SET icon_path=? WHERE id=?", (rel, r["id"]))
 
 def _assign_location_icons_if_missing(conn: sqlite3.Connection) -> None:
-    """Assign per-location icons once, system by system."""
     planet_files = _list_image_files(PLANETS_DIR)
     station_files = _list_image_files(STATIONS_DIR)
     if not planet_files and not station_files:
         return
-
     cur = conn.execute("SELECT id FROM systems ORDER BY id")
     systems = [r["id"] for r in cur.fetchall()]
     for sid in systems:
@@ -268,3 +264,184 @@ def get_player_full() -> Dict:
 def get_player_summary() -> Dict:
     d = get_player_full()
     return {"credits": d.get("credits", 0)}
+
+# ---------- status helpers for StatusSheet ----------
+def _table_has_column(conn: sqlite3.Connection, table: str, col: str) -> bool:
+    cur = conn.execute(f"PRAGMA table_info({table})")
+    return any(r[1] == col for r in cur.fetchall())
+
+def _get_name_by_id(conn: sqlite3.Connection, table: str, id_val: Optional[int]) -> Optional[str]:
+    if not id_val:
+        return None
+    cur = conn.execute(f"SELECT name FROM {table} WHERE id=?", (id_val,))
+    r = cur.fetchone()
+    return r[0] if r else None
+
+def _read_first_row(conn: sqlite3.Connection, q: str, args: Tuple=()) -> Dict[str, Any]:
+    cur = conn.execute(q, args)
+    row = cur.fetchone()
+    return dict(row) if row else {}
+
+def _get_active_ship_row(conn: sqlite3.Connection, player_id: int = 1) -> Dict[str, Any]:
+    # 1) Prefer player.active_ship_id if present
+    if _table_has_column(conn, "player", "active_ship_id"):
+        r = _read_first_row(conn, "SELECT active_ship_id FROM player WHERE id=?", (player_id,))
+        ship_id = r.get("active_ship_id")
+        if ship_id:
+            return _read_first_row(conn, "SELECT * FROM ships WHERE id=?", (ship_id,))
+
+    # 2) Try 'ships.owner_player_id' + is_active flag if present
+    owner_col = _table_has_column(conn, "ships", "owner_player_id")
+    active_col = _table_has_column(conn, "ships", "is_active")
+    if owner_col:
+        if active_col:
+            r = _read_first_row(conn, "SELECT * FROM ships WHERE owner_player_id=? AND is_active=1 LIMIT 1", (player_id,))
+            if r:
+                return r
+        r = _read_first_row(conn, "SELECT * FROM ships WHERE owner_player_id=? LIMIT 1", (player_id,))
+        if r:
+            return r
+
+    # 3) Fallback: first ship
+    return _read_first_row(conn, "SELECT * FROM ships LIMIT 1")
+
+def _pick_stat(row: Dict[str, Any], names: List[str], default: int|float=0) -> int|float:
+    for n in names:
+        if n in row and row[n] is not None:
+            return row[n]
+    return default
+
+def _pair(row: Dict[str, Any], curr_names: List[str], max_names: List[str], default_curr=0, default_max=1) -> Tuple[int, int]:
+    cur = int(round(_pick_stat(row, curr_names, default_curr)))
+    mx = int(round(_pick_stat(row, max_names, default_max)))
+    mx = max(1, mx)
+    cur = max(0, min(cur, mx))
+    return cur, mx
+
+def _float(row: Dict[str, Any], names: List[str], default: float=0.0) -> float:
+    v = _pick_stat(row, names, default)
+    try:
+        return float(v)
+    except Exception:
+        return float(default)
+
+def _infer_ship_state(conn: sqlite3.Connection, ship_row: Dict[str, Any], player_row: Dict[str, Any]) -> str:
+    """
+    Try to produce a human-friendly ship state string using whatever columns exist.
+    Priority:
+      1) ships.state or ships.status
+      2) explicit booleans (in_combat, is_docked, is_traveling)
+      3) derived from player current_location_id (Docked vs Traveling)
+    """
+    # 1) Direct string columns on ships
+    for col in ("state", "status", "ship_state"):
+        if col in ship_row and ship_row[col]:
+            return str(ship_row[col])
+
+    # 2) Booleans/ints on ships or player
+    truthy = lambda v: bool(v) and str(v) not in ("0", "False", "false", "None")
+    if "in_combat" in ship_row and truthy(ship_row["in_combat"]):
+        return "Combat"
+    if "is_docked" in ship_row and truthy(ship_row["is_docked"]):
+        return "Docked"
+    if "is_traveling" in ship_row and truthy(ship_row["is_traveling"]):
+        return "Traveling"
+
+    # 3) Derived from player position
+    loc_id = player_row.get("current_location_id")
+    if loc_id:
+        return "Docked"
+    if player_row.get("system_id"):
+        return "Traveling"
+
+    return "Idle"
+
+def get_status_snapshot() -> Dict[str, Any]:
+    """
+    Return a robust snapshot for StatusSheet:
+      - player_name, credits, system_name, location_name
+      - ship_name, ship_state
+      - hull/hull_max, shield/shield_max, fuel/fuel_max, energy/energy_max, cargo/cargo_max
+      - base_jump_distance, current_jump_distance
+    We attempt multiple column names to adapt to schema diffs.
+    """
+    conn = get_connection()
+    player = get_player_full()
+    player_name = player.get("name") or "—"
+    credits = int(player.get("credits") or 0)
+    system_id = player.get("system_id")
+    location_id = player.get("current_location_id")
+
+    system_name = _get_name_by_id(conn, "systems", system_id) or ""
+    location_name = _get_name_by_id(conn, "locations", location_id) or ""
+
+    ship_row = _get_active_ship_row(conn)
+    ship_name = ship_row.get("name") or ship_row.get("model") or "—"
+    ship_state = _infer_ship_state(conn, ship_row, player) or "—"
+
+    # stats pairs
+    hull, hull_max = _pair(
+        ship_row,
+        curr_names=["hull", "hull_current", "hp", "hp_current"],
+        max_names=["hull_max", "hp_max", "structure_max", "structure"],
+        default_curr=0,
+        default_max=100,
+    )
+    shield, shield_max = _pair(
+        ship_row,
+        curr_names=["shield", "shield_current", "shields", "shields_current"],
+        max_names=["shield_max", "shields_max"],
+        default_curr=0,
+        default_max=100,
+    )
+    fuel, fuel_max = _pair(
+        ship_row,
+        curr_names=["fuel", "fuel_current"],
+        max_names=["fuel_max", "fuel_capacity"],
+        default_curr=0,
+        default_max=100,
+    )
+    energy, energy_max = _pair(
+        ship_row,
+        curr_names=["energy", "energy_current", "power", "power_current"],
+        max_names=["energy_max", "power_max", "reactor_capacity"],
+        default_curr=0,
+        default_max=100,
+    )
+    cargo, cargo_max = _pair(
+        ship_row,
+        curr_names=["cargo", "cargo_current", "cargo_used"],
+        max_names=["cargo_max", "cargo_capacity"],
+        default_curr=0,
+        default_max=50,
+    )
+
+    # jump distances
+    base_jump = _float(ship_row, ["base_jump_distance", "jump_range", "jump_distance"], 5.0)
+
+    # If we don't have explicit fuel->jump math, assume linear scaling with fuel fraction.
+    fuel_frac = (float(fuel) / float(max(1, fuel_max))) if fuel_max else 0.0
+    current_jump = max(0.0, base_jump * fuel_frac)
+
+    return {
+        "player_name": player_name,
+        "credits": credits,
+        "system_id": system_id,
+        "system_name": system_name,
+        "location_id": location_id,
+        "location_name": location_name,
+        "ship_name": ship_name,
+        "ship_state": ship_state,
+        "hull": hull,
+        "hull_max": hull_max,
+        "shield": shield,
+        "shield_max": shield_max,
+        "fuel": fuel,
+        "fuel_max": fuel_max,
+        "energy": energy,
+        "energy_max": energy_max,
+        "cargo": cargo,
+        "cargo_max": cargo_max,
+        "base_jump_distance": base_jump,
+        "current_jump_distance": current_jump,
+    }

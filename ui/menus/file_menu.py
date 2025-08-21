@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtWidgets import QFileDialog, QMessageBox, QDialog
+
 from PySide6.QtGui import QAction
 
 from save.manager import SaveManager
@@ -42,13 +43,15 @@ def _on_new_game(win):
         except Exception as e:
             QMessageBox.critical(win, "New Game Failed", str(e))
             return
-        win.start_game_ui()  # replace idle UI with live game UI
+        win.start_game_ui()   # replace idle UI with live game UI
+        win.status_panel.refresh()
 
 
 def _on_save(win):
     try:
         SaveManager.save_current()
         win.append_log("Game saved.")
+        win.status_panel.refresh()
     except Exception as e:
         QMessageBox.critical(win, "Save Failed", str(e))
 
@@ -69,6 +72,7 @@ def _on_save_as(win):
         try:
             dest = SaveManager.save_as(new_name)
             win.append_log(f"Saved As: {dest.name}")
+            win.status_panel.refresh()
         except Exception as e:
             QMessageBox.critical(win, "Save As Failed", str(e))
 
@@ -84,4 +88,5 @@ def _on_load(win):
         except Exception as e:
             QMessageBox.critical(win, "Load Failed", str(e))
             return
-        win.start_game_ui()  # rebuild UI for loaded game
+        win.start_game_ui()    # rebuild UI for loaded game
+        win.status_panel.refresh()
