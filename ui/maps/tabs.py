@@ -1,7 +1,8 @@
 """
 MapView tabs + side panels + hover overlay.
 
-Galaxy list now shows each system's assigned star icon from DB (systems.star_icon_path).
+- Galaxy list shows each system's assigned star icon (systems.star_icon_path).
+- Solar list includes the central Star entity (click to center on it).
 """
 
 from __future__ import annotations
@@ -27,7 +28,7 @@ class MapView(QTabWidget):
         super().__init__()
         self._log = log_fn
 
-        # Galaxy tab
+        # -------- Galaxy tab --------
         self.galaxy = GalaxyMapWidget(log_fn=self._log, parent=self)
         self._gal_overlay = HoverLineOverlay(self.galaxy.viewport())
         self._gal_overlay.setGeometry(self.galaxy.viewport().rect())
@@ -53,14 +54,15 @@ class MapView(QTabWidget):
         glay.setContentsMargins(0, 0, 0, 0)
         glay.addWidget(galaxy_split)
 
-        # Solar tab
+        # -------- Solar tab --------
         self.solar = SolarMapWidget(log_fn=self._log, parent=self)
         self._sol_overlay = HoverLineOverlay(self.solar.viewport())
         self._sol_overlay.setGeometry(self.solar.viewport().rect())
         self.solar.viewport().installEventFilter(self)
 
+        # Include Star so the system's central star shows up & is filterable
         self._sol_panel = SidePanel(
-            categories=["All", "Planet", "Station"],
+            categories=["All", "Star", "Planet", "Station"],
             sorts=["Name A–Z", "Name Z–A", "X", "Y", "Distance to player"],
             title="Solar",
         )
@@ -79,28 +81,32 @@ class MapView(QTabWidget):
         slay.setContentsMargins(0, 0, 0, 0)
         slay.addWidget(solar_split)
 
-        # Add tabs
+        # -------- Add tabs --------
         self.addTab(galaxy_tab, "Galaxy (pc)")
         self.addTab(solar_tab, "Solar (AU)")
 
-        # State for overlay locking
+        # State for overlay locking (sticky line after click)
         self._gal_locked_id: Optional[int] = None
         self._sol_locked_id: Optional[int] = None
 
-        # Galaxy list: double-click → open system tab
+        # Galaxy list: double-click → open system in Solar tab
         self._gal_panel.doubleClicked.connect(self._open_system_in_solar)
 
+        # Font for list rows
         self._list_font = QFont()
         self._list_font.setPointSize(14)
 
+        # When switching tabs, refresh overlay so the line reattaches
         self.currentChanged.connect(lambda _i: self._refresh_overlay("galaxy" if self.currentIndex() == 0 else "solar"))
 
+        # Initial load
         self.reload_all()
 
-        # Hook side panel events (for hover line)
+        # Hook side panel events (for hover lines)
         self._gal_panel.hovered.connect(lambda eid: self._on_hover("galaxy", eid))
         self._gal_panel.clicked.connect(lambda eid: self._on_click("galaxy", eid))
         self._gal_panel.leftView.connect(lambda: self._on_leave_list("galaxy"))
+
         self._sol_panel.hovered.connect(lambda eid: self._on_hover("solar", eid))
         self._sol_panel.clicked.connect(lambda eid: self._on_click("solar", eid))
         self._sol_panel.leftView.connect(lambda: self._on_leave_list("solar"))
@@ -163,8 +169,9 @@ class MapView(QTabWidget):
         )
 
     def _populate_solar_list(self) -> None:
-        rows_all = self.solar.get_entities()  # includes kind + pos + icon_path
-        ppos = QPointF(0.0, 0.0)
+        # includes the Star entity (synthetic), plus planets and stations
+        rows_all = self.solar.get_entities()
+        ppos = QPointF(0.0, 0.0)  # player's reference in Solar view (center)
         rows = self._sol_panel.filtered_sorted(rows_all, ppos)
         self._sol_panel.populate(
             rows,
