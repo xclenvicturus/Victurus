@@ -60,7 +60,7 @@ class SolarMapWidget(PanZoomView):
         # Use a starfield here too
         self.enable_starfield(True)
         # Draw background in scene space so it aligns with (0,0)
-        self.set_background_mode("scene")
+        self.set_background_mode("viewport")
 
     # ---------- External list helpers ----------
     def get_entities(self) -> List[Dict]:
@@ -187,9 +187,11 @@ class SolarMapWidget(PanZoomView):
         station_assignments = assign_unique(station_gifs, len(station_rows), 2)
 
         # ---- Orbit rings (under everything) ----
-        from PySide6.QtGui import QPen
+        from PySide6.QtGui import QPen, QColor
         pen = QPen()
-        pen.setWidthF(0.2)
+        pen.setWidthF(0.1)
+        # subtle bluish-gray ring color with alpha
+        pen.setColor(QColor(200, 210, 230, 180))
         for i in range(len(planet_rows)):
             r = (base_au + i * ring_gap_au) * self._spread
             ring = self._scene.addEllipse(-r, -r, 2 * r, 2 * r, pen)
