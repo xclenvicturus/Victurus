@@ -189,14 +189,16 @@ class SolarMapWidget(PanZoomView):
         # ---- Orbit rings (under everything) ----
         from PySide6.QtGui import QPen
         pen = QPen()
-        pen.setWidthF(0.03)
+        pen.setWidthF(0.2)
         for i in range(len(planet_rows)):
             r = (base_au + i * ring_gap_au) * self._spread
             ring = self._scene.addEllipse(-r, -r, 2 * r, 2 * r, pen)
             ring.setZValue(-9)
 
         # ---- Central star (GIF-only) ----
-        desired_px_star = 100
+        min_px_star = 100
+        max_px_star = 250
+        desired_px_star = rng.randint(min_px_star, max_px_star)
         star_gif = pick_star_gif()
         star_path = star_gif if star_gif is not None else Path("missing_star.gif")
         star_item = make_map_symbol_item(star_path, desired_px_star, self, salt=system_id)
@@ -207,8 +209,16 @@ class SolarMapWidget(PanZoomView):
         self._star_radius_px = desired_px_star / 2.0
 
         # ---- Planets (even angles, UNIQUE GIFs) ----
-        desired_px_planet = 24
+        # Planet sizes range from 30 to 75 px, evenly distributed
+        min_px_planet = 30
+        max_px_planet = 75
+        n_planets = max(1, len(planet_rows))
         for i, l in enumerate(planet_rows):
+            # Interpolate size between min and max
+            if n_planets == 1:
+                desired_px_planet = (min_px_planet + max_px_planet) / 2
+            else:
+                desired_px_planet = min_px_planet + (max_px_planet - min_px_planet) * (i / (n_planets - 1))
             ring_r = (base_au + i * ring_gap_au) * self._spread
             angle_deg = ((l["id"] * 73.398) % 360.0)
             a = radians(angle_deg)
@@ -221,7 +231,7 @@ class SolarMapWidget(PanZoomView):
                 self._log(f"WARNING: Not enough planet GIFs for system {system_id}; planet {l['id']} gets placeholder.")
                 pgif = Path("missing_planet.gif")
 
-            item = make_map_symbol_item(pgif, desired_px_planet, self, salt=l.get("id"))
+            item = make_map_symbol_item(pgif, int(desired_px_planet), self, salt=l.get("id"))
             item.setPos(x, y)
             item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
             self._scene.addItem(item)
@@ -231,7 +241,9 @@ class SolarMapWidget(PanZoomView):
 
         # ---- Stations (between rings, UNIQUE GIFs) ----
         # 50% CLOSER orbits: halve previous radius (around planet) and halve interleaved case
-        desired_px_station = 24
+        min_px_station = 15
+        max_px_station = 25
+        station_count = max(1, len(station_rows))
         for j, l in enumerate(station_rows):
             ring_index = min(len(planet_rows) - 1, j % max(1, len(planet_rows))) if planet_rows else 0
             base_ring_r = (base_au + ring_index * ring_gap_au + ring_gap_au * 0.5) * self._spread
@@ -246,7 +258,13 @@ class SolarMapWidget(PanZoomView):
                 self._log(f"WARNING: Not enough station GIFs for system {system_id}; station {l['id']} gets placeholder.")
                 sgif = Path("missing_station.gif")
 
-            item = make_map_symbol_item(sgif, desired_px_station, self, salt=l.get("id"))
+            # Size distributed across stations within the desired range [15, 25] px
+            if station_count == 1:
+                desired_px_station = (min_px_station + max_px_station) / 2
+            else:
+                desired_px_station = min_px_station + (max_px_station - min_px_station) * (j / (station_count - 1))
+
+            item = make_map_symbol_item(sgif, int(desired_px_station), self, salt=l.get("id"))
             item.setPos(x, y)
             item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
             self._scene.addItem(item)
@@ -256,12 +274,22 @@ class SolarMapWidget(PanZoomView):
         # ---- Build simple orbit specs (visual only) ----
         self._orbit_specs = []
         planet_ids = [l["id"] for l in planet_rows]
+
+        # Speed ranges (tweak these to adjust overall slow/fast behavior per system)
+        planet_speed_min = 0.05
+        planet_speed_max = 0.12
+        station_speed_min = 0.15
+        station_speed_max = 0.30
+
         # Planets: orbit around the star at (0,0)
         for i, l in enumerate(planet_rows):
             ring_r = (base_au + i * ring_gap_au) * self._spread
             initial_angle = ((l["id"] * 73.398) % 360.0) * (math.pi / 180.0)
-            speed = 0.08 * (1.0 / (1.0 + i * 0.25))
+            # Pick a deterministic per-system/per-entity base speed between min/max, then scale by orbit index
+            base_speed = rng.uniform(planet_speed_min, planet_speed_max)
+            speed = base_speed * (1.0 / (1.0 + i * 0.25))
             self._orbit_specs.append({"id": l["id"], "parent": None, "radius_px": ring_r, "angle": initial_angle, "speed": speed})
+
         # Stations: orbit their ring's planet if exists, else the star — with 50% radius
         for j, l in enumerate(station_rows):
             if planet_ids:
@@ -271,8 +299,21 @@ class SolarMapWidget(PanZoomView):
             else:
                 parent_id = None
                 radius_px = ((base_au + 0.5) * self._spread) * 0.5  # halve interleaved distance
-            initial_angle = ((l["id"] * 137.50776) % 360.0) * (math.pi / 180.0)
-            speed = 0.22
+
+            # Compute initial angle from the already-placed station position so the orbit starts smoothly.
+            # If the station orbits a planet, compute angle relative to the planet; otherwise relative to origin.
+            parent_px, parent_py = (0.0, 0.0)
+            if parent_id is not None:
+                parent_px, parent_py = self._drawpos.get(parent_id, (0.0, 0.0))
+            sx, sy = self._drawpos.get(l["id"], (0.0, 0.0))
+            dx = sx - parent_px
+            dy = sy - parent_py
+            initial_angle = math.atan2(dy, dx)
+
+            # Pick a deterministic per-system/per-entity station speed between min/max
+            speed = rng.uniform(station_speed_min, station_speed_max)
+
+            # Append the station orbit spec (previous code accidentally only appended for the else branch)
             self._orbit_specs.append({"id": l["id"], "parent": parent_id, "radius_px": radius_px, "angle": initial_angle, "speed": speed})
 
         # Start/stop orbits respecting global animation toggle
