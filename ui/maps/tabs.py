@@ -1,22 +1,24 @@
 """
-MapView tabs + side panels + hover overlay.
+MapView tabs + side panels + hover leader line (via PanZoomView).
 
-- Galaxy list shows each system's assigned star icon (systems.star_icon_path).
+- Galaxy list shows each system's assigned star icon.
 - Solar list includes the central Star entity (click to center on it).
+- Hovering list rows shows a glowing green leader line from the list anchor
+  to the entity on the map, using PanZoomView.set_leader_from_viewport_to_getter.
+- Clicking a row "locks" the line; clicking the SAME row again UNLOCKS it.
 """
 
 from __future__ import annotations
 
 from typing import Optional
 
-from PySide6.QtCore import QEvent, QPoint, QPointF, Qt, Signal
+from PySide6.QtCore import QPoint, QPointF, Qt, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QListWidget, QListWidgetItem, QSplitter, QTabWidget, QVBoxLayout, QWidget
 
 from data import db
 from .galaxy import GalaxyMapWidget
 from .solar import SolarMapWidget
-from .overlays import HoverLineOverlay
 from .panels import SidePanel
 from .icons import icon_from_path_or_kind
 
@@ -30,9 +32,6 @@ class MapView(QTabWidget):
 
         # -------- Galaxy tab --------
         self.galaxy = GalaxyMapWidget(log_fn=self._log, parent=self)
-        self._gal_overlay = HoverLineOverlay(self.galaxy.viewport())
-        self._gal_overlay.setGeometry(self.galaxy.viewport().rect())
-        self.galaxy.viewport().installEventFilter(self)
 
         self._gal_panel = SidePanel(
             categories=["All", "Systems"],
@@ -40,7 +39,8 @@ class MapView(QTabWidget):
             title="Galaxy",
         )
         self._gal_panel.refreshRequested.connect(self.update_lists)
-        self._gal_panel.anchorMoved.connect(lambda: self._refresh_overlay("galaxy"))
+        # When the panel's anchor shifts (resize/scroll), reattach the leader line.
+        self._gal_panel.anchorMoved.connect(lambda: self._refresh_leader("galaxy"))
 
         galaxy_split = QSplitter(Qt.Orientation.Horizontal)
         galaxy_split.addWidget(self.galaxy)
@@ -56,9 +56,6 @@ class MapView(QTabWidget):
 
         # -------- Solar tab --------
         self.solar = SolarMapWidget(log_fn=self._log, parent=self)
-        self._sol_overlay = HoverLineOverlay(self.solar.viewport())
-        self._sol_overlay.setGeometry(self.solar.viewport().rect())
-        self.solar.viewport().installEventFilter(self)
 
         # Include Star so the system's central star shows up & is filterable
         self._sol_panel = SidePanel(
@@ -67,7 +64,7 @@ class MapView(QTabWidget):
             title="Solar",
         )
         self._sol_panel.refreshRequested.connect(self.update_lists)
-        self._sol_panel.anchorMoved.connect(lambda: self._refresh_overlay("solar"))
+        self._sol_panel.anchorMoved.connect(lambda: self._refresh_leader("solar"))
 
         solar_split = QSplitter(Qt.Orientation.Horizontal)
         solar_split.addWidget(self.solar)
@@ -85,7 +82,7 @@ class MapView(QTabWidget):
         self.addTab(galaxy_tab, "Galaxy (pc)")
         self.addTab(solar_tab, "Solar (AU)")
 
-        # State for overlay locking (sticky line after click)
+        # Sticky leader-line after click (one per tab)
         self._gal_locked_id: Optional[int] = None
         self._sol_locked_id: Optional[int] = None
 
@@ -96,13 +93,13 @@ class MapView(QTabWidget):
         self._list_font = QFont()
         self._list_font.setPointSize(14)
 
-        # When switching tabs, refresh overlay so the line reattaches
-        self.currentChanged.connect(lambda _i: self._refresh_overlay("galaxy" if self.currentIndex() == 0 else "solar"))
+        # When switching tabs, refresh leader so the line reattaches
+        self.currentChanged.connect(lambda _i: self._refresh_leader("galaxy" if self.currentIndex() == 0 else "solar"))
 
         # Initial load
         self.reload_all()
 
-        # Hook side panel events (for hover lines)
+        # Hook side panel events (hover/click for leader line)
         self._gal_panel.hovered.connect(lambda eid: self._on_hover("galaxy", eid))
         self._gal_panel.clicked.connect(lambda eid: self._on_click("galaxy", eid))
         self._gal_panel.leftView.connect(lambda: self._on_leave_list("galaxy"))
@@ -150,8 +147,8 @@ class MapView(QTabWidget):
     def update_lists(self) -> None:
         self._populate_galaxy_list()
         self._populate_solar_list()
-        self._refresh_overlay("galaxy")
-        self._refresh_overlay("solar")
+        self._refresh_leader("galaxy")
+        self._refresh_leader("solar")
 
     def _populate_galaxy_list(self) -> None:
         rows_all = self.galaxy.get_entities()
@@ -179,101 +176,121 @@ class MapView(QTabWidget):
             icon_provider=lambda r: icon_from_path_or_kind(r.get("icon_path"), r.get("kind") or ""),
         )
 
-    # ----- Hover/click connector line -----
+    # ----- Hover/click leader line -----
     def _on_hover(self, which: str, eid: int) -> None:
         if which == "galaxy":
             if self._gal_locked_id is not None:
                 return
-            self._draw_hover_line(which, eid)
+            self._attach_leader(which, eid)
         else:
             if self._sol_locked_id is not None:
                 return
-            self._draw_hover_line(which, eid)
+            self._attach_leader(which, eid)
 
     def _on_click(self, which: str, eid: int) -> None:
+        """Click toggles lock: first click locks; clicking the same item again unlocks."""
         if which == "galaxy":
+            # Toggle
+            if self._gal_locked_id == eid:
+                self._unlock("galaxy")
+                return
+            # Lock to new selection
             self.galaxy.center_on_entity(eid)
             self._gal_locked_id = eid
-            self._draw_hover_line(which, eid, lock=True)
+            self._attach_leader(which, eid)
         else:
+            if self._sol_locked_id == eid:
+                self._unlock("solar")
+                return
             self.solar.center_on_entity(eid)
             self._sol_locked_id = eid
-            self._draw_hover_line(which, eid, lock=True)
+            self._attach_leader(which, eid)
+
+    def _unlock(self, which: str) -> None:
+        """Clear lock, hide leader line, and unselect the list item."""
+        if which == "galaxy":
+            self._gal_locked_id = None
+            self.galaxy.set_leader_from_viewport_to_getter(None, None)
+            try:
+                self._gal_panel.list.clearSelection()
+                self._gal_panel.list.setCurrentRow(-1)
+            except Exception:
+                pass
+        else:
+            self._sol_locked_id = None
+            self.solar.set_leader_from_viewport_to_getter(None, None)
+            try:
+                self._sol_panel.list.clearSelection()
+                self._sol_panel.list.setCurrentRow(-1)
+            except Exception:
+                pass
 
     def _on_leave_list(self, which: str) -> None:
+        # If not locked, hide the leader line
         if which == "galaxy":
             if self._gal_locked_id is None:
-                self._gal_overlay.clear()
+                self.galaxy.set_leader_from_viewport_to_getter(None, None)
         else:
             if self._sol_locked_id is None:
-                self._sol_overlay.clear()
+                self.solar.set_leader_from_viewport_to_getter(None, None)
 
-    def _refresh_overlay(self, which: str) -> None:
+    def _refresh_leader(self, which: str) -> None:
+        """Re-attach the leader after resize/scroll/tab change so the anchor keeps up."""
         if which == "galaxy":
             eid = self._gal_locked_id
-            item = None
             if eid is None:
-                item = self._gal_panel.current_hover_item()
-                if item is None:
+                it = self._gal_panel.current_hover_item()
+                if it is None:
                     return
-                eid = int(item.data(Qt.ItemDataRole.UserRole))
-            else:
-                item = self._find_item_by_id(self._gal_panel.list, eid)
-                if item is None:
-                    return
-            self._draw_hover_line("galaxy", eid, item=item, lock=self._gal_locked_id is not None)
+                eid = int(it.data(Qt.ItemDataRole.UserRole))
+            self._attach_leader("galaxy", eid)
         else:
             eid = self._sol_locked_id
-            item = None
             if eid is None:
-                item = self._sol_panel.current_hover_item()
-                if item is None:
+                it = self._sol_panel.current_hover_item()
+                if it is None:
                     return
-                eid = int(item.data(Qt.ItemDataRole.UserRole))
-            else:
-                item = self._find_item_by_id(self._sol_panel.list, eid)
-                if item is None:
-                    return
-            self._draw_hover_line("solar", eid, item=item, lock=self._sol_locked_id is not None)
+                eid = int(it.data(Qt.ItemDataRole.UserRole))
+            self._attach_leader("solar", eid)
 
-    def _edge_endpoint(self, mid: QPoint, center: QPoint, radius_px: float) -> QPoint:
-        dx = center.x() - mid.x()
-        dy = center.y() - mid.y()
-        dist = max((dx * dx + dy * dy) ** 0.5, 1.0)
-        ux, uy = dx / dist, dy / dist
-        return QPoint(int(round(center.x() - ux * radius_px)), int(round(center.y() - uy * radius_px)))
-
-    def _draw_hover_line(self, which: str, eid: int, item: Optional[QListWidgetItem] = None, lock: bool = False) -> None:
+    # ---- Core attach: computes the source anchor (in viewport coords),
+    # ---- and gives PanZoomView a getter that returns the (moving) endpoint.
+    def _attach_leader(self, which: str, eid: int) -> None:
         if which == "galaxy":
-            info = self.galaxy.get_entity_viewport_center_and_radius(eid)
-            if not info:
+            view = self.galaxy
+            panel = self._gal_panel
+            item = self._find_item_by_id(panel.list, eid)
+            if item is None:
+                view.set_leader_from_viewport_to_getter(None, None)
                 return
-            center, radius = info
-            it = item or self._find_item_by_id(self._gal_panel.list, eid)
-            if it is None:
-                return
-            anchor = self._gal_panel.anchor_point_for_item(self._gal_overlay, it)
-            mid = QPoint(max(0, anchor.x() - self._gal_overlay._stub), anchor.y())
-            endpoint = self._edge_endpoint(mid, center, radius)
-            if lock:
-                self._gal_overlay.lock_to(anchor, endpoint)
-            else:
-                self._gal_overlay.show_temp(anchor, endpoint)
+            anchor = panel.anchor_point_for_item(view.viewport(), item)  # viewport coords
+            dst_getter = self._make_dst_getter(view, anchor, eid)
+            view.set_leader_from_viewport_to_getter(anchor, dst_getter)
         else:
-            info = self.solar.get_entity_viewport_center_and_radius(eid)
+            view = self.solar
+            panel = self._sol_panel
+            item = self._find_item_by_id(panel.list, eid)
+            if item is None:
+                view.set_leader_from_viewport_to_getter(None, None)
+                return
+            anchor = panel.anchor_point_for_item(view.viewport(), item)
+            dst_getter = self._make_dst_getter(view, anchor, eid)
+            view.set_leader_from_viewport_to_getter(anchor, dst_getter)
+
+    def _make_dst_getter(self, view, anchor: QPoint, eid: int):
+        """Factory for the destination getter used by the leader line."""
+        def _dst():
+            info = view.get_entity_viewport_center_and_radius(eid)
             if not info:
-                return
+                return None
             center, radius = info
-            it = item or self._find_item_by_id(self._sol_panel.list, eid)
-            if it is None:
-                return
-            anchor = self._sol_panel.anchor_point_for_item(self._sol_overlay, it)
-            mid = QPoint(max(0, anchor.x() - self._sol_overlay._stub), anchor.y())
-            endpoint = self._edge_endpoint(mid, center, radius)
-            if lock:
-                self._sol_overlay.lock_to(anchor, endpoint)
-            else:
-                self._sol_overlay.show_temp(anchor, endpoint)
+            # Trim the line so it touches the icon's edge, not the center.
+            dx = center.x() - anchor.x()
+            dy = center.y() - anchor.y()
+            dist = max((dx * dx + dy * dy) ** 0.5, 1.0)
+            ux, uy = dx / dist, dy / dist
+            return QPoint(int(round(center.x() - ux * radius)), int(round(center.y() - uy * radius)))
+        return _dst
 
     @staticmethod
     def _find_item_by_id(listw: QListWidget, eid: int) -> Optional[QListWidgetItem]:
@@ -282,14 +299,6 @@ class MapView(QTabWidget):
             if int(it.data(Qt.ItemDataRole.UserRole)) == int(eid):
                 return it
         return None
-
-    def eventFilter(self, obj, ev):
-        if ev.type() == QEvent.Type.Resize:
-            if hasattr(self, "galaxy") and obj is self.galaxy.viewport():
-                self._gal_overlay.setGeometry(self.galaxy.viewport().rect())
-            if hasattr(self, "solar") and obj is self.solar.viewport():
-                self._sol_overlay.setGeometry(self.solar.viewport().rect())
-        return super().eventFilter(obj, ev)
 
     def _open_system_in_solar(self, system_id: int) -> None:
         self.setCurrentIndex(1)

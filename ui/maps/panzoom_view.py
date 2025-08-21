@@ -1,35 +1,29 @@
 # ui/maps/panzoom_view.py
 """
 PanZoomView
-- Static background image drawn in viewport coordinates (no camera coupling)
-- Animated starfield (four layers) behind scene items, drawn OVER the background:
-    * far, mid, near (subtle twinkle)
-    * spark (fast twinkle)
-- No mouse panning or wheel zoom (navigation is via lists)
+- Optional static background image; can be drawn in viewport ("screen") or scene space
+- Animated starfield layers (optional)
+- No mouse panning/zoom (navigation is via lists)
+- Leader line overlay at ~60 FPS (configurable thickness & color)
 """
 
 from __future__ import annotations
 
 import math
 import random
-from typing import List, Optional
+from typing import List, Optional, Callable
 
-from PySide6.QtCore import QTimer, Qt
-from PySide6.QtGui import (
-    QBrush,
-    QColor,
-    QImage,
-    QLinearGradient,
-    QPainter,
-    QPixmap,
-    QTransform,
-)
+from PySide6.QtCore import QTimer, Qt, QPoint
+from PySide6.QtGui import QBrush, QColor, QImage, QLinearGradient, QPainter, QPixmap, QPen
 from PySide6.QtWidgets import QGraphicsScene, QGraphicsView
 
 
 class PanZoomView(QGraphicsView):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
+
+        # Global animations toggle (starfield, GIFs, orbits in subclasses)
+        self._animations_enabled = True
 
         # Base scene setup
         self.setScene(QGraphicsScene(self))
@@ -46,41 +40,43 @@ class PanZoomView(QGraphicsView):
         # Ensure full repaints so our animated background always shows
         self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.FullViewportUpdate)
 
-        # Anchor behavior (centers on target coordinates nicely)
-        self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
-        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
+        # Unit scale: logical unit -> pixels (used by children when laying out)
+        self._unit_px = 10.0
 
-        # Unit scale: world-to-pixel base ratio helper (used by maps)
-        self._unit_scale: float = 1.0
-        self._apply_unit_scale()  # start with identity
-
-        # Background image (viewport static)
+        # Background image cache and mode
         self._bg_pixmap: Optional[QPixmap] = None
+        # "viewport" (fixed to screen) or "scene" (locked to scene coordinates)
+        self._bg_mode: str = "viewport"
 
-        # -------- Starfield (animated, viewport static) --------
-        self._star_enabled: bool = False
-        # each layer: {"pos": List[tuple], "phase": List[float], "size": int, "color": QColor, "spd": float, "amp": float, "base": int}
-        self._star_layers: List[dict] = []
-        self._star_time: float = 0.0
+        # Starfield
+        self._star_enabled = False
         self._star_timer: Optional[QTimer] = None
+        self._star_time = 0.0
+        self._star_layers: List[dict] = []
 
-        # Resolve composition modes in a Pylance-friendly way (no direct enum refs)
+        # Leader line (screen-space)
+        self._leader_active = False
+        self._leader_src_vp: Optional[QPoint] = None
+        self._leader_dst_getter: Optional[Callable[[], Optional[QPoint]]] = None
+        self._leader_timer: Optional[QTimer] = None  # ~60 FPS refresher
+
+        # Leader style (you can change via set_leader_style)
+        self._leader_glow_width = 1
+        self._leader_core_width = 1
+        self._leader_glow_color = QColor(50, 255, 120, 120)
+        self._leader_core_color = QColor(120, 255, 180, 255)
+
+        # Composition modes (handle PySide runtime + type-checkers)
         self._cm_plus = self._resolve_composition_mode("CompositionMode_Plus", "Plus")
         self._cm_src_over = self._resolve_composition_mode("CompositionMode_SourceOver", "SourceOver")
 
-    # ---------------- Public API ----------------
-    def set_unit_scale(self, scale: float) -> None:
-        """Apply a constant base zoom to the view (no user zoom)."""
-        self._unit_scale = float(scale)
-        self._apply_unit_scale()
-
-    def _apply_unit_scale(self) -> None:
-        t = QTransform()
-        t.scale(self._unit_scale, self._unit_scale)
-        self.setTransform(t)
+    # ---------- Background ----------
+    def set_background_mode(self, mode: str) -> None:
+        self._bg_mode = "scene" if str(mode).lower() == "scene" else "viewport"
+        self.viewport().update()
 
     def set_background_image(self, path: Optional[str]) -> None:
-        """Set a static background image (PNG/JPG). Drawn in viewport coords."""
+        """Set a background image. For gradients, pass None."""
         if not path:
             self._bg_pixmap = None
             self.viewport().update()
@@ -92,25 +88,32 @@ class PanZoomView(QGraphicsView):
             self._bg_pixmap = QPixmap.fromImage(img)
         self.viewport().update()
 
+    # ---------- Unit scale ----------
+    def set_unit_scale(self, scale: float) -> None:
+        """Set logical-to-pixel unit multiplier."""
+        self._unit_px = float(scale)
+
+    def _apply_unit_scale(self) -> None:
+        self.resetTransform()
+        self.scale(self._unit_px, self._unit_px)
+
+    # ---------- Starfield ----------
     def enable_starfield(self, enabled: bool) -> None:
-        """Toggle the animated starfield (viewport static)."""
-        if self._star_enabled == enabled:
-            return
-        self._star_enabled = enabled
-        if enabled:
-            self._ensure_star_timer()
+        """Toggle the animated starfield (screen-fixed overlay)."""
+        self._star_enabled = bool(enabled)
+        if self._star_enabled:
             self._regen_starfield()
+            self._ensure_star_timer()
         else:
-            if self._star_timer:
+            if self._star_timer is not None:
                 self._star_timer.stop()
                 self._star_timer.deleteLater()
             self._star_timer = None
             self._star_layers.clear()
             self.viewport().update()
 
-    # ---------------- Internals: starfield ----------------
     def _ensure_star_timer(self) -> None:
-        if self._star_timer is None:
+        if self._star_timer is None and self._animations_enabled and self._star_enabled:
             self._star_timer = QTimer(self)
             self._star_timer.setInterval(60)  # gentle ~16–17 FPS
             self._star_timer.timeout.connect(self._tick_starfield)
@@ -119,11 +122,10 @@ class PanZoomView(QGraphicsView):
 
     def _tick_starfield(self) -> None:
         self._star_time += 0.06
-        # Paint only the background; scene will draw on top
         self.viewport().update()
 
     def _regen_starfield(self) -> None:
-        """Generate stars anchored to the viewport size."""
+        """Generate stars anchored to the viewport size (screen coords)."""
         if not self._star_enabled:
             return
         w = max(1, self.viewport().width())
@@ -133,47 +135,120 @@ class PanZoomView(QGraphicsView):
         def clamp(n: int, mn: int, mx: int) -> int:
             return max(mn, min(mx, n))
 
-        # Scale counts with area; keep a cap for perf
-        cnt_far   = clamp(area // 9000,   80, 300)  # smallest/most distant
+        cnt_far   = clamp(area // 9000,   80, 300)
         cnt_mid   = clamp(area // 13000,  60, 240)
         cnt_near  = clamp(area // 18000,  40, 180)
-        cnt_spark = clamp(area // 24000,  30, 140)  # NEW: fewer, fast twinkles
+        cnt_spark = clamp(area // 24000,  30, 140)
 
-        rng = random.Random(1337 + w * 31 + h * 17)  # stable per-size seed
+        rng = random.Random(1337 + w * 31 + h * 17)
 
         def make_layer(count: int, size_px: int, color: QColor, spd: float, amp: float, base_alpha: int) -> dict:
             pos = [(rng.uniform(0, w), rng.uniform(0, h)) for _ in range(count)]
             phase = [rng.uniform(0, math.tau) for _ in range(count)]
             return {"pos": pos, "phase": phase, "size": size_px, "color": color, "spd": spd, "amp": amp, "base": base_alpha}
 
-        # Slightly higher alphas so they pop over bright backgrounds
         far_layer   = make_layer(cnt_far,   1, QColor(180, 200, 255), spd=0.9, amp=75.0,  base_alpha=130)
         mid_layer   = make_layer(cnt_mid,   2, QColor(220, 235, 255), spd=1.2, amp=90.0,  base_alpha=160)
         near_layer  = make_layer(cnt_near,  3, QColor(255, 255, 255), spd=1.6, amp=105.0, base_alpha=180)
-        spark_layer = make_layer(cnt_spark, 2, QColor(255, 250, 225), spd=3.2, amp=140.0, base_alpha=150)  # NEW fast twinkles
+        spark_layer = make_layer(cnt_spark, 2, QColor(255, 250, 225), spd=3.2, amp=140.0, base_alpha=150)
 
-        # Draw order: far → mid → near → spark (spark on top)
         self._star_layers = [far_layer, mid_layer, near_layer, spark_layer]
         self.viewport().update()
 
-    # ---------------- QGraphicsView overrides ----------------
-    def drawBackground(self, painter: QPainter, rect) -> None:
-        # Draw in viewport coordinates (static) THEN let the scene draw items over it
-        painter.save()
-        painter.resetTransform()
-        vp = self.viewport().rect()
+    # ---------- Leader line (60 FPS, configurable) ----------
+    def set_leader_from_viewport_to_getter(self, src_vp: Optional[QPoint], dst_getter: Optional[Callable[[], Optional[QPoint]]]) -> None:
+        """
+        Enable/disable a leader line that connects a UI point (src in viewport coords)
+        to a dynamic target (dst getter returns a viewport QPoint).
+        Pass (None, None) to disable.
+        """
+        if src_vp is None or dst_getter is None:
+            self._leader_active = False
+            self._leader_src_vp = None
+            self._leader_dst_getter = None
+            if self._leader_timer is not None and self._leader_timer.isActive():
+                self._leader_timer.stop()
+            self.viewport().update()
+            return
 
-        # Background image or a soft gradient if none
+        self._leader_active = True
+        self._leader_src_vp = QPoint(src_vp)
+        self._leader_dst_getter = dst_getter
+
+        if self._leader_timer is None:
+            self._leader_timer = QTimer(self)
+            self._leader_timer.setInterval(16)  # ~60 FPS
+            self._leader_timer.timeout.connect(self._tick_leader)
+        if not self._leader_timer.isActive():
+            self._leader_timer.start()
+
+    def set_leader_style(
+        self,
+        *,
+        glow_width: Optional[int] = None,
+        core_width: Optional[int] = None,
+        glow_color: Optional[QColor] = None,
+        core_color: Optional[QColor] = None,
+    ) -> None:
+        """
+        Adjust the visual style of the leader line.
+        Example: view.set_leader_style(glow_width=4, core_width=1)
+        """
+        if glow_width is not None:
+            self._leader_glow_width = max(1, int(glow_width))
+        if core_width is not None:
+            self._leader_core_width = max(1, int(core_width))
+        if glow_color is not None:
+            self._leader_glow_color = QColor(glow_color)
+        if core_color is not None:
+            self._leader_core_color = QColor(core_color)
+        self.viewport().update()
+
+    def _tick_leader(self) -> None:
+        if not self._leader_active:
+            return
+        self.viewport().update()
+
+    # ---------- Painting ----------
+    def drawBackground(self, painter: QPainter, rect) -> None:
+        # Background
         if self._bg_pixmap:
-            painter.drawPixmap(vp, self._bg_pixmap, self._bg_pixmap.rect())
+            if self._bg_mode == "scene":
+                # Draw in scene coordinates, centered over sceneRect
+                srect = self.sceneRect()
+                pm = self._bg_pixmap
+                pw, ph = pm.width(), pm.height()
+                if pw > 0 and ph > 0:
+                    sw, sh = srect.width(), srect.height()
+                    sx = sw / pw
+                    sy = sh / ph
+                    s = max(sx, sy)
+                    tw, th = pw * s, ph * s
+                    tlx = srect.center().x() - tw / 2.0
+                    tly = srect.center().y() - th / 2.0
+                    painter.drawPixmap(int(tlx), int(tly), int(tw), int(th), pm)
+            else:
+                # Viewport mode: draw in device (screen) coords
+                painter.save()
+                painter.resetTransform()
+                vp = self.viewport().rect()
+                painter.drawPixmap(vp, self._bg_pixmap, self._bg_pixmap.rect())
+                painter.restore()
         else:
+            # Gradient fallback in device coords
+            painter.save()
+            painter.resetTransform()
+            vp = self.viewport().rect()
             grad = QLinearGradient(0, 0, 0, vp.height())
             grad.setColorAt(0.0, QColor(5, 8, 20))
             grad.setColorAt(1.0, QColor(10, 14, 30))
             painter.fillRect(vp, QBrush(grad))
+            painter.restore()
 
-        # Starfield drawn OVER the background (additive) but UNDER scene items
+        # Starfield overlay — always draw in device coords so it shows reliably
         if self._star_enabled and self._star_layers:
+            painter.save()
+            painter.resetTransform()
             if self._cm_plus is not None:
                 painter.setCompositionMode(self._cm_plus)
             painter.setPen(Qt.PenStyle.NoPen)
@@ -184,7 +259,7 @@ class PanZoomView(QGraphicsView):
                 amp = layer["amp"]
                 base = layer["base"]
                 for (x, y), ph in zip(layer["pos"], layer["phase"]):
-                    a = base + math.sin(self._star_time * spd + ph) * amp
+                    a = base + math.sin(self._star_time * spd + ph) * amp if getattr(self, '_animations_enabled', True) else base
                     a = max(0.0, min(255.0, a))
                     c = QColor(color)
                     c.setAlpha(int(a))
@@ -193,38 +268,75 @@ class PanZoomView(QGraphicsView):
                     painter.drawEllipse(int(x - r), int(y - r), int(size_px), int(size_px))
             if self._cm_src_over is not None:
                 painter.setCompositionMode(self._cm_src_over)
+            painter.restore()
+
+    def drawForeground(self, painter: QPainter, rect) -> None:
+        """Draw the glowing green leader line in device coords for crispness."""
+        if not (self._leader_active and self._leader_src_vp and self._leader_dst_getter):
+            return
+        dst = self._leader_dst_getter()
+        if dst is None:
+            return
+
+        painter.save()
+        painter.resetTransform()
+
+        # Glow (wide, translucent)
+        glow_pen = QPen(self._leader_glow_color)
+        glow_pen.setWidth(self._leader_glow_width)
+        glow_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(glow_pen)
+        painter.drawLine(self._leader_src_vp, dst)
+
+        # Core (thin, bright)
+        core_pen = QPen(self._leader_core_color)
+        core_pen.setWidth(self._leader_core_width)
+        core_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(core_pen)
+        painter.drawLine(self._leader_src_vp, dst)
 
         painter.restore()
 
+    # ---------- Events ----------
     def resizeEvent(self, ev) -> None:
-        # Regenerate star positions to fit new viewport size
+        self._apply_unit_scale()
         if self._star_enabled:
             self._regen_starfield()
             self._ensure_star_timer()
         super().resizeEvent(ev)
 
-    # Disable mouse-based navigation
-    def mousePressEvent(self, ev) -> None:
-        ev.ignore()
+    def mousePressEvent(self, ev) -> None: ev.ignore()
+    def mouseMoveEvent(self, ev) -> None: ev.ignore()
+    def mouseReleaseEvent(self, ev) -> None: ev.ignore()
+    def wheelEvent(self, ev) -> None: ev.ignore()
 
-    def mouseMoveEvent(self, ev) -> None:
-        ev.ignore()
+    # ---------- Toggle animations ----------
+    def set_animations_enabled(self, enabled: bool) -> None:
+        self._animations_enabled = bool(enabled)
+        # Starfield timer
+        if self._star_enabled:
+            if self._animations_enabled:
+                self._ensure_star_timer()
+            else:
+                if self._star_timer is not None and self._star_timer.isActive():
+                    self._star_timer.stop()
+        # Pause/resume GIF items
+        try:
+            from .icons import AnimatedGifItem
+            if self.scene():
+                for it in self.scene().items():
+                    try:
+                        if isinstance(it, AnimatedGifItem):
+                            it.set_playing(self._animations_enabled)
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+        self.viewport().update()
 
-    def mouseReleaseEvent(self, ev) -> None:
-        ev.ignore()
-
-    def wheelEvent(self, ev) -> None:
-        ev.ignore()
-
-    # ---------------- Utilities ----------------
+    # ---------- Helpers ----------
     @staticmethod
     def _resolve_composition_mode(attr_top: str, attr_nested: str):
-        """
-        Resolve QPainter composition modes in a way that satisfies both PySide6 runtime
-        and Pylance static analysis (no direct enum attribute access).
-        Tries QPainter.<attr_top> then QPainter.CompositionMode.<attr_nested>.
-        Returns the enum value or None if unavailable.
-        """
         try:
             val = getattr(QPainter, attr_top)
             return val

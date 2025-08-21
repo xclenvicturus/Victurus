@@ -1,10 +1,11 @@
 """
-GalaxyMapWidget (display-only):
-- integer pc coordinates
-- systems shown with their assigned star icon (DB: systems.star_icon_path)
-- static background (image or gradient)
-- animated starfield (twinkling) behind items
-- GIF icons supported on the map (via AnimatedGifItem) and static in lists
+GalaxyMapWidget (display-only, GIF-only stars):
+- systems shown with a star GIF (no SVGs)
+- static background in viewport space (parallax vibe)
+- animated starfield overlay (device coords)
+- subtle highlight ring (no fill) when needed
+- exposes: load(), get_entities(), center_on_entity(), get_entity_viewport_center_and_radius()
+- get_entities() includes icon_path so list thumbnails show the correct star
 """
 
 from __future__ import annotations
@@ -12,15 +13,24 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
-from PySide6.QtCore import QPoint, QPointF
+from PySide6.QtCore import QPoint
+from PySide6.QtGui import QPen, QColor, Qt
 from PySide6.QtWidgets import QGraphicsItem, QGraphicsScene
 
 from data import db
 from .panzoom_view import PanZoomView
-from .icons import pm_star_from_path, make_map_symbol_item
+from .icons import make_map_symbol_item, list_gifs
 
 ASSETS_ROOT = Path(__file__).resolve().parents[2] / "assets"
-GAL_BG_DIR = ASSETS_ROOT / "galaxy_backgrounds"
+GAL_BG_DIR   = ASSETS_ROOT / "galaxy_backgrounds"
+STARS_DIR    = ASSETS_ROOT / "stars"
+
+
+def _deterministic_star_gif(system_id: int, star_gifs: List[Path]) -> Optional[Path]:
+    if not star_gifs:
+        return None
+    idx = (system_id * 9176 + 37) % len(star_gifs)
+    return star_gifs[idx]
 
 
 class GalaxyMapWidget(PanZoomView):
@@ -33,60 +43,35 @@ class GalaxyMapWidget(PanZoomView):
         self._system_items: Dict[int, QGraphicsItem] = {}
         self._player_highlight: Optional[QGraphicsItem] = None
 
-        self.set_unit_scale(10.0)  # 1 pc base ~ 10 px
-        self.enable_starfield(True)  # twinkling stars
+        self.set_unit_scale(10.0)
+        self.enable_starfield(True)
+        self.set_background_mode("viewport")
 
-        # Galaxy background (optional, STATIC)
-        default_bg = GAL_BG_DIR / "default.png"
-        if default_bg.exists():
-            self.set_background_image(str(default_bg))
-            self._log(f"Galaxy background: {default_bg}")
+        # Accept both "default.png" and "defaul.png"
+        candidates = [GAL_BG_DIR / "default.png", GAL_BG_DIR / "defaul.png"]
+        bg_path = next((p for p in candidates if p.exists()), None)
+        if bg_path:
+            self.set_background_image(str(bg_path))
+            self._log(f"Galaxy background: {bg_path}")
         else:
             self.set_background_image(None)
-            self._log("Galaxy background: procedural gradient (assets/galaxy_backgrounds/default.png not found).")
+            self._log("Galaxy background: gradient (no image found).")
 
-    # ---- Public helpers used by MapView ----
-    def get_entities(self) -> List[Dict]:
-        systems = db.get_systems()  # includes star_icon_path
-        out: List[Dict] = []
-        for s in systems:
-            out.append({
-                "id": s["id"],
-                "name": s["name"],
-                "kind": "system",
-                "pos": QPointF(s["x"], s["y"]),
-                "icon_path": s["star_icon_path"],
-            })
-        return out
+        self._star_gifs: List[Path] = list_gifs(STARS_DIR)
+        if not self._star_gifs:
+            self._log("WARNING: No star GIFs found; placeholders will be used.")
 
-    def center_on_entity(self, entity_id: int) -> None:
-        self.center_on_system(entity_id)
+        self.load()
 
-    def map_entity_to_viewport(self, entity_id: int) -> Optional[QPoint]:
-        info = self.get_entity_viewport_center_and_radius(entity_id)
-        return info[0] if info else None
-
-    def get_entity_viewport_center_and_radius(self, entity_id: int) -> Optional[Tuple[QPoint, float]]:
-        item = self._system_items.get(entity_id)
-        if not item:
-            return None
-        scene_rect = item.mapToScene(item.boundingRect()).boundingRect()
-        c_scene = scene_rect.center()
-        c_vp = self.mapFromScene(c_scene)
-        tl = self.mapFromScene(scene_rect.topLeft())
-        br = self.mapFromScene(scene_rect.bottomRight())
-        radius = max(abs(br.x() - tl.x()), abs(br.y() - tl.y())) / 2.0
-        return c_vp, float(radius)
-
-    # ---- Loading / drawing ----
+    # ---------- Public API ----------
     def load(self) -> None:
         self._scene.clear()
         self._system_items.clear()
         self._player_highlight = None
 
-        systems = db.get_systems()
+        systems = [dict(r) for r in db.get_systems()]
         if not systems:
-            self._scene.setSceneRect(-5, -5, 10, 10)
+            self._scene.setSceneRect(-50, -50, 100, 100)
             return
 
         min_x = min(s["x"] for s in systems)
@@ -96,45 +81,67 @@ class GalaxyMapWidget(PanZoomView):
         pad = 5
         self._scene.setSceneRect(min_x - pad, min_y - pad, (max_x - min_x) + pad * 2, (max_y - min_y) + pad * 2)
 
-        # Add icons (supports GIF via make_map_symbol_item)
         desired_px = 28
         for s in systems:
+            star_path = _deterministic_star_gif(s["id"], self._star_gifs) or Path("missing_star.gif")
             x, y = s["x"], s["y"]
-            item = make_map_symbol_item(s["star_icon_path"], "star", desired_px, self)
+            item = make_map_symbol_item(star_path, desired_px, self, salt=s["id"])
             item.setPos(x, y)
             item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
             self._scene.addItem(item)
             self._system_items[s["id"]] = item
 
-        # Player highlight
         player = db.get_player_full()
         if player.get("system_id") is not None:
             self.refresh_highlight(player["system_id"])
             self.center_on_system(player["system_id"])
         else:
             self.centerOn((min_x + max_x) / 2.0, (min_y + max_y) / 2.0)
+        # Galaxy default zoom remains whatever unit*zoom currently is; lists can reset as needed.
 
+
+    def get_entities(self) -> List[Dict]:
+        rows = [dict(r) for r in db.get_systems()]
+        for r in rows:
+            gid = r.get("id")
+            if gid is not None:
+                p = _deterministic_star_gif(gid, self._star_gifs)
+                r["icon_path"] = str(p) if p is not None else None
+            else:
+                r["icon_path"] = None
+        return rows
+
+    def center_on_entity(self, system_id: int) -> None:
+        it = self._system_items.get(system_id)
+        if not it:
+            return
+        rect = it.mapToScene(it.boundingRect()).boundingRect()
+        self.centerOn(rect.center())
+
+    def get_entity_viewport_center_and_radius(self, system_id: int) -> Optional[Tuple[QPoint, float]]:
+        it = self._system_items.get(system_id)
+        if not it:
+            return None
+        rect = it.mapToScene(it.boundingRect()).boundingRect()
+        center = self.mapFromScene(rect.center())
+        radius = max(rect.width(), rect.height()) * 0.5
+        return (center, radius)
+
+    # ---------- Helpers ----------
     def refresh_highlight(self, system_id: int) -> None:
         if self._player_highlight is not None:
             self._scene.removeItem(self._player_highlight)
             self._player_highlight = None
-
-        item = self._system_items.get(system_id)
-        if not item:
+        it = self._system_items.get(system_id)
+        if not it:
             return
+        rect = it.mapToScene(it.boundingRect()).boundingRect()
+        r = max(rect.width(), rect.height()) * 0.8
 
-        rect = item.mapToScene(item.boundingRect()).boundingRect()
-        cx, cy = rect.center().x(), rect.center().y()
-        r = max(rect.width(), rect.height()) * 0.7
-        ring = self._scene.addEllipse(cx - r, cy - r, r * 2, r * 2)
-        pen = ring.pen()
-        pen.setWidthF(0.08)
-        ring.setPen(pen)
-        self._player_highlight = ring
 
     def center_on_system(self, system_id: int) -> None:
-        item = self._system_items.get(system_id)
-        if not item:
+        it = self._system_items.get(system_id)
+        if not it:
             return
-        rect = item.mapToScene(item.boundingRect()).boundingRect()
+        rect = it.mapToScene(it.boundingRect()).boundingRect()
         self.centerOn(rect.center())
