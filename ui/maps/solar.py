@@ -1,12 +1,12 @@
 """
 SolarMapWidget (display-only):
 - "solar-ish" layout:
-    * central star at (0,0) using the system's assigned star icon
+    * central star at (0,0) using the system's assigned star icon (supports GIF)
     * planets on static orbit rings (deterministic angles)
     * stations on interleaved rings (offset angles)
 - static background per system (image or gradient)
 - animated starfield (twinkling) behind items
-- planets/stations use their DB-assigned icons
+- planets/stations use their DB-assigned icons (supports GIF)
 - star is included in the entity list (click to center)
 """
 
@@ -17,11 +17,11 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
 from PySide6.QtCore import QPoint, QPointF
-from PySide6.QtWidgets import QGraphicsItem, QGraphicsPixmapItem, QGraphicsScene
+from PySide6.QtWidgets import QGraphicsItem, QGraphicsScene
 
 from data import db
 from .panzoom_view import PanZoomView
-from .icons import pm_from_path_or_kind, pm_star_from_path
+from .icons import pm_from_path_or_kind, pm_star_from_path, make_map_symbol_item
 
 ASSETS_ROOT = Path(__file__).resolve().parents[2] / "assets"
 SOL_BG_DIR = ASSETS_ROOT / "solar_backgrounds"
@@ -40,9 +40,9 @@ class SolarMapWidget(PanZoomView):
         self._system_id: Optional[int] = None
         self._locs_cache: List[Dict] = []
 
-        self._star_item: Optional[QGraphicsPixmapItem] = None
+        self._star_item: Optional[QGraphicsItem] = None
         self._star_entity_id: Optional[int] = None          # synthetic id = -system_id
-        self._star_radius_px: float = 20.0                  # approximate on-screen radius for line endpoint math
+        self._star_radius_px: float = 20.0                  # for overlay line endpoint calculations
 
         self._spread = 8.0          # AU visual multiplier (orbit radii are in AU * spread)
         self.set_unit_scale(12.0)   # 1 AU base ~ 12 px
@@ -140,9 +140,6 @@ class SolarMapWidget(PanZoomView):
         R = (max_r_au + pad) * self._spread
         self._scene.setSceneRect(-R, -R, 2 * R, 2 * R)
 
-        # Current view scale for icon sizing
-        view_scale = self.transform().m11() or 1.0
-
         # ---- Orbit rings (under everything) ----
         from PySide6.QtGui import QPen
         pen = QPen()
@@ -152,22 +149,17 @@ class SolarMapWidget(PanZoomView):
             ring = self._scene.addEllipse(-r, -r, 2 * r, 2 * r, pen)
             ring.setZValue(-9)
 
-        # ---- Central star using the system's assigned star icon ----
+        # ---- Central star (supports GIF) ----
         sys_row = db.get_system(system_id)
         star_icon_path = sys_row["star_icon_path"] if sys_row else None
         desired_px_star = 40
-        pm_star = pm_star_from_path(star_icon_path, desired_px_star)
-        star_item = QGraphicsPixmapItem(pm_star)
-        w, h = pm_star.width(), pm_star.height()
-        star_scale = (desired_px_star / (w * view_scale)) if w > 0 else 1.0
-        star_item.setScale(star_scale)
-        # Offset must be in UN-SCALED coords
-        star_item.setOffset(-w / 2.0, -h / 2.0)
+        star_item = make_map_symbol_item(star_icon_path, "star", desired_px_star, self)
         star_item.setPos(0.0, 0.0)
         star_item.setZValue(-8)
         self._scene.addItem(star_item)
         self._star_item = star_item
-        self._star_radius_px = (max(w, h) * star_scale) / 2.0
+        # Use desired px for overlay radius (stable)
+        self._star_radius_px = desired_px_star / 2.0
 
         # ---- Planets (even angles) ----
         desired_px_planet = 24
@@ -179,12 +171,7 @@ class SolarMapWidget(PanZoomView):
             y = ring_r * sin(a)
             self._drawpos[l["id"]] = (x, y)
 
-            pm = pm_from_path_or_kind(l.get("icon_path"), "planet", desired_px_planet)
-            item = QGraphicsPixmapItem(pm)
-            w, h = pm.width(), pm.height()
-            scale = (desired_px_planet / (w * view_scale)) if w > 0 else 1.0
-            item.setScale(scale)
-            item.setOffset(-w / 2.0, -h / 2.0)  # unscaled offset
+            item = make_map_symbol_item(l.get("icon_path"), "planet", desired_px_planet, self)
             item.setPos(x, y)
             item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
             self._scene.addItem(item)
@@ -201,12 +188,7 @@ class SolarMapWidget(PanZoomView):
             y = ring_r * sin(a)
             self._drawpos[l["id"]] = (x, y)
 
-            pm = pm_from_path_or_kind(l.get("icon_path"), "station", desired_px_station)
-            item = QGraphicsPixmapItem(pm)
-            w, h = pm.width(), pm.height()
-            scale = (desired_px_station / (w * view_scale)) if w > 0 else 1.0
-            item.setScale(scale)
-            item.setOffset(-w / 2.0, -h / 2.0)  # unscaled offset
+            item = make_map_symbol_item(l.get("icon_path"), "station", desired_px_station, self)
             item.setPos(x, y)
             item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
             self._scene.addItem(item)

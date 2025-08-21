@@ -1,11 +1,9 @@
 """
-ui/maps/icons.py
-File-first icons with procedural fallbacks, for both lists and map items.
+Icon & pixmap utilities for map visuals.
 
-Conventions:
-- System star icons: stored in DB as systems.star_icon_path (e.g., assets/stars/t01.svg)
-- Generic fallbacks: assets/icons/star.svg, planet.svg, station.svg
-- Per-location icons (planets/stations) come from DB (locations.icon_path)
+- Static & SVG support (fallback icons for star/planet/station)
+- Optional animated GIF support for map items (QMovie)
+- List icons always static; GIFs use their first frame
 """
 
 from __future__ import annotations
@@ -13,133 +11,166 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import QPointF, QSize, Qt
-from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap, QPolygonF, QBrush
+from PySide6.QtCore import Qt, QSize
+from PySide6.QtGui import QIcon, QImage, QMovie, QPainter, QPixmap
+from PySide6.QtWidgets import QGraphicsPixmapItem, QGraphicsView
+
 
 ASSETS_ROOT = Path(__file__).resolve().parents[2] / "assets"
-ICONS_DIR = ASSETS_ROOT / "icons"  # for generic fallbacks
+ICONS_DIR = ASSETS_ROOT / "icons"
+
+# Default/fallback icons (SVGs recommended)
+FALLBACKS = {
+    "star": ICONS_DIR / "star.svg",
+    "planet": ICONS_DIR / "planet.svg",
+    "station": ICONS_DIR / "station.svg",
+}
 
 
-# ---------- Low-level loaders ----------
-def _icon_from_path(path: Optional[str]) -> Optional[QIcon]:
-    if not path:
+def _existing_path_or_none(p: Optional[str | Path]) -> Optional[Path]:
+    if not p:
         return None
-    p = Path(path)
-    if not p.is_absolute():
-        p = (ASSETS_ROOT.parent / p).resolve()
-    if p.exists():
+    pp = Path(p)
+    return pp if pp.exists() else None
+
+
+def _fallback_for_kind(kind: str) -> Path:
+    return FALLBACKS.get(kind, FALLBACKS["planet"])
+
+
+def _first_frame_from_gif(path: Path) -> Optional[QPixmap]:
+    """Extract first frame from GIF for static usage (e.g., list icons)."""
+    try:
+        mv = QMovie(str(path))
+        if not mv.isValid():
+            return None
+        # Jump to first frame and grab pixmap
+        mv.jumpToFrame(0)
+        pm = mv.currentPixmap()
+        return pm if not pm.isNull() else None
+    except Exception:
+        return None
+
+
+def _pixmap_from_path(path: Path, desired_px: int) -> QPixmap:
+    """Load a QPixmap from an image path (SVG/PNG/JPG/GIF-first-frame)."""
+    low = path.suffix.lower()
+    if low == ".gif":
+        pm = _first_frame_from_gif(path)
+        if pm and not pm.isNull():
+            return pm.scaled(desired_px, desired_px, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        # fall through to generic loader if GIF failed
+    if low == ".svg":
+        # Let QIcon rasterize the SVG cleanly to desired size
+        ic = QIcon(str(path))
+        pm = ic.pixmap(QSize(desired_px, desired_px))
+        if not pm.isNull():
+            return pm
+    # Generic raster load
+    img = QImage(str(path))
+    if not img.isNull():
+        pm = QPixmap.fromImage(img)
+        if not pm.isNull():
+            return pm.scaled(desired_px, desired_px, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+    # If everything fails, return empty pixmap (caller should handle fallback)
+    return QPixmap()
+
+
+def pm_from_path_or_kind(path_or_none: Optional[str | Path], kind: str, desired_px: int) -> QPixmap:
+    """
+    Return a QPixmap for use on map items (static).
+    If path is a GIF, returns its first frame (for static contexts).
+    """
+    p = _existing_path_or_none(path_or_none)
+    if p is None:
+        p = _fallback_for_kind(kind)
+    pm = _pixmap_from_path(p, desired_px)
+    if pm.isNull():
+        # Final safety: try fallback kind icon
+        pm = _pixmap_from_path(_fallback_for_kind(kind), desired_px)
+    return pm
+
+
+def pm_star_from_path(path_or_none: Optional[str | Path], desired_px: int) -> QPixmap:
+    return pm_from_path_or_kind(path_or_none, "star", desired_px)
+
+
+def icon_from_path_or_kind(path_or_none: Optional[str | Path], kind: str) -> QIcon:
+    """
+    Return a QIcon for list usage. If path is a GIF, uses its first frame.
+    """
+    p = _existing_path_or_none(path_or_none)
+    if p is None:
+        p = _fallback_for_kind(kind)
+
+    if p.suffix.lower() == ".gif":
+        pm = _first_frame_from_gif(p)
+        if pm and not pm.isNull():
+            return QIcon(pm)
+        # else fall through
+
+    if p.suffix.lower() == ".svg":
         return QIcon(str(p))
-    return None
+
+    img = QImage(str(p))
+    if not img.isNull():
+        return QIcon(QPixmap.fromImage(img))
+
+    # Fallback to hardcoded kind icon if load failed
+    fp = _fallback_for_kind(kind)
+    return QIcon(str(fp))
 
 
-def _icon_generic(name: str) -> Optional[QIcon]:
-    p = ICONS_DIR / f"{name}.svg"
-    if p.exists():
-        return QIcon(str(p))
-    return None
+# ---------- Animated map items ----------
+
+class AnimatedGifItem(QGraphicsPixmapItem):
+    """
+    QGraphicsPixmapItem that plays an animated GIF via QMovie
+    and keeps a stable on-screen size (desired_px) irrespective of view scale.
+    """
+    def __init__(self, gif_path: str | Path, desired_px: int, view: QGraphicsView, parent=None):
+        super().__init__(parent)
+        self._movie = QMovie(str(gif_path))
+        self._desired_px = int(desired_px)
+        self._view = view
+
+        # Configure and start
+        self._movie.setCacheMode(QMovie.CacheMode.CacheAll)
+        # Leave default speed (100%) unless you want to tweak: self._movie.setSpeed(100)
+        self._movie.frameChanged.connect(self._on_frame)
+        self._movie.start()
+
+    def _on_frame(self, _frame_index: int) -> None:
+        pm = self._movie.currentPixmap()
+        if pm.isNull():
+            return
+        # Compute scale so the on-screen size ~ desired_px no matter the view's base transform
+        w = pm.width()
+        view_scale = self._view.transform().m11() or 1.0
+        scale = (self._desired_px / (w * view_scale)) if w > 0 else 1.0
+        self.setScale(scale)
+        self.setPixmap(pm)
+        # Offset must be in UN-SCALED coords to remain centered
+        self.setOffset(-pm.width() / 2.0, -pm.height() / 2.0)
 
 
-# ---------- Public: List icons (QIcon) ----------
-def icon_from_path_or_kind(icon_path: Optional[str], kind: Optional[str]) -> QIcon:
-    """Load an icon for list items; falls back by kind (planet/station/star) or to procedural."""
-    ico = _icon_from_path(icon_path)
-    if ico:
-        return ico
-    k = (kind or "").lower()
-    if k == "planet":
-        return _icon_generic("planet") or _proc_planet_icon()
-    if k == "station":
-        return _icon_generic("station") or _proc_station_icon()
-    if k == "star":
-        return _icon_generic("star") or _proc_star_icon()
-    # default:
-    return _icon_generic("planet") or _proc_planet_icon()
+def make_map_symbol_item(path_or_none: Optional[str | Path], kind: str, desired_px: int, view: QGraphicsView) -> QGraphicsPixmapItem:
+    """
+    Create a graphics item for the map:
+      - If the path is a GIF, return an AnimatedGifItem
+      - Else return a static QGraphicsPixmapItem with proper scale/offset
+    """
+    p = _existing_path_or_none(path_or_none)
 
+    if p is not None and p.suffix.lower() == ".gif":
+        return AnimatedGifItem(p, desired_px, view)
 
-# ---------- Public: Map pixmaps (QPixmap) ----------
-def pm_star_from_path(star_icon_path: Optional[str], size_px: int) -> QPixmap:
-    """Pixmap for a star/system on the map."""
-    ico = _icon_from_path(star_icon_path) or _icon_generic("star")
-    if ico:
-        return ico.pixmap(QSize(size_px, size_px))
-    return _proc_star_pixmap(size_px)
-
-
-def pm_from_path_or_kind(icon_path: Optional[str], kind: Optional[str], size_px: int) -> QPixmap:
-    """Pixmap for a location (planet/station) on the map."""
-    ico = _icon_from_path(icon_path)
-    if ico:
-        return ico.pixmap(QSize(size_px, size_px))
-    k = (kind or "").lower()
-    if k == "planet":
-        g = _icon_generic("planet")
-        return g.pixmap(QSize(size_px, size_px)) if g else _proc_planet_pixmap(size_px)
-    if k == "station":
-        g = _icon_generic("station")
-        return g.pixmap(QSize(size_px, size_px)) if g else _proc_station_pixmap(size_px)
-    if k == "star":
-        g = _icon_generic("star")
-        return g.pixmap(QSize(size_px, size_px)) if g else _proc_star_pixmap(size_px)
-    # default:
-    g = _icon_generic("planet")
-    return g.pixmap(QSize(size_px, size_px)) if g else _proc_planet_pixmap(size_px)
-
-
-# ---------- Procedural fallbacks (QIcon + QPixmap variants) ----------
-def _proc_star_icon() -> QIcon:
-    return QIcon(_proc_star_pixmap(96))
-
-
-def _proc_planet_icon() -> QIcon:
-    return QIcon(_proc_planet_pixmap(96))
-
-
-def _proc_station_icon() -> QIcon:
-    return QIcon(_proc_station_pixmap(96))
-
-
-def _proc_star_pixmap(size: int) -> QPixmap:
-    pm = QPixmap(size, size)
-    pm.fill(Qt.GlobalColor.transparent)
-    p = QPainter(pm)
-    p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-    thick = max(2, size // 16)
-    p.setPen(QPen(QColor("#fff176"), thick))
-    p.setBrush(QBrush(QColor("#ffd600")))
-    d = int(size * 0.62)
-    off = (size - d) // 2
-    p.drawEllipse(off, off, d, d)
-    p.end()
-    return pm
-
-
-def _proc_planet_pixmap(size: int) -> QPixmap:
-    pm = QPixmap(size, size)
-    pm.fill(Qt.GlobalColor.transparent)
-    p = QPainter(pm)
-    p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-    thick = max(2, size // 16)
-    p.setPen(QPen(QColor("#ffd08a"), thick))
-    p.setBrush(QBrush(QColor("#ffb74d")))
-    d = int(size * 0.68)
-    off = (size - d) // 2
-    p.drawEllipse(off, off, d, d)
-    p.end()
-    return pm
-
-
-def _proc_station_pixmap(size: int) -> QPixmap:
-    pm = QPixmap(size, size)
-    pm.fill(Qt.GlobalColor.transparent)
-    p = QPainter(pm)
-    p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-    thick = max(2, size // 16)
-    p.setPen(QPen(QColor("#c5e1a5"), thick))
-    p.setBrush(QBrush(QColor("#7cb342")))
-    s = int(size * 0.62)
-    cx = cy = size // 2
-    half = s // 2
-    poly = QPolygonF([QPointF(cx, cy - half), QPointF(cx + half, cy), QPointF(cx, cy + half), QPointF(cx - half, cy)])
-    p.drawPolygon(poly)
-    p.end()
-    return pm
+    pm = pm_from_path_or_kind(p, kind, desired_px)
+    item = QGraphicsPixmapItem(pm)
+    w = pm.width()
+    view_scale = view.transform().m11() or 1.0
+    item_scale = (desired_px / (w * view_scale)) if w > 0 else 1.0
+    item.setScale(item_scale)
+    # Offset must be UN-SCALED coords to stay centered
+    item.setOffset(-pm.width() / 2.0, -pm.height() / 2.0)
+    return item

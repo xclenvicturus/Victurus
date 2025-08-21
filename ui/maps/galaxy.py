@@ -4,6 +4,7 @@ GalaxyMapWidget (display-only):
 - systems shown with their assigned star icon (DB: systems.star_icon_path)
 - static background (image or gradient)
 - animated starfield (twinkling) behind items
+- GIF icons supported on the map (via AnimatedGifItem) and static in lists
 """
 
 from __future__ import annotations
@@ -12,11 +13,11 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
 from PySide6.QtCore import QPoint, QPointF
-from PySide6.QtWidgets import QGraphicsItem, QGraphicsPixmapItem, QGraphicsScene
+from PySide6.QtWidgets import QGraphicsItem, QGraphicsScene
 
 from data import db
 from .panzoom_view import PanZoomView
-from .icons import pm_star_from_path
+from .icons import pm_star_from_path, make_map_symbol_item
 
 ASSETS_ROOT = Path(__file__).resolve().parents[2] / "assets"
 GAL_BG_DIR = ASSETS_ROOT / "galaxy_backgrounds"
@@ -95,18 +96,11 @@ class GalaxyMapWidget(PanZoomView):
         pad = 5
         self._scene.setSceneRect(min_x - pad, min_y - pad, (max_x - min_x) + pad * 2, (max_y - min_y) + pad * 2)
 
-        # Add icons
+        # Add icons (supports GIF via make_map_symbol_item)
         desired_px = 28
-        view_scale = self.transform().m11() or 1.0
         for s in systems:
             x, y = s["x"], s["y"]
-            pm = pm_star_from_path(s["star_icon_path"], desired_px)
-            item = QGraphicsPixmapItem(pm)
-            w, h = pm.width(), pm.height()
-            item_scale = (desired_px / (w * view_scale)) if w > 0 else 1.0
-            item.setScale(item_scale)
-            # Offset must be in UN-SCALED coords
-            item.setOffset(-w / 2.0, -h / 2.0)
+            item = make_map_symbol_item(s["star_icon_path"], "star", desired_px, self)
             item.setPos(x, y)
             item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
             self._scene.addItem(item)

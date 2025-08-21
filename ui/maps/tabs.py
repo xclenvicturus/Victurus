@@ -176,7 +176,7 @@ class MapView(QTabWidget):
         self._sol_panel.populate(
             rows,
             self._list_font,
-            icon_provider=lambda r: icon_from_path_or_kind(r.get("icon_path"), r.get("kind")),
+            icon_provider=lambda r: icon_from_path_or_kind(r.get("icon_path"), r.get("kind") or ""),
         )
 
     # ----- Hover/click connector line -----
