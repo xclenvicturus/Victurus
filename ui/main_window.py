@@ -27,15 +27,15 @@ from PySide6.QtWidgets import (
 )
 
 from data import db
-from ui.menus.file_menu import install_file_menu
-from ui.state import window_state
-from ui.panels.status_sheet import StatusSheet
-from ui.maps.highlighting import apply_green_text_to_current_location
+from .menus.file_menu import install_file_menu
+from .state import window_state
+from .panels.status_sheet import StatusSheet
+from .maps.highlighting import apply_green_text_to_current_location
 
 
 # Lazy import MapView to avoid DB usage at idle
 def _make_map_view(log_fn):
-    from ui.maps.tabs import MapView
+    from .maps.tabs import MapView
     return MapView(log_fn)
 
 
@@ -46,7 +46,6 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("Victurus")
         self._map_view: Optional[QWidget] = None
-        self._animations_enabled = True
         self._pending_logs = []
 
         # --- Central placeholder (idle) ---
@@ -84,22 +83,16 @@ class MainWindow(QMainWindow):
 
         # --- Menus ---
         menubar = self.menuBar()
+        # Settings menu removed (no animation toggle needed)
+
         # File menu (New/Load/Save)
         install_file_menu(self)
-        # Settings menu (Animations toggle)
-        settings_menu = menubar.addMenu("&Settings")
-        self.actAnimations = QAction("Enable &Animations", self, checkable=True)
-        self.actAnimations.setChecked(self._animations_enabled)
-        self.actAnimations.toggled.connect(self._on_toggle_animations)
-        settings_menu.addAction(self.actAnimations)
 
         # Restore saved geometry/state
         window_state.restore_mainwindow_state(self, self.WIN_ID)
-
-        # Mark main window open
         window_state.set_window_open(self.WIN_ID, True)
 
-        # After restore, pin the status dock to its minimum width for this layout pass
+        # After restore, keep Status dock narrow for this pass
         QTimer.singleShot(0, self._pin_status_dock_for_transition)
 
         # periodic status refresh (only meaningful once a save is active)
@@ -136,15 +129,12 @@ class MainWindow(QMainWindow):
         """
         w = self._status_min_width()
         try:
-            # nudge the left/right splitter so the Status dock is w wide
             self.resizeDocks([self.status_dock], [w], Qt.Orientation.Horizontal)
         except Exception:
             pass
 
-        # Temporarily cap it so any late layout pass can't blow it up
         self.status_dock.setMinimumWidth(w)
         self.status_dock.setMaximumWidth(w)
-
         # Release the cap shortly after layout settles; player can then drag it wider
         QTimer.singleShot(150, lambda: self.status_dock.setMaximumWidth(16777215))
 
@@ -215,9 +205,3 @@ class MainWindow(QMainWindow):
                 apply_green_text_to_current_location(self._map_view)  # keep text up to date
         except Exception:
             pass
-
-    # ---------- Settings ----------
-
-    def _on_toggle_animations(self, enabled: bool) -> None:
-        self._animations_enabled = bool(enabled)
-        self.append_log(f"Animations {'enabled' if enabled else 'disabled'}.")

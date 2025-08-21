@@ -1,53 +1,41 @@
+# Victurus — Folder & File Structure
+
+This structure groups code by responsibility: **UI**, **game logic**, **persistence**, **assets**, and **documentation**. UI is further split into dialogs, menus, panels (dockable widgets), maps (map-related widgets), and state helpers. Save management is isolated in `save/`. Database schema + seed live under `database/` and `data/`.
+
 Victurus/
-├─ main.py                                 # entry point (boot to idle; File menu enabled only)
-├─ requirements.txt
-│
-├─ assets/                                 # (existing)
-│  ├─ galaxy_backgrounds/
-│  ├─ solar_backgrounds/
-│  ├─ planets/
-│  ├─ stars/
-│  └─ stations/
-│
-├─ data/                                   # (mostly existing)
-│  ├─ schema.sql                           # authoritative schema
-│  ├─ seed.py                              # initial content generator
-│  └─ db.py                                # DB layer (refactor to be path-agnostic; uses SaveManager.active_db)
-│
-├─ save/                                   # NEW — Save Manager & runtime I/O
-│  ├─ __init__.py
-│  ├─ manager.py                           # SaveManager: new/load/save, active save context, file locks
-│  ├─ paths.py                             # Documents/Victurus_game resolution; create dirs; cross-platform
-│  ├─ models.py                            # dataclasses (SaveMetadata: name, commander, created, lastPlayed, version)
-│  ├─ serializers.py                       # helper to persist meta.json; future snapshots/screens
-│  └─ migrations.py                        # optional: schema bumps per save version
-│
-├─ game/                                   # NEW — game lifecycle glue
-│  ├─ __init__.py
-│  ├─ new_game.py                          # create per-save DB, run schema+seed, place player at start
-│  ├─ load_game.py                         # open existing save, sanity checks
-│  └─ starter_locations.py                 # query/compose allowed starting positions for New Game dialog
-│
+├─ app/ # (optional) App bootstrap/launcher if present
+│ └─ main.py # QApplication startup & MainWindow creation
 ├─ ui/
-│  ├─ main_window.py                       # (existing) wire menus, idle state, hook window-state store
-│  ├─ menus/                               # NEW — menu wiring separated for clarity
-│  │  ├─ __init__.py
-│  │  └─ file_menu.py                      # New Game | Save | Save As… | Load Game actions
-│  ├─ dialogs/                             # NEW — user prompts
-│  │  ├─ __init__.py
-│  │  └─ new_game_dialog.py                # Save File Name, Commander Name, Starting Location, Accept/Cancel
-│  ├─ state/                               # NEW — UI/window persistence
-│  │  ├─ __init__.py
-│  │  └─ window_state.py                   # saves per-window geometry & open/closed flags to Documents/
-│  └─ maps/                                # (existing)
-│     ├─ galaxy.py
-│     ├─ solar.py
-│     ├─ panzoom_view.py
-│     ├─ overlays.py
-│     ├─ panels.py
-│     ├─ icons.py
-│     ├─ symbols.py
-│     └─ tabs.py
-│
-└─ tools/                                   # OPTIONAL — dev utilities
-   └─ sample_content.py                     # e.g., generate demo saves (not required for runtime)
+│ ├─ init.py
+│ ├─ main_window.py # QMainWindow (menu bar, docks, central map)
+│ ├─ dialogs/
+│ │ └─ new_game_dialog.py # "New Game" dialog (save name, commander, start loc)
+│ ├─ menus/
+│ │ └─ file_menu.py # File menu: New, Save, Save As, Load
+│ ├─ panels/
+│ │ └─ status_sheet.py # Status dock (player/ship readouts, text gauges)
+│ ├─ maps/
+│ │ ├─ tabs.py # MapView and tab orchestration
+│ │ ├─ solar.py # Solar/system map & location list(s)
+│ │ └─ highlighting.py # Selection list “current location” highlighter
+│ └─ state/
+│ ├─ init.py # Persist/restore helpers package marker
+│ └─ window_state.py # Persist/restore window geometry, dock visibility
+├─ game/
+│ ├─ new_game.py # New game creation flow (DB + initial placement)
+│ └─ starter_locations.py # Starting location labels/ids
+├─ save/
+│ ├─ manager.py # Save lifecycle: new/save/save-as/load hooks
+│ └─ paths.py # Filesystem paths (Documents/Victurus_game/*)
+├─ data/
+│ ├─ db.py # DB access layer (connection, queries, status snapshot)
+│ └─ seed.py # Initial seed logic (invoked on empty DB)
+├─ database/
+│ └─ schema.sql # Authoritative schema for SQLite
+├─ assets/
+│ ├─ planets/ # Optional images for location icons
+│ ├─ stations/ # Optional images for location icons
+│ └─ stars/ # Optional images for system star icons
+└─ docs/
+├─ STRUCTURE.md # This document
+└─ CHANGELOG.md # (optional) Curated changes per feature set

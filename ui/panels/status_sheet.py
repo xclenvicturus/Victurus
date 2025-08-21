@@ -21,10 +21,8 @@ class TextGauge(QLabel):
         super().__init__(parent)
         self.total_chars = max(10, int(total_chars))
         # Monospace font for even spacing
-        # Prefer system monospace; fall back to Courier New
         mono = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
         f = QFont(mono)
-        f.setPointSizeF(f.pointSizeF() + 0.0)  # keep default size
         self.setFont(f)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -44,7 +42,6 @@ class TextGauge(QLabel):
 
     def _render(self) -> None:
         inner = self.total_chars
-        # fill bars from left based on value/max
         filled = int(round((self._value / float(self._max)) * inner))
         filled = max(0, min(filled, inner))
         buf = [" "] * inner
@@ -52,7 +49,6 @@ class TextGauge(QLabel):
             buf[i] = "|"
         txt = f"{self._value}/{self._max}"
         start = max(0, (inner - len(txt)) // 2)
-        # overlay numeric text centered
         for i, ch in enumerate(txt):
             j = start + i
             if 0 <= j < inner:
