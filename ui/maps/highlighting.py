@@ -39,7 +39,7 @@ def _mark_listwidget(listw: QListWidget, target_loc_id: int, target_loc_name: st
         it: QListWidgetItem = listw.item(i)
         loc_id = it.data(Qt.ItemDataRole.UserRole)
         text = it.text()
-        is_match = (loc_id == target_loc_id) or _item_matches_location(text, target_loc_name)
+        is_match = (loc_id is not None and loc_id == target_loc_id) or _item_matches_location(text, target_loc_name)
         it.setForeground(QBrush(GREEN if is_match else default_color))
 
 
@@ -71,7 +71,7 @@ def _mark_treewidget(tw: QTreeWidget, target_loc_id: int, target_loc_name: str) 
                 continue
             loc_id = it.data(0, Qt.ItemDataRole.UserRole)
             text = it.text(0)
-            is_match = (loc_id == target_loc_id) or _item_matches_location(text, target_loc_name)
+            is_match = (loc_id is not None and loc_id == target_loc_id) or _item_matches_location(text, target_loc_name)
             it.setForeground(0, QBrush(GREEN if is_match else default_color))
 
 
@@ -81,10 +81,17 @@ def apply_green_text_to_current_location(root_widget: QWidget) -> None:
     under `root_widget` (typically the MapView). Safe to call repeatedly.
     """
     p = db.get_player_full()
+    if not p:
+        return
+    
     loc_id = p.get("current_location_id")
     if not loc_id:
         return
+        
     loc = db.get_location(int(loc_id))
+    if not loc:
+        return
+        
     loc_name = loc.get("name", "")
 
     for listw in root_widget.findChildren(QListWidget):

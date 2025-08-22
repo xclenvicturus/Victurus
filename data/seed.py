@@ -1,12 +1,6 @@
 """
 spacegame/data/seed.py
 Populate a demo galaxy with items, ships, markets, and hierarchical solar locations.
-
-Seeds:
-- 10 star systems scattered near (12345,12345)
-- per system: 6 planets (parent=NULL, local AU offsets from star) and 4 stations
-  (parent=one of the planets, small local offsets)
-- Player starts in Sys-01 at Planet 1
 """
 
 from __future__ import annotations
@@ -30,128 +24,76 @@ def _polar_to_xy(rng: random.Random, r_min: float, r_max: float) -> tuple[float,
 
 def seed(conn: sqlite3.Connection) -> None:
     cur = conn.cursor()
-
-    # --- Deterministic RNG for repeatable dev runs ---
     rng = random.Random(42)
 
-    # --- Systems (integer pc coordinates) ---
-    systems = []
-    center_x, center_y = 12345, 12345
-    for i in range(10):
-        sx = center_x + rng.randint(-50, 50)
-        sy = center_y + rng.randint(-50, 50)
-        name = f"Sys-{i+1:02d}"
-        systems.append((name, sx, sy))
-
-    cur.executemany(
-        "INSERT INTO systems(name, x, y) VALUES (?, ?, ?);",
-        systems,
-    )
+    # --- Systems ---
+    systems = [(f"Sys-{i+1:02d}", 12345 + rng.randint(-50, 50), 12345 + rng.randint(-50, 50)) for i in range(10)]
+    cur.executemany("INSERT INTO systems(system_name, system_x, system_y) VALUES (?, ?, ?);", systems)
 
     # --- Items ---
     items = [
-        ("Ore", 100),
-        ("Food", 60),
-        ("Fuel", 40),
+        ("Ore", 100, "description for Ore", "trade_item"),
+        ("Food", 60, "description for Food", "trade_item"),
+        ("Fuel", 40, "description for Fuel", "consumable_item"),
     ]
-    cur.executemany(
-        "INSERT INTO items(name, base_price) VALUES (?, ?);",
-        items,
-    )
+    cur.executemany("INSERT INTO items(item_name, item_base_price, item_description, item_category) VALUES (?, ?, ?, ?);", items)
 
     # --- Ships ---
-    ships = [
-        ("Shuttle", 20, 100),
-        ("Freighter", 80, 200),
-    ]
+    ships = [("Shuttle", 20, 100, 5.0, 50, 100, 100), ("Freighter", 80, 200, 3.0, 100, 200, 150)]
     cur.executemany(
-        "INSERT INTO ships(name, cargo, fuel_max) VALUES (?, ?, ?);",
+        "INSERT INTO ships(ship_name, base_ship_cargo, base_ship_fuel, base_ship_jump_distance, base_ship_shield, base_ship_hull, base_ship_energy) VALUES (?, ?, ?, ?, ?, ?, ?);",
         ships,
     )
 
     # Fetch IDs
-    cur.execute("SELECT id, name, x, y FROM systems ORDER BY name;")
-    sys_rows = cur.fetchall()  # [(id, name, x, y), ...]
-    sys_by_name = {row[1]: (row[0], row[2], row[3]) for row in sys_rows}
+    cur.execute("SELECT system_id, system_name FROM systems;")
+    sys_map = {name: sid for sid, name in cur.fetchall()}
+    cur.execute("SELECT item_id, item_name FROM items;")
+    item_map = {name: iid for iid, name in cur.fetchall()}
+    cur.execute("SELECT ship_id, ship_name, base_ship_fuel, base_ship_hull, base_ship_shield, base_ship_energy, base_ship_jump_distance, base_ship_cargo FROM ships;")
+    ship_map = {ship_data[1]: ship_data for ship_data in cur.fetchall()}
+    
+    shuttle_data = ship_map['Shuttle']
 
-    cur.execute("SELECT id, name, fuel_max FROM ships WHERE name = 'Shuttle';")
-    shuttle_row = cur.fetchone()
-    shuttle_id, _shuttle_name, shuttle_fuel_max = shuttle_row
+    # --- Markets ---
+    market_rows = [
+        (sys_id, item_id, 100 + rng.randint(-20, 20), 100 + rng.randint(-50, 50))
+        for sys_id in sys_map.values() for item_id in item_map.values()
+    ]
+    cur.executemany("INSERT INTO markets(system_id, item_id, local_market_price, local_market_stock) VALUES (?, ?, ?, ?);", market_rows)
 
-    cur.execute("SELECT id, name FROM items;")
-    item_map = {row[1]: row[0] for row in cur.fetchall()}
-
-    # --- Markets (prices & stock) ---
-    market_rows = []
-    for sys_name, (sys_id, _, _) in sys_by_name.items():
-        for item_name, item_id in item_map.items():
-            base = {"Ore": 100, "Food": 60, "Fuel": 40}[item_name]
-            price = base + (abs(hash(sys_name + item_name)) % 25) - 12 + rng.randint(-5, 5)
-            stock = 50 + (abs(hash(item_name + sys_name)) % 40) + rng.randint(-10, 10)
-            market_rows.append((sys_id, item_id, max(1, price), max(0, stock)))
-
-    cur.executemany(
-        "INSERT INTO markets(system_id, item_id, price, stock) VALUES (?, ?, ?, ?);",
-        market_rows,
-    )
-
-    # --- Locations (hierarchical local AU coordinates) ---
-    # Spread planets MUCH farther: 3..40 AU from star; stations 0.05..0.5 AU from their parent planet.
-    for sys_name, (sid, _sx, _sy) in sys_by_name.items():
-        planet_ids: list[int] = []
+    # --- Locations ---
+    for sys_name, sid in sys_map.items():
+        planet_ids = []
         for p in range(6):
-            dx, dy = _polar_to_xy(rng, 3.0, 40.0)  # farther spread
-            name = f"{sys_name} Planet {p+1}"
+            dx, dy = _polar_to_xy(rng, 3.0, 40.0)
             cur.execute(
-                "INSERT INTO locations(system_id, name, kind, x, y, parent_location_id) "
-                "VALUES (?, ?, 'planet', ?, ?, NULL);",
-                (sid, name, dx, dy),
+                "INSERT INTO locations(system_id, location_name, location_category, location_x, location_y, parent_location_id, location_description) VALUES (?, ?, 'planet', ?, ?, NULL, ?);",
+                (sid, f"{sys_name} Planet {p+1}", dx, dy, f"A lovely planet named Planet {p+1} in the {sys_name} system."),
             )
-            pid = cur.lastrowid
-            if pid is None:
-                raise RuntimeError("Failed to insert planet row")
-            planet_ids.append(pid)
+            planet_ids.append(cur.lastrowid)
 
         for s in range(4):
             parent_id = rng.choice(planet_ids)
-            dx, dy = _polar_to_xy(rng, 0.05, 0.5)  # around a planet
-            name = f"{sys_name} Station {s+1}"
+            dx, dy = _polar_to_xy(rng, 0.05, 0.5)
             cur.execute(
-                "INSERT INTO locations(system_id, name, kind, x, y, parent_location_id) "
-                "VALUES (?, ?, 'station', ?, ?, ?);",
-                (sid, name, dx, dy, parent_id),
+                "INSERT INTO locations(system_id, location_name, location_category, location_x, location_y, parent_location_id, location_description) VALUES (?, ?, 'station', ?, ?, ?, ?);",
+                (sid, f"{sys_name} Station {s+1}", dx, dy, parent_id, f"A bustling station orbiting a planet in the {sys_name} system."),
             )
-
+            
     # --- Player ---
-    first_sys = "Sys-01"
-    first_sid, _first_sx, _first_sy = sys_by_name[first_sys]
-    cur.execute(
-        "SELECT id FROM locations WHERE system_id = ? AND name = ?;",
-        (first_sid, f"{first_sys} Planet 1"),
-    )
-    row = cur.fetchone()
-    if row is None:
-        raise RuntimeError("Failed to find starting planet for player")
-    first_planet_id = row[0]
+    first_sid = sys_map["Sys-01"]
+    cur.execute("SELECT location_id FROM locations WHERE system_id = ? AND location_name = ?;",(first_sid, "Sys-01 Planet 1"))
+    first_planet_id = cur.fetchone()[0]
 
     cur.execute(
         """
-        INSERT INTO player(id, name, credits, system_id, ship_id, fuel, current_location_id)
-        VALUES (1, ?, ?, ?, ?, ?, ?);
+        INSERT INTO player(id, name, current_wallet_credits, current_player_system_id, current_player_ship_id, current_player_ship_fuel, current_player_ship_hull, current_player_ship_shield, current_player_ship_energy, current_player_ship_cargo, current_location_id)
+        VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
         """,
-        ("Captain Test", 1000, first_sid, shuttle_id, shuttle_fuel_max, first_planet_id),
+        ("Captain Test", 1000, first_sid, shuttle_data[0], shuttle_data[2], shuttle_data[3], shuttle_data[4], shuttle_data[5], shuttle_data[7], first_planet_id),
     )
 
-    # --- Inventory (start empty) ---
-    for item_id in item_map.values():
-        cur.execute("INSERT INTO inventory(item_id, qty) VALUES (?, ?);", (item_id, 0))
-
-    # --- Price history snapshot ---
-    now = _now_iso()
-    cur.execute("SELECT system_id, item_id, price FROM markets;")
-    hist_rows = [(now, r[0], r[1], r[2]) for r in cur.fetchall()]
-    cur.executemany(
-        "INSERT INTO prices_history(ts, system_id, item_id, price) VALUES (?, ?, ?, ?);",
-        hist_rows,
-    )
-    # Done. Caller commits.
+    # --- Cargohold ---
+    cur.executemany("INSERT INTO cargohold(item_id, item_qty) VALUES (?, 0);", [(item_id,) for item_id in item_map.values()])
+    conn.commit()

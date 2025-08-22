@@ -41,57 +41,55 @@ class SaveManager:
     def create_new_save(cls, save_name: str, commander_name: str, starting_location_label: str) -> Path:
         # Create folder
         dest = save_folder_for(save_name)
-        dest.mkdir(parents=True, exist_ok=True)
+        if dest.exists():
+            raise FileExistsError(f"Save folder '{dest.name}' already exists.")
+        dest.mkdir(parents=True)
 
         # Create DB and seed it
         db_path = dest / "game.db"
         conn = sqlite3.connect(db_path)
         try:
             # Apply schema and seed content
-            from pathlib import Path as _P
-            schema_path = _P(__file__).resolve().parents[1] / "data" / "schema.sql"
+            schema_path = Path(__file__).resolve().parents[1] / "data" / "schema.sql"
             with open(schema_path, "r", encoding="utf-8") as f:
                 conn.executescript(f.read())
             seed_module.seed(conn)
+            conn.commit()
 
             # Update player name and starting location
             cur = conn.cursor()
-            # Determine system + planet from label (e.g., "Sys-01 • Planet 1")
-            # We accept formats "Sys-01 Planet 1" or "Sys-01 • Planet 1"
-            label = starting_location_label.replace("•", " ").replace("  ", " ").strip()
+            label = starting_location_label.replace("•", "").strip()
             parts = label.split()
-            # naive parse: everything up to "Planet" is system name
             try:
                 planet_idx = parts.index("Planet")
-                system_name = " ".join(parts[:planet_idx]).strip()
-                planet_name = "Planet " + parts[planet_idx+1]
+                system_name = " ".join(parts[:planet_idx])
+                planet_name = " ".join(parts[planet_idx:])
             except ValueError:
                 system_name = parts[0]
-                planet_name = "Planet " + parts[-1]
+                planet_name = " ".join(parts[1:]) if len(parts) > 1 else "Planet 1"
 
-            # find system id
             cur.execute("SELECT id FROM systems WHERE name = ?;", (system_name,))
             row = cur.fetchone()
             if not row:
-                raise RuntimeError(f"System not found for starting location: {system_name}")
+                raise RuntimeError(f"System '{system_name}' not found for starting location.")
             system_id = row[0]
 
-            # find location id by name under system
             cur.execute(
                 "SELECT id FROM locations WHERE system_id = ? AND name = ?;",
                 (system_id, f"{system_name} {planet_name}"),
             )
             row = cur.fetchone()
             if not row:
-                # fallback: first planet in system
                 cur.execute(
-                    "SELECT id FROM locations WHERE system_id = ? AND parent_location_id IS NULL ORDER BY id LIMIT 1;",
-                    (system_id,),
+                    "SELECT id FROM locations WHERE system_id = ? AND kind='planet' ORDER BY id LIMIT 1;",
+                    (system_id,)
                 )
                 row = cur.fetchone()
+            
+            if not row:
+                raise RuntimeError(f"Could not find a starting planet in system '{system_name}'.")
             location_id = row[0]
 
-            # Update player row
             cur.execute(
                 "UPDATE player SET name=?, system_id=?, current_location_id=? WHERE id=1;",
                 (commander_name, system_id, location_id),
@@ -104,46 +102,56 @@ class SaveManager:
         # Write metadata
         now = datetime.utcnow().isoformat()
         meta = SaveMetadata(
-            save_name=str(dest.name),
+            save_name=dest.name,
             commander_name=commander_name,
             created_iso=now,
             last_played_iso=now,
         )
         write_meta(dest / "meta.json", meta)
 
-        # Activate this save in the running app
         cls.set_active_save(dest)
-        # Ask db module to ensure schema/seed, icons etc are consistent (idempotent)
-        dbc = db.get_connection()
-        dbc.close()
-
+        db.get_connection()  # This will handle schema checks and icon assignments
         return dest
 
     @classmethod
     def load_save(cls, save_dir: Path) -> None:
-        if not (save_dir / "game.db").exists():
-            raise FileNotFoundError(f"No game.db in {save_dir}")
+        db_path = save_dir / "game.db"
+        if not db_path.exists():
+            raise FileNotFoundError(f"Save database not found: {db_path}")
         cls.set_active_save(save_dir)
-        # Let db module reopen at new path
-        dbc = db.get_connection()
-        dbc.close()
+        db.get_connection()
 
     @classmethod
     def save_current(cls) -> None:
-        # Most data is already persisted to SQLite as the game runs.
-        # Provide a hook if transient caches need flushing later.
+        if not cls._active_save_dir:
+            return
         conn = db.get_connection()
         conn.commit()
+        
+        meta_path = cls._active_save_dir / "meta.json"
+        meta = read_meta(meta_path)
+        if meta:
+            meta.last_played_iso = datetime.utcnow().isoformat()
+            write_meta(meta_path, meta)
 
     @classmethod
     def save_as(cls, new_save_name: str) -> Path:
         if not cls._active_save_dir:
-            raise RuntimeError("No active save to Save As…")
-        src = cls._active_save_dir
+            raise RuntimeError("No active save to use for 'Save As'.")
+        
         dest = save_folder_for(new_save_name)
         if dest.exists():
-            raise FileExistsError(f"Destination save exists: {dest.name}")
-        shutil.copytree(src, dest)
-        # Activate new save
+            raise FileExistsError(f"Destination save folder '{dest.name}' already exists.")
+        
+        shutil.copytree(cls._active_save_dir, dest)
+        
         cls.set_active_save(dest)
+        
+        meta_path = dest / "meta.json"
+        meta = read_meta(meta_path)
+        if meta:
+            meta.save_name = dest.name
+            meta.last_played_iso = datetime.utcnow().isoformat()
+            write_meta(meta_path, meta)
+            
         return dest

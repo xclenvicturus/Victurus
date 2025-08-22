@@ -92,7 +92,7 @@ class GalaxyMapWidget(PanZoomView):
             self._system_items[s["id"]] = item
 
         player = db.get_player_full()
-        if player.get("system_id") is not None:
+        if player and player.get("system_id") is not None:
             self.refresh_highlight(player["system_id"])
             self.center_on_system(player["system_id"])
         else:
