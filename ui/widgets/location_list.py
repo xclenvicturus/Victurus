@@ -1,13 +1,3 @@
-"""
-Reusable right-side panel with:
-- category dropdown
-- sort dropdown
-- live search box
-- list view with hover/click/double-click signals
-- distance, jump distance, and fuel cost columns
-- right-click context menu with "Travel to"
-"""
-
 from __future__ import annotations
 
 from typing import Callable, Dict, List, Optional
@@ -27,6 +17,15 @@ from PySide6.QtWidgets import (
 
 
 class LocationList(QWidget):
+    """
+    Reusable right-side panel with:
+    - category dropdown
+    - sort dropdown
+    - live search box
+    - list view with hover/click/double-click signals
+    - distance and fuel columns (Jump column removed)
+    - right-click context menu with "Travel to"
+    """
     hovered = Signal(int)
     clicked = Signal(int)
     doubleClicked = Signal(int)
@@ -47,8 +46,8 @@ class LocationList(QWidget):
         self.search.setPlaceholderText("Search")
 
         self.tree = QTreeWidget()
-        self.tree.setColumnCount(4)
-        self.tree.setHeaderLabels(["Name", "Distance", "Jump", "Fuel"])
+        self.tree.setColumnCount(3)  # Name, Distance, Fuel
+        self.tree.setHeaderLabels(["Name", "Distance", "Fuel"])
         self.tree.setMouseTracking(True)
         self.tree.setUniformRowHeights(True)
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -107,7 +106,7 @@ class LocationList(QWidget):
 
     def _on_item_double_clicked(self, item: QTreeWidgetItem):
         self.doubleClicked.emit(int(item.data(0, Qt.ItemDataRole.UserRole)))
-        
+
     def find_item_by_id(self, entity_id: int) -> Optional[QTreeWidgetItem]:
         """Finds a top-level item in the tree by its stored entity ID."""
         for i in range(self.tree.topLevelItemCount()):
@@ -119,7 +118,12 @@ class LocationList(QWidget):
                 return item
         return None
 
-    def populate(self, rows: List[Dict], list_font: QFont, icon_provider: Optional[Callable[[Dict], Optional[QIcon]]] = None):
+    def populate(
+        self,
+        rows: List[Dict],
+        list_font: QFont,
+        icon_provider: Optional[Callable[[Dict], Optional[QIcon]]] = None,
+    ):
         self.tree.clear()
         self.tree.setFont(list_font)
 
@@ -127,14 +131,11 @@ class LocationList(QWidget):
         green_brush = QBrush(QColor("green"))
 
         for r in rows:
-            dist_text = r.get('distance', "—")
-            jump_val = float(r.get('jump_dist', 0.0) or 0.0)
-            fuel_val = r.get('fuel_cost', '—')
+            dist_text = r.get("distance", "—")
+            fuel_val = r.get("fuel_cost", "—")
+            fuel_text = str(fuel_val) if fuel_val != "—" else "—"
 
-            jump_text = f"{jump_val:.2f} ly" if jump_val > 0 else "—"
-            fuel_text = str(fuel_val) if fuel_val != '—' else '—'
-
-            it = QTreeWidgetItem(self.tree, [r.get("name", "Unknown"), dist_text, jump_text, fuel_text])
+            it = QTreeWidgetItem(self.tree, [r.get("name", "Unknown"), dist_text, fuel_text])
             it.setData(0, Qt.ItemDataRole.UserRole, r.get("id"))
 
             if icon_provider:
@@ -142,10 +143,9 @@ class LocationList(QWidget):
                 if icon:
                     it.setIcon(0, icon)
 
-            # --- New coloring rules ---
+            # Coloring rules
             is_current = bool(r.get("is_current", False))
             can_reach = r.get("can_reach", True)
-            can_reach_jump = r.get("can_reach_jump", True)
             can_reach_fuel = r.get("can_reach_fuel", True)
 
             # Name column: ONLY current rows are green; unreachable rows turn red; others default color
@@ -154,20 +154,20 @@ class LocationList(QWidget):
             elif not can_reach:
                 it.setForeground(0, red_brush)
 
-            # Jump column: red only if jump constraint fails
-            if jump_val > 0 and not can_reach_jump:
-                it.setForeground(2, red_brush)
-
-            # Fuel column: red only if fuel constraint fails
+            # Fuel column (index 2) turns red only if fuel constraint fails
             try:
                 if isinstance(fuel_val, (int, float)) and float(fuel_val) > 0 and not can_reach_fuel:
-                    it.setForeground(3, red_brush)
+                    it.setForeground(2, red_brush)
             except Exception:
                 pass
 
     def filtered_sorted(self, rows_all: List[Dict], player_pos: Optional[QPointF]) -> List[Dict]:
         cat = self.category.currentText()
-        rows = [r for r in rows_all if not cat or cat == "All" or r.get("kind", "").lower().startswith(cat.lower())]
+        rows = [
+            r
+            for r in rows_all
+            if not cat or cat == "All" or r.get("kind", "").lower().startswith(cat.lower())
+        ]
 
         q = self.search.text().strip().lower()
         if q:
@@ -175,7 +175,7 @@ class LocationList(QWidget):
 
         sort_key = self.sort.currentText()
         reverse = sort_key.endswith("Z–A")
-        
+
         if "Name" in sort_key:
             rows.sort(key=lambda r: r.get("name", "").lower(), reverse=reverse)
         elif sort_key == "X":
@@ -183,8 +183,8 @@ class LocationList(QWidget):
         elif sort_key == "Y":
             rows.sort(key=lambda r: r.get("y", 0.0))
         elif "Distance" in sort_key:
-            rows.sort(key=lambda r: r.get('jump_dist', float('inf')))
-        
+            rows.sort(key=lambda r: r.get("jump_dist", float("inf")))
+
         return rows
 
     def anchor_point_for_item(self, overlay: QWidget, item: QTreeWidgetItem) -> QPoint:
@@ -195,7 +195,7 @@ class LocationList(QWidget):
         p_overlay = overlay.mapFromGlobal(p_global)
         return QPoint(
             min(max(0, p_overlay.x()), overlay.width() - 1),
-            min(max(0, p_overlay.y()), overlay.height() - 1)
+            min(max(0, p_overlay.y()), overlay.height() - 1),
         )
 
     def current_hover_item(self) -> Optional[QTreeWidgetItem]:

@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
 from PySide6.QtCore import QPoint, QPointF, Signal
+from PySide6.QtGui import QPen, QColor
 from PySide6.QtWidgets import QGraphicsItem, QGraphicsScene
 
 from data import db
@@ -27,6 +28,7 @@ SOL_BG_DIR   = ASSETS_ROOT / "solar_backgrounds"
 STARS_DIR    = ASSETS_ROOT / "stars"
 PLANETS_DIR  = ASSETS_ROOT / "planets"
 STATIONS_DIR = ASSETS_ROOT / "stations"
+WARP_GATE_DIR = ASSETS_ROOT / "warp_gate"
 
 
 class SolarMapWidget(PanZoomView):
@@ -153,9 +155,10 @@ class SolarMapWidget(PanZoomView):
         # Layout ingredients
         planets = [l for l in self._locs_cache if l["kind"] == "planet"]
         stations = [l for l in self._locs_cache if l["kind"] == "station"]
+        warp_gates = [l for l in self._locs_cache if l["kind"] == "warp_gate"]
 
         # Scene rect fits all rings comfortably around (0,0)
-        n_rings = max(1, len(planets) + max(0, len(stations) // max(1, len(planets))) + 2)
+        n_rings = max(1, len(planets) + max(0, len(stations) // max(1, len(planets))) + len(warp_gates) + 2)
         ring_gap_au = 1.2
         base_au = 1.5
         max_r_au = base_au + (n_rings + 1) * ring_gap_au
@@ -167,6 +170,7 @@ class SolarMapWidget(PanZoomView):
         star_gifs    = list_gifs(STARS_DIR)
         planet_gifs  = list_gifs(PLANETS_DIR)
         station_gifs = list_gifs(STATIONS_DIR)
+        warp_gate_gifs = list_gifs(WARP_GATE_DIR)
 
         rng = random.Random(10_000 + system_id)
 
@@ -190,12 +194,13 @@ class SolarMapWidget(PanZoomView):
 
         planet_rows = sorted(planets, key=lambda x: x["id"])
         station_rows = sorted(stations, key=lambda x: x["id"])
+        warp_gate_rows = sorted(warp_gates, key=lambda x: x["id"])
 
         planet_assignments  = assign_unique(planet_gifs,  len(planet_rows), 1)
         station_assignments = assign_unique(station_gifs, len(station_rows), 2)
+        warp_gate_assignments = assign_unique(warp_gate_gifs, len(warp_gate_rows), 3)
 
         # ---- Orbit rings (under everything) ----
-        from PySide6.QtGui import QPen, QColor
         pen = QPen()
         pen.setWidthF(0.1)
         # subtle bluish-gray ring color with alpha
@@ -281,6 +286,37 @@ class SolarMapWidget(PanZoomView):
             self._items[l["id"]] = item
             self._assigned_icons[l["id"]] = sgif
 
+        # ---- Warp Gates ----
+        min_px_warp_gate = 20
+        max_px_warp_gate = 30
+        n_warp_gates = max(1, len(warp_gate_rows))
+        for k, l in enumerate(warp_gate_rows):
+            # Interpolate size
+            if n_warp_gates == 1:
+                desired_px_warp_gate = (min_px_warp_gate + max_px_warp_gate) / 2
+            else:
+                desired_px_warp_gate = min_px_warp_gate + (max_px_warp_gate - min_px_warp_gate) * (k / (n_warp_gates - 1))
+            # Place on outer rings for variety
+            outer_ring_index = len(planet_rows) + k
+            ring_r = (base_au + outer_ring_index * ring_gap_au) * self._spread
+            angle_deg = ((l["id"] * 73.398) % 360.0) + (180 if k % 2 == 0 else 0)
+            a = radians(angle_deg)
+            x = ring_r * cos(a)
+            y = ring_r * sin(a)
+            self._drawpos[l["id"]] = (x, y)
+
+            wgif = warp_gate_assignments[k] if k < len(warp_gate_assignments) else None
+            if wgif is None:
+                self.logMessage.emit(f"WARNING: Not enough warp gate GIFs for system {system_id}; warp gate {l['id']} gets placeholder.")
+                wgif = Path("missing_warp_gate.gif")
+
+            item = make_map_symbol_item(wgif, int(desired_px_warp_gate), self, salt=l.get("id"))
+            item.setPos(x, y)
+            item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
+            self._scene.addItem(item)
+            self._items[l["id"]] = item
+            self._assigned_icons[l["id"]] = wgif
+
         # ---- Build simple orbit specs (visual only) ----
         self._orbit_specs = []
         planet_ids = [l["id"] for l in planet_rows]
@@ -290,12 +326,13 @@ class SolarMapWidget(PanZoomView):
         planet_speed_max = 0.12
         station_speed_min = 0.15
         station_speed_max = 0.30
+        warp_gate_speed_min = 0.08
+        warp_gate_speed_max = 0.15
 
         # Planets: orbit around the star at (0,0)
         for i, l in enumerate(planet_rows):
             ring_r = (base_au + i * ring_gap_au) * self._spread
             initial_angle = ((l["id"] * 73.398) % 360.0) * (math.pi / 180.0)
-            # Pick a deterministic per-system/per-entity base speed between min/max, then scale by orbit index
             base_speed = rng.uniform(planet_speed_min, planet_speed_max)
             speed = base_speed * (1.0 / (1.0 + i * 0.25))
             self._orbit_specs.append({"id": l["id"], "parent": None, "radius_px": ring_r, "angle": initial_angle, "speed": speed})
@@ -323,8 +360,17 @@ class SolarMapWidget(PanZoomView):
             # Pick a deterministic per-system/per-entity station speed between min/max
             speed = rng.uniform(station_speed_min, station_speed_max)
 
-            # Append the station orbit spec (previous code accidentally only appended for the else branch)
             self._orbit_specs.append({"id": l["id"], "parent": parent_id, "radius_px": radius_px, "angle": initial_angle, "speed": speed})
+
+        # Warp Gates: orbit around the star
+        for k, l in enumerate(warp_gate_rows):
+            outer_ring_index = len(planet_rows) + k
+            ring_r = (base_au + outer_ring_index * ring_gap_au) * self._spread
+            angle_deg = ((l["id"] * 73.398) % 360.0) + (180 if k % 2 == 0 else 0)
+            initial_angle = radians(angle_deg)
+            base_speed = rng.uniform(warp_gate_speed_min, warp_gate_speed_max)
+            speed = base_speed * (1.0 / (1.0 + outer_ring_index * 0.25))
+            self._orbit_specs.append({"id": l["id"], "parent": None, "radius_px": ring_r, "angle": initial_angle, "speed": speed})
 
         # Start/stop orbits respecting global animation toggle
         try:

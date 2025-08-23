@@ -1,3 +1,4 @@
+# data/seed.py
 """
 spacegame/data/seed.py
 Populate a demo galaxy with items, ships, markets, and hierarchical solar locations.
@@ -57,7 +58,7 @@ def seed(conn: sqlite3.Connection) -> None:
 
     # --- Markets ---
     market_rows = [
-        (sys_id, item_id, 100 + rng.randint(-20, 20), 100 + rng.randint(-50, 50))
+        (sys_id, item_id, rng.randint(50, 150), rng.randint(10, 100))
         for sys_id in sys_map.values() for item_id in item_map.values()
     ]
     cur.executemany("INSERT INTO markets(system_id, item_id, local_market_price, local_market_stock) VALUES (?, ?, ?, ?);", market_rows)
@@ -80,6 +81,13 @@ def seed(conn: sqlite3.Connection) -> None:
                 "INSERT INTO locations(system_id, location_name, location_type, location_x, location_y, parent_location_id, location_description) VALUES (?, ?, 'station', ?, ?, ?, ?);",
                 (sid, f"{sys_name} Station {s+1}", dx, dy, parent_id, f"A bustling station orbiting a planet in the {sys_name} system."),
             )
+        
+        # Add warp gate
+        warp_dx, warp_dy = _polar_to_xy(rng, 45.0, 55.0)
+        cur.execute(
+            "INSERT INTO locations(system_id, location_name, location_type, location_x, location_y, parent_location_id, location_description) VALUES (?, ?, 'warp_gate', ?, ?, NULL, ?);",
+            (sid, f"{sys_name} Warp Gate", warp_dx, warp_dy, "Warp gate for inter-system jumps."),
+        )
             
     # --- Player ---
     first_sid = sys_map["Sys-01"]

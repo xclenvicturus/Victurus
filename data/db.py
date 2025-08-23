@@ -1,3 +1,4 @@
+# data/db.py
 """
 data/db.py
 SQLite access layer + schema/seed + first-run icon assignment.
@@ -27,6 +28,7 @@ ASSETS = ROOT / "assets"
 PLANETS_DIR = ASSETS / "planets"
 STATIONS_DIR = ASSETS / "stations"
 STARS_DIR = ASSETS / "stars"
+WARP_GATE_DIR = ASSETS / "warp_gate"
 
 DATA_DIR = ROOT / "data"
 SCHEMA_PATH = DATA_DIR / "schema.sql"
@@ -78,69 +80,64 @@ def _ensure_schema_and_seed(conn: sqlite3.Connection) -> None:
 def close_active_connection() -> None:
     """Closes the current global database connection, if it's open."""
     global _connection
-    if _connection is not None:
-        try:
-            _connection.close()
-        except Exception:
-            pass
-        _connection = None
-
-def _table_has_column(conn: sqlite3.Connection, table: str, col: str) -> bool:
-    cur = conn.execute(f"PRAGMA table_info({table})")
-    return any(r[1] == col for r in cur.fetchall())
+    if _connection is not None and _is_connection_open(_connection):
+        _connection.close()
+    _connection = None
 
 def _ensure_icon_column(conn: sqlite3.Connection) -> None:
-    if not _table_has_column(conn, "locations", "icon_path"):
-        conn.execute("ALTER TABLE locations ADD COLUMN icon_path TEXT")
+    cur = conn.execute("PRAGMA table_info(locations)")
+    columns = [row[1] for row in cur.fetchall()]
+    if "icon_path" not in columns:
+        conn.execute("ALTER TABLE locations ADD COLUMN icon_path TEXT;")
         conn.commit()
 
 def _ensure_system_star_column(conn: sqlite3.Connection) -> None:
-    if not _table_has_column(conn, "systems", "star_icon_path"):
-        conn.execute("ALTER TABLE systems ADD COLUMN star_icon_path TEXT")
+    cur = conn.execute("PRAGMA table_info(systems)")
+    columns = [row[1] for row in cur.fetchall()]
+    if "star_icon_path" not in columns:
+        conn.execute("ALTER TABLE systems ADD COLUMN star_icon_path TEXT;")
         conn.commit()
 
-def _list_image_files(p: Path) -> List[Path]:
-    if not p.exists(): return []
-    exts = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
-    return [q for q in p.iterdir() if q.suffix.lower() in exts]
-
-def _assign_for_kind(conn: sqlite3.Connection, system_id: int, kind: str, candidates: List[Path]) -> None:
-    cur = conn.execute(
-        "SELECT location_id FROM locations WHERE system_id=? AND location_type=? AND icon_path IS NULL ORDER BY location_id",
-        (system_id, kind),
-    )
-    rows_to_update = [r[0] for r in cur.fetchall()]
-    if not rows_to_update or not candidates: return
-
-    for i, loc_id in enumerate(rows_to_update):
-        chosen = candidates[i % len(candidates)]
-        rel = chosen.relative_to(ROOT).as_posix()
-        conn.execute("UPDATE locations SET icon_path=? WHERE location_id=?", (rel, loc_id))
-
 def _assign_location_icons_if_missing(conn: sqlite3.Connection) -> None:
-    planet_files = _list_image_files(PLANETS_DIR)
-    station_files = _list_image_files(STATIONS_DIR)
-    if not planet_files and not station_files: return
-
-    cur = conn.execute("SELECT system_id FROM systems ORDER BY system_id")
-    systems = [r["system_id"] for r in cur.fetchall()]
-    for sid in systems:
-        if planet_files:
-            _assign_for_kind(conn, sid, "planet", planet_files)
-        if station_files:
-            _assign_for_kind(conn, sid, "station", station_files)
-    conn.commit()
+    from ui.maps.icons import list_gifs  # Delay import to avoid circular deps
+    cur = conn.execute("SELECT location_id, location_type, system_id FROM locations WHERE icon_path IS NULL")
+    rows = cur.fetchall()
+    if not rows:
+        return
+    updates = []
+    for loc_id, kind, sys_id in rows:
+        kind = (kind or "").lower()
+        gifs: List[Path] = []
+        if kind == "planet":
+            gifs = list_gifs(PLANETS_DIR)
+        elif kind == "station":
+            gifs = list_gifs(STATIONS_DIR)
+        elif kind == "warp_gate":
+            gifs = list_gifs(WARP_GATE_DIR)
+        if not gifs:
+            continue
+        idx = (int(loc_id) * 9176 + int(sys_id) * 37) % len(gifs)
+        updates.append((str(gifs[idx]), loc_id))
+    if updates:
+        conn.executemany("UPDATE locations SET icon_path=? WHERE location_id=?", updates)
+        conn.commit()
 
 def _assign_system_star_icons_if_missing(conn: sqlite3.Connection) -> None:
-    star_imgs = _list_image_files(STARS_DIR)
-    if not star_imgs: return
-    cur = conn.execute("SELECT system_id FROM systems WHERE star_icon_path IS NULL ORDER BY system_id")
-    rows = [r[0] for r in cur.fetchall()]
-    for sid in rows:
-        chosen = random.choice(star_imgs)
-        rel = chosen.relative_to(ROOT).as_posix()
-        conn.execute("UPDATE systems SET star_icon_path=? WHERE system_id=?", (rel, sid))
-    conn.commit()
+    from ui.maps.icons import list_gifs  # Delay import to avoid circular deps
+    cur = conn.execute("SELECT system_id FROM systems WHERE star_icon_path IS NULL")
+    rows = cur.fetchall()
+    if not rows:
+        return
+    gifs = list_gifs(STARS_DIR)
+    if not gifs:
+        return
+    updates = []
+    for (sys_id,) in rows:
+        idx = (int(sys_id) * 9176 + 37) % len(gifs)
+        updates.append((str(gifs[idx]), sys_id))
+    if updates:
+        conn.executemany("UPDATE systems SET star_icon_path=? WHERE system_id=?", updates)
+        conn.commit()
 
 def get_counts() -> Dict[str, int]:
     conn = get_connection()
@@ -163,6 +160,14 @@ def get_locations(system_id: int) -> List[Dict]:
 
 def get_location(location_id: int) -> Optional[Dict]:
     row = get_connection().execute("SELECT *, location_id as id, location_name as name, location_x as local_x_au, location_y as local_y_au FROM locations WHERE location_id=?", (location_id,)).fetchone()
+    return dict(row) if row else None
+
+def get_warp_gate(system_id: int) -> Optional[Dict]:
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT *, location_id as id, location_name as name, location_x as local_x_au, location_y as local_y_au FROM locations WHERE system_id=? AND location_type='warp_gate' LIMIT 1",
+        (system_id,),
+    ).fetchone()
     return dict(row) if row else None
 
 def set_player_system(system_id: int) -> None:
