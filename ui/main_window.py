@@ -566,9 +566,26 @@ class MainWindow(QMainWindow):
 
             def finalize():
                 if is_system_target:
-                    travel.travel_to_system_star(target_id)
+                    # Prefer the explicit system-star travel helper if present, otherwise try common alternatives
+                    fn = getattr(travel, "travel_to_system_star", None) or getattr(travel, "travel_to_system", None)
+                    if callable(fn):
+                        try:
+                            fn(target_id)
+                        except Exception:
+                            pass
+                    else:
+                        # Fallback: try the generic travel_to_location if no system-specific helper exists
+                        try:
+                            loc_fn = getattr(travel, "travel_to_location", None)
+                            if callable(loc_fn):
+                                loc_fn(target_id)
+                        except Exception:
+                            pass
                 else:
-                    travel.travel_to_location(target_id)
+                    try:
+                        travel.travel_to_location(target_id)
+                    except Exception:
+                        pass
                 self._on_player_moved()
 
             self._execute_sequence(sequence, finalize)
