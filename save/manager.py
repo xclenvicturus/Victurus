@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import shutil
 import sqlite3
+import json
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Callable, Dict, Any
 
 from data import db
 from data import seed as seed_module
@@ -12,8 +13,56 @@ from .paths import get_saves_dir, save_folder_for, sanitize_save_name
 from .serializers import write_meta, read_meta
 from .models import SaveMetadata
 
+
 class SaveManager:
     _active_save_dir: Optional[Path] = None
+
+    # --- NEW: UI state hook ---
+    _UI_STATE_PROVIDER: Optional[Callable[[], Dict[str, Any]]] = None
+
+    @classmethod
+    def install_ui_state_provider(cls, fn: Callable[[], Dict[str, Any]]) -> None:
+        """Register a callback that returns a JSON-serializable dict of the current UI/layout."""
+        global _UI_STATE_PROVIDER
+        _UI_STATE_PROVIDER = fn
+
+    # --- NEW: UI state helpers ---
+    @classmethod
+    def _ui_state_path(cls, save_dir: Path) -> Path:
+        return save_dir / "ui_state.json"
+
+    @classmethod
+    def write_ui_state(cls, save_dir: Optional[Path] = None) -> None:
+        """Call the provider (if any) and persist ui_state.json next to game.db."""
+        global _UI_STATE_PROVIDER
+        if _UI_STATE_PROVIDER is None:
+            return
+        target = save_dir or cls._active_save_dir
+        if not target:
+            return
+        try:
+            data = _UI_STATE_PROVIDER() or {}
+            p = cls._ui_state_path(target)
+            p.parent.mkdir(parents=True, exist_ok=True)
+            with p.open("w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+        except Exception:
+            # Don't let UI-state persistence break saves
+            pass
+
+    @classmethod
+    def read_ui_state_for_active(cls) -> Optional[Dict[str, Any]]:
+        """Convenience: return the ui_state.json dict for the active save, if present."""
+        if not cls._active_save_dir:
+            return None
+        p = cls._ui_state_path(cls._active_save_dir)
+        if not p.exists():
+            return None
+        try:
+            with p.open("r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return None
 
     @classmethod
     def active_save_dir(cls) -> Optional[Path]:
@@ -109,7 +158,11 @@ class SaveManager:
         write_meta(dest / "meta.json", meta)
 
         cls.set_active_save(dest)
-        db.get_connection() # This will now open a new connection to the new DB
+        db.get_connection()  # opens a connection to new DB
+
+        # NEW: persist an initial (default) UI state if a provider is registered
+        cls.write_ui_state(dest)
+
         return dest
 
     @classmethod
@@ -123,6 +176,9 @@ class SaveManager:
         cls.set_active_save(save_dir)
         db.get_connection()
 
+        # NOTE: UI state is *not* auto-applied here to avoid touching UI from a non-UI caller.
+        # MainWindow should call SaveManager.read_ui_state_for_active() after it builds the UI.
+
     @classmethod
     def save_current(cls) -> None:
         if not cls._active_save_dir:
@@ -135,6 +191,9 @@ class SaveManager:
         if meta:
             meta.last_played_iso = datetime.utcnow().isoformat()
             write_meta(meta_path, meta)
+
+        # NEW: snapshot and persist current UI state
+        cls.write_ui_state()
 
     @classmethod
     def save_as(cls, new_save_name: str) -> Path:
@@ -155,6 +214,9 @@ class SaveManager:
             meta.save_name = dest.name
             meta.last_played_iso = datetime.utcnow().isoformat()
             write_meta(meta_path, meta)
+
+        # NEW: refresh UI state snapshot into the new folder (even if it was copied)
+        cls.write_ui_state(dest)
             
         return dest
 

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 
-from PySide6.QtCore import Qt, QEvent, QTimer
+from PySide6.QtCore import Qt, QEvent, QTimer, QByteArray
 from PySide6.QtGui import QAction, QColor
 from PySide6.QtWidgets import (
     QDockWidget,
@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 
 from data import db
 from game import player_status
+from save.manager import SaveManager  # <-- UI state lives per-save
 from .menus.file_menu import install_file_menu
 from .state import window_state
 from .widgets.status_sheet import StatusSheet
@@ -46,7 +47,7 @@ class MainWindow(QMainWindow):
         self._pending_logs: List[str] = []
 
         # Leader-line style state (UI-adjustable)
-        self._leader_color: QColor = QColor(0, 255, 128)
+        self._leader_color: QColor = QColor(0, 255, 128)  # neon green default
         self._leader_width: int = 2
 
         # Central placeholder (idle)
@@ -86,7 +87,7 @@ class MainWindow(QMainWindow):
         install_file_menu(self)
         self._install_view_menu_extras()
 
-        # Window state restore
+        # Window state restore (global)
         window_state.restore_mainwindow_state(self, self.WIN_ID)
         window_state.set_window_open(self.WIN_ID, True)
 
@@ -105,14 +106,18 @@ class MainWindow(QMainWindow):
         # controllers (created in start_game_ui)
         self.lead: Optional[LeaderLineController] = None
         self.presenter: Optional[LocationPresenter] = None
-        self.map_actions: Optional[MapActions] = None      # <-- renamed (avoid QWidget.actions clash)
+        self.map_actions: Optional[MapActions] = None      # avoid QWidget.actions clash
         self.travel_flow: Optional[TravelFlow] = None
 
+        # Per-save UI-state persistence
+        SaveManager.install_ui_state_provider(self._collect_ui_state)
+
     # ---------- menus: View → Leader Line ----------
+
     def _install_view_menu_extras(self) -> None:
         mb = self.menuBar()
         if not isinstance(mb, QMenuBar):
-            return  # safety
+            return  # safety: no menubar available
 
         # Find or create the "&View" menu
         view_menu: QMenu | None = None
@@ -122,9 +127,9 @@ class MainWindow(QMainWindow):
                 view_menu = m
                 break
         if view_menu is None:
-            view_menu = mb.addMenu("&View")  # QMenuBar.addMenu returns QMenu
+            view_menu = mb.addMenu("&View")  # returns QMenu
 
-        # Create a real submenu object (avoid the str overload)
+        # Leader Line submenu (use real QMenu instance to satisfy Pylance)
         ll_menu = QMenu("Leader Line", self)
         view_menu.addMenu(ll_menu)
 
@@ -133,7 +138,7 @@ class MainWindow(QMainWindow):
         ll_menu.addAction(act_color)
 
         act_width_inc = QAction("Increase Width", self)
-        act_width_inc.setShortcut("Ctrl++")
+        act_width_inc.setShortcut("Ctrl++")  # often typed as Ctrl+=
         act_width_inc.triggered.connect(lambda: self._nudge_leader_width(+1))
         ll_menu.addAction(act_width_inc)
 
@@ -161,15 +166,15 @@ class MainWindow(QMainWindow):
         self._apply_leader_style()
 
     def _choose_leader_width(self) -> None:
-        # getInt(parent, title, label, value=0, min=-2147483647, max=2147483647, step=1, ok=None, ...)
+        # getInt(parent, title, label, value=0, min=-2147483647, max=2147483647, step=1)
         w, ok = QInputDialog.getInt(
             self,
             "Set Leader Line Width",
             "Width (px):",
             self._leader_width,
-            1,      # min
-            12,     # max
-            1,      # step
+            1,   # min
+            12,  # max
+            1,   # step
         )
         if ok:
             self._leader_width = int(w)
@@ -226,7 +231,7 @@ class MainWindow(QMainWindow):
             # Right panel
             panel = LocationList(
                 categories=["All", "System", "Star", "Planet", "Station", "Warp Gate"],
-                sorts=["Name A–Z", "Name Z–A", "Distance", "X", "Y"],
+                sorts=["Name A–Z", "Name Z–A", "Distance", "X", "Y"],  # if you split LY/AU, update here
                 title="Locations",
             )
             self.location_panel = panel
@@ -261,6 +266,14 @@ class MainWindow(QMainWindow):
 
             # Create leader overlay + first refresh
             self.lead.attach()
+
+            # ---- Restore per-save UI state (if any) ----
+            try:
+                ui_state = SaveManager.read_ui_state_for_active()
+                if ui_state:
+                    self._restore_ui_state(ui_state)
+            except Exception:
+                pass
 
         # Initial refresh
         mv_reload = getattr(self._map_view, "reload_all", None)
@@ -326,6 +339,11 @@ class MainWindow(QMainWindow):
         self._save_window_state()
 
     def closeEvent(self, e):
+        # Persist per-save UI state one last time
+        try:
+            SaveManager.write_ui_state()
+        except Exception:
+            pass
         self._status_timer.stop()
         window_state.set_window_open(self.WIN_ID, False)
         self._save_window_state()
@@ -362,5 +380,128 @@ class MainWindow(QMainWindow):
             # if callable(mv_reload):
             #     try: mv_reload()
             #     except Exception: pass
+        except Exception:
+            pass
+
+    # ---------- per-save UI state capture/restore ----------
+
+    def _collect_ui_state(self) -> Dict[str, Any]:
+        """Snapshot everything UI-related into a JSON-serializable dict."""
+        state: Dict[str, Any] = {}
+
+        # Main window geometry/state → HEX strings (Pylance-friendly)
+        try:
+            geo_hex = bytes(self.saveGeometry().toHex().data()).decode("ascii")
+            sta_hex = bytes(self.saveState().toHex().data()).decode("ascii")
+            state["main_geometry_hex"] = geo_hex
+            state["main_state_hex"] = sta_hex
+        except Exception:
+            pass
+
+        # Splitter sizes
+        try:
+            if self._central_splitter:
+                state["central_splitter_sizes"] = list(self._central_splitter.sizes())
+        except Exception:
+            pass
+
+        # Current tab
+        try:
+            tabs = getattr(self._map_view, "tabs", None)
+            state["map_tab_index"] = int(tabs.currentIndex()) if tabs else 0
+        except Exception:
+            state["map_tab_index"] = 0
+
+        # Leader line style (color + width) — store as #RRGGBB
+        try:
+            state["leader_color"] = self._leader_color.name()   # HexRgb
+            state["leader_width"] = int(self._leader_width)
+        except Exception:
+            pass
+
+        # Location panel settings + column widths
+        try:
+            if self.location_panel:
+                state["panel_category_index"] = int(self.location_panel.category.currentIndex())
+                state["panel_sort_text"] = str(self.location_panel.sort.currentText())
+                state["panel_search"] = str(self.location_panel.search.text())
+                tree = self.location_panel.tree
+                state["panel_col_widths"] = [tree.columnWidth(i) for i in range(tree.columnCount())]
+        except Exception:
+            pass
+
+        return state
+
+
+    def _restore_ui_state(self, state: Dict[str, Any]) -> None:
+        """Apply a previously captured UI-state dict (best-effort & safe)."""
+        # Geometry/state (support both new HEX and legacy Base64 keys)
+        try:
+            from PySide6.QtCore import QByteArray
+
+            geo_hex = state.get("main_geometry_hex")
+            sta_hex = state.get("main_state_hex")
+            if isinstance(geo_hex, str) and geo_hex:
+                self.restoreGeometry(QByteArray.fromHex(geo_hex.encode("ascii")))
+            elif isinstance(state.get("main_geometry_b64"), str):
+                self.restoreGeometry(QByteArray.fromBase64(state["main_geometry_b64"].encode("ascii")))
+
+            if isinstance(sta_hex, str) and sta_hex:
+                self.restoreState(QByteArray.fromHex(sta_hex.encode("ascii")))
+            elif isinstance(state.get("main_state_b64"), str):
+                self.restoreState(QByteArray.fromBase64(state["main_state_b64"].encode("ascii")))
+        except Exception:
+            pass
+
+        # Splitter sizes
+        try:
+            sizes = state.get("central_splitter_sizes")
+            if sizes and self._central_splitter:
+                self._central_splitter.setSizes([int(x) for x in sizes])
+        except Exception:
+            pass
+
+        # Map tab
+        try:
+            idx = int(state.get("map_tab_index", 0))
+            tabs = getattr(self._map_view, "tabs", None)
+            if tabs:
+                tabs.setCurrentIndex(max(0, min(1, idx)))
+        except Exception:
+            pass
+
+        # Leader line style
+        try:
+            c = state.get("leader_color")
+            w = int(state.get("leader_width", self._leader_width))
+            if isinstance(c, str) and c:
+                self._leader_color = QColor(c)
+            self._leader_width = max(1, w)
+            self._apply_leader_style()
+        except Exception:
+            pass
+
+        # Location panel
+        try:
+            if self.location_panel:
+                cat_idx = int(state.get("panel_category_index", 0))
+                self.location_panel.category.setCurrentIndex(cat_idx)
+
+                sort_text = state.get("panel_sort_text")
+                if isinstance(sort_text, str) and sort_text:
+                    i = self.location_panel.sort.findText(sort_text)
+                    if i >= 0:
+                        self.location_panel.sort.setCurrentIndex(i)
+
+                self.location_panel.search.setText(str(state.get("panel_search", "")))
+
+                widths = state.get("panel_col_widths")
+                if isinstance(widths, list):
+                    tree = self.location_panel.tree
+                    for i, w in enumerate(widths):
+                        try:
+                            tree.setColumnWidth(i, int(w))
+                        except Exception:
+                            pass
         except Exception:
             pass

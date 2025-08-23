@@ -9,7 +9,7 @@ from PySide6.QtWidgets import QWidget, QTreeWidgetItem, QTabWidget
 from .maps.tabs import MapTabs
 from .widgets.location_list import LocationList
 from .maps.leadline import LeadLine
-
+from typing import Callable, Optional, Tuple, cast, Any
 
 class LeaderLineController(QObject):
     """
@@ -106,7 +106,6 @@ class LeaderLineController(QObject):
         self._ensure_tick_running()
 
     def on_hover(self, entity_id: int) -> None:
-        """Show the leader for the hovered id (unless a lock exists on this tab)."""
         if self._overlay is None:
             return
         if self._enable_lock and self._current_lock() is not None:
@@ -115,10 +114,10 @@ class LeaderLineController(QObject):
             eid = int(entity_id)
         except Exception:
             return
-        # mark active and attach immediately; tick will keep it in sync
         self._line_active = True
         self._attach_leader(eid, locked=False)
         self._ensure_tick_running()
+
 
     def on_click(self, entity_id: int) -> None:
         """Toggle click lock (only if enabled)."""
@@ -259,7 +258,8 @@ class LeaderLineController(QObject):
             self._overlay.setParent(src)
         try:
             self._overlay.setGeometry(src.rect())
-            self._overlay.show()
+            self._overlay.show()      # make sure it's visible
+            self._overlay.raise_()    # <-- keep it above the viewport
         except Exception:
             pass
 
@@ -345,23 +345,27 @@ class LeaderLineController(QObject):
         if self._overlay is None:
             return None
 
+        # Narrow from object -> QTreeWidgetItem via isinstance
         item: Optional[QTreeWidgetItem] = None
+        raw: Any = None
+
         if locked:
-            # use the specific item for the locked id
             finder = getattr(self._panel, "find_item_by_id", None)
             if callable(finder):
                 try:
-                    found = finder(int(eid))
-                    # ensure the result is a QTreeWidgetItem (type-safe)
-                    if isinstance(found, QTreeWidgetItem):
-                        item = found
-                    else:
-                        item = None
+                    raw = finder(int(eid))
                 except Exception:
-                    item = None
+                    raw = None
         else:
-            item = self._panel.current_hover_item()
+            try:
+                raw = self._panel.current_hover_item()
+            except Exception:
+                raw = None
 
+        if isinstance(raw, QTreeWidgetItem):
+            item = raw
+
+        # Preferred: ask the panel (it already maps via global→overlay)
         if isinstance(item, QTreeWidgetItem):
             apfi = getattr(self._panel, "anchor_point_for_item", None)
             if callable(apfi):
@@ -372,14 +376,23 @@ class LeaderLineController(QObject):
                 except Exception:
                     pass
 
-        # fallback: approximate right-center of the panel
+        # Fallback: right-center of the panel → GLOBAL → overlay (no hierarchy requirement)
         try:
             panel_rect = self._panel.rect()
             p = panel_rect.center()
             p.setX(panel_rect.right() - 8)
-            return self._overlay.mapFrom(self._panel, p)
+
+            g = self._panel.mapToGlobal(p)      # panel → global
+            a = self._overlay.mapFromGlobal(g)  # global → overlay
+
+            # Clamp to overlay bounds
+            ax = max(0, min(self._overlay.width() - 1, a.x()))
+            ay = max(0, min(self._overlay.height() - 1, a.y()))
+            return QPoint(ax, ay)
         except Exception:
-            return QPoint(self._overlay.width() - 8, self._overlay.height() // 2)
+            # Last resort: near right edge of overlay
+            return QPoint(max(0, self._overlay.width() - 8), self._overlay.height() // 2)
+
 
     def _compute_endpoint(self, eid: int, anchor: Optional[QPoint]) -> Optional[QPoint]:
         """Trim line to the icon edge for the target entity (map coords already in overlay)."""
