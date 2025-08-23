@@ -45,6 +45,7 @@ class GalaxyMapWidget(PanZoomView):
         self._player_highlight: Optional[QGraphicsItem] = None
 
         self.set_unit_scale(10.0)
+        self._apply_unit_scale()
         self.enable_starfield(True)
         self.set_background_mode("viewport")
 

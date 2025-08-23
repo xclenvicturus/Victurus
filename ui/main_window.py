@@ -1,14 +1,9 @@
-"""
-ui/main_window.py
-Main window hosting the MapView, log dock, status bar, and menus.
-"""
-
 from __future__ import annotations
 
 from typing import Optional, List, Dict, Callable
 
-from PySide6.QtCore import Qt, QEvent, QTimer, QPoint, QPointF
-from PySide6.QtGui import QFont, QIcon, QVector2D
+from PySide6.QtCore import Qt, QEvent, QTimer
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QDockWidget,
     QLabel,
@@ -44,7 +39,6 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Victurus")
         self._map_view: Optional[MapTabs] = None
         self._pending_logs: List[str] = []
-        self._locked_leader_entity_id: Optional[int] = None
 
         # Central placeholder (idle)
         self._idle_label = QLabel("No game loaded.\nUse File → New Game or Load Game to begin.")
@@ -135,6 +129,15 @@ class MainWindow(QMainWindow):
             mv = _make_map_view()
             self._map_view = mv
 
+            # optional MapTabs.logMessage
+            log_sig = getattr(mv, "logMessage", None)
+            connect = getattr(log_sig, "connect", None)
+            if callable(connect):
+                try:
+                    connect(self.append_log)
+                except Exception:
+                    pass
+
             central.addWidget(mv)
 
             # Right panel
@@ -148,24 +151,29 @@ class MainWindow(QMainWindow):
             central.setStretchFactor(0, 1)
             central.setStretchFactor(1, 0)
 
-            # --- Connect Signals (Including Leader Line) ---
+            # Signals
             panel.refreshRequested.connect(self._refresh_location_panel)
+            panel.clicked.connect(self._on_panel_focus)          # single-click = focus/center
+            panel.doubleClicked.connect(self._on_panel_open)     # double-click = open / switch tab
             panel.travelHere.connect(self._on_panel_travel_here)
-            panel.hovered.connect(self._on_panel_hover)
-            panel.clicked.connect(self._on_panel_click)
-            panel.doubleClicked.connect(self._on_panel_open)
-            panel.leftView.connect(self._on_panel_leave)
 
-
-            # Refresh list and leader line when tab changes inside MapTabs
-            if mv.tabs:
-                mv.tabs.currentChanged.connect(self._on_tab_changed)
+            # Refresh list when tab changes inside MapTabs
+            tabs = getattr(mv, "tabs", None)
+            if tabs is not None:
+                try:
+                    tabs.currentChanged.connect(lambda _i: self._refresh_location_panel())
+                except Exception:
+                    pass
 
             self.setCentralWidget(central)
 
         # Initial refresh
-        if self._map_view:
-            self._map_view.reload_all()
+        mv_reload = getattr(self._map_view, "reload_all", None)
+        if callable(mv_reload):
+            try:
+                mv_reload()
+            except Exception:
+                pass
 
         self._refresh_location_panel()
         self._safe_refresh_status()
@@ -178,132 +186,235 @@ class MainWindow(QMainWindow):
             self.log.appendPlainText(m)
         self._pending_logs.clear()
 
-    # ---------- Tab awareness and Leader Line Management ----------
-
-    def _on_tab_changed(self, index: int):
-        """Called when the user clicks a map tab."""
-        self._locked_leader_entity_id = None
-        self._hide_leader_line()
-        self._refresh_location_panel()
+    # ---------- Tab awareness ----------
 
     def _using_galaxy(self) -> bool:
-        return self._map_view is not None and self._map_view.tabs.currentIndex() == 0
-
-    def _on_panel_hover(self, entity_id: int):
-        """Show a temporary leader line when hovering, if one is not locked."""
-        if self._locked_leader_entity_id is None:
-            self._attach_leader_line(entity_id)
-
-    def _on_panel_click(self, entity_id: int):
-        """Focus the map and toggle the locked leader line."""
-        self._on_panel_focus(entity_id) # Center map first
-
-        if self._locked_leader_entity_id == entity_id:
-            self._locked_leader_entity_id = None
-            self._hide_leader_line()
-        else:
-            self._locked_leader_entity_id = entity_id
-            self._attach_leader_line(entity_id)
-
-    def _on_panel_leave(self):
-        """Hide the temporary leader line when the mouse leaves the list."""
-        if self._locked_leader_entity_id is None:
-            self._hide_leader_line()
-
-    def _attach_leader_line(self, entity_id: int):
-        """Attaches the leader line from a list item to its map entity."""
-        if not self.location_panel or not self._map_view:
-            return
-        
-        active_map = self._map_view.galaxy if self._using_galaxy() else self._map_view.solar
-        list_item = self.location_panel.find_item_by_id(entity_id)
-
-        if not list_item:
-            self._hide_leader_line()
-            return
-            
-        anchor_point = self.location_panel.anchor_point_for_item(active_map.viewport(), list_item)
-
-        def destination_getter():
-            info = active_map.get_entity_viewport_center_and_radius(entity_id)
-            if not info:
-                return None
-            center, radius = info
-            v = QVector2D(center - anchor_point)
-            dist = v.length()
-            if dist < 1.0:
-                return center
-            
-            offset = v.normalized() * radius
-            return QPoint(int(center.x() - offset.x()), int(center.y() - offset.y()))
-
-        active_map.set_leader_from_viewport_to_getter(anchor_point, destination_getter)
-
-    def _hide_leader_line(self):
-        """Hides the leader line on the currently active map."""
-        if not self._map_view:
-            return
-        active_map = self._map_view.galaxy if self._using_galaxy() else self._map_view.solar
-        active_map.set_leader_from_viewport_to_getter(None, None)
+        mv = self._map_view
+        if not mv:
+            return False
+        tabs = getattr(mv, "tabs", None)
+        if tabs is None:
+            return False
+        try:
+            return tabs.currentIndex() == 0  # 0=Galaxy, 1=System
+        except Exception:
+            return False
 
     # ---------- LocationList wiring ----------
     def _refresh_location_panel(self) -> None:
         from collections.abc import Iterable as _Iterable
-        
-        if not self.location_panel or not self._map_view:
+        from math import hypot
+
+        if not self.location_panel:
             return
 
         rows: List[Dict] = []
         list_font = QFont()
 
+        # Current context
         player = db.get_player_full() or {}
         cur_sys_id = int(player.get("current_player_system_id") or 0)
         cur_loc_id = int(player.get("current_player_location_id") or 0)
 
+        # Helper to safely coerce results to a list of dicts
+        def _coerce_entities(obj) -> List[Dict]:
+            if isinstance(obj, list):
+                return obj
+            if isinstance(obj, tuple):
+                return list(obj)
+            if isinstance(obj, _Iterable):
+                return list(obj)
+            return []
+
         if self._using_galaxy():
-            entities = [dict(r) for r in db.get_systems()]
+            # ----- GALAXY (systems) -----
+            entities: List[Dict] = []
+            gal = getattr(self._map_view, "galaxy", None)
+            get_entities = getattr(gal, "get_entities", None)
+            if callable(get_entities):
+                try:
+                    entities = _coerce_entities(get_entities())
+                except Exception:
+                    entities = []
+            if not entities:
+                try:
+                    entities = [dict(r) for r in db.get_systems()]
+                except Exception:
+                    entities = []
+
             for s in entities:
                 sid = int(s.get("id") or 0)
-                td = travel.get_travel_display_data(target_id=sid, is_system_target=True) or {}
+                try:
+                    td = travel.get_travel_display_data(target_id=sid, is_system_target=True) or {}
+                except Exception:
+                    td = {}
+                dist_ly = float(td.get("dist_ly", 0.0) or 0.0)
+                fuel_cost = td.get("fuel_cost", "—")
+
                 rows.append({
-                    "id": sid, "name": s.get("name", "System"), "kind": "system",
-                    "distance": td.get("distance", "—"), "jump_dist": td.get("dist_ly", 0.0),
-                    "fuel_cost": td.get("fuel_cost", "—"), "x": s.get("x", 0.0), "y": s.get("y", 0.0),
-                    "can_reach": td.get("can_reach", True), "can_reach_jump": td.get("can_reach_jump", True),
-                    "can_reach_fuel": td.get("can_reach_fuel", True), "icon_path": s.get("icon_path"),
+                    "id": sid,
+                    "name": s.get("name", "System"),
+                    "kind": "system",
+                    # Galaxy view shows LY (always)
+                    "distance": f"{dist_ly:.2f} ly",
+                    "jump_dist": dist_ly,          # used for Distance sort in galaxy
+                    "fuel_cost": fuel_cost,
+                    "x": s.get("x", 0.0),
+                    "y": s.get("y", 0.0),
+                    "can_reach": True,
+                    "icon_path": s.get("icon_path"),
+                    # Only current system is green
                     "is_current": (sid == cur_sys_id),
                 })
+
+            sorted_obj = self.location_panel.filtered_sorted(rows, player_pos=None)
+            try:
+                rows_sorted: List[Dict] = list(sorted_obj) if sorted_obj is not None else []
+            except TypeError:
+                rows_sorted = []
+            self.location_panel.populate(rows_sorted, list_font, icon_provider=self._icon_provider)
+
         else:
-            viewed_system_id = self._map_view.solar._system_id
-            if not viewed_system_id:
+            # ----- SYSTEM (star + locations) -----
+            if not cur_sys_id:
                 self.location_panel.populate([], list_font)
                 return
 
-            entities = self._map_view.solar.get_entities()
+            # Player's AU position: current location coords if available, else star at (0,0)
+            cur_x = 0.0
+            cur_y = 0.0
+            if cur_loc_id:
+                try:
+                    cur_loc = db.get_location(cur_loc_id) or {}
+                    cur_x = float(cur_loc.get("x", 0.0) or 0.0)
+                    cur_y = float(cur_loc.get("y", 0.0) or 0.0)
+                except Exception:
+                    cur_x = 0.0
+                    cur_y = 0.0
 
+            # Prefer Solar widget entities (to carry icon_path/x/y if provided)
+            entities: List[Dict] = []
+            sol = getattr(self._map_view, "solar", None)
+            get_entities = getattr(sol, "get_entities", None)
+            if callable(get_entities):
+                try:
+                    entities = _coerce_entities(get_entities())
+                except Exception:
+                    entities = []
+
+            # Fallback: star + locations from DB
+            if not entities:
+                try:
+                    sysrow = db.get_system(cur_sys_id) or {}
+                except Exception:
+                    sysrow = {}
+                entities.append({
+                    "id": STAR_ID_SENTINEL * cur_sys_id,  # negative id marks the star
+                    "system_id": cur_sys_id,
+                    "name": f"{sysrow.get('name','System')} (Star)",
+                    "kind": "star",
+                    "icon_path": None,
+                    "x": 0.0,
+                    "y": 0.0,
+                })
+                try:
+                    for loc in db.get_locations(cur_sys_id):
+                        d = dict(loc)
+                        # ensure x/y keys exist for distance math
+                        d.setdefault("x", 0.0)
+                        d.setdefault("y", 0.0)
+                        entities.append(d)
+                except Exception:
+                    pass
+
+            rows = []
             for e in entities:
                 eid = int(e.get("id") or 0)
-                kind = (e.get("kind") or "location").lower()
-                
-                td = travel.get_travel_display_data(
-                    target_id=abs(eid),
-                    is_system_target=(eid < 0),
-                    current_view_system_id=viewed_system_id
-                ) or {}
+                kind = (e.get("kind") or e.get("location_type") or "location").lower()
+
+                # target coords (fallback to DB if missing)
+                ex = e.get("x", None)
+                ey = e.get("y", None)
+                if ex is None or ey is None:
+                    if eid >= 0:
+                        locrow = db.get_location(eid) or {}
+                        ex = locrow.get("x", 0.0)
+                        ey = locrow.get("y", 0.0)
+                    else:
+                        ex = 0.0
+                        ey = 0.0
+                try:
+                    ex = float(ex or 0.0)
+                    ey = float(ey or 0.0)
+                except Exception:
+                    ex = 0.0
+                    ey = 0.0
+
+                # --- Compute AU distance (layered fallbacks) ---
+                dist_au = 0.0
+
+                # (1) Try travel module's AU
+                try:
+                    td = travel.get_travel_display_data(
+                        target_id=(cur_sys_id if eid < 0 else eid),
+                        is_system_target=(eid < 0)
+                    ) or {}
+                    v = td.get("dist_au", None)
+                    if v is not None:
+                        dist_au = float(v)
+                except Exception:
+                    pass
+
+                # (2) If entity has a baked AU measure
+                if not dist_au:
+                    for k in ("distance_au", "orbit_radius_au", "au", "orbit_au"):
+                        v = e.get(k)
+                        if v not in (None, ""):
+                            try:
+                                dist_au = float(str(v))
+                                break
+                            except Exception:
+                                pass
+
+                # (3) Fallback to geometry: distance from player's AU position
+                if not dist_au:
+                    dist_au = hypot(ex - cur_x, ey - cur_y)
+
+                # fuel (best-effort from travel module)
+                fuel_cost = "—"
+                try:
+                    fuel_cost = (travel.get_travel_display_data(
+                        target_id=(cur_sys_id if eid < 0 else eid),
+                        is_system_target=(eid < 0)
+                    ) or {}).get("fuel_cost", "—")
+                except Exception:
+                    pass
 
                 rows.append({
-                    "id": eid, "name": e.get("name", "—"), "kind": kind,
-                    "distance": td.get("distance", "—"), "jump_dist": td.get("dist_au", 0.0),
-                    "fuel_cost": td.get("fuel_cost", "—"), "can_reach": td.get("can_reach", True),
-                    "can_reach_jump": td.get("can_reach_jump", True), "can_reach_fuel": td.get("can_reach_fuel", True),
+                    "id": eid,
+                    "name": e.get("name", "—"),
+                    "kind": kind,
+                    # System view shows AU (always)
+                    "distance": f"{dist_au:.2f} AU",
+                    "jump_dist": dist_au,          # use AU for Distance sort within a system
+                    "fuel_cost": fuel_cost,
+                    "x": ex,
+                    "y": ey,
+                    "can_reach": True,
                     "icon_path": e.get("icon_path"),
-                    "is_current": (eid == cur_loc_id) if eid >= 0 else (cur_loc_id == 0 and viewed_system_id == cur_sys_id),
+                    # Only player's current location should be green
+                    "is_current": (eid == cur_loc_id) if eid >= 0 else False,
                 })
 
-        rows_sorted = self.location_panel.filtered_sorted(rows, player_pos=None)
-        self.location_panel.populate(rows_sorted, list_font, icon_provider=self._icon_provider)
+            sorted_obj = self.location_panel.filtered_sorted(rows, player_pos=None)
+            try:
+                rows_sorted = list(sorted_obj) if sorted_obj is not None else []
+            except TypeError:
+                rows_sorted = []
+            self.location_panel.populate(rows_sorted, list_font, icon_provider=self._icon_provider)
 
     def _icon_provider(self, r: Dict):
+        from PySide6.QtGui import QIcon
         p = r.get("icon_path")
         return QIcon(p) if p else None
 
@@ -313,11 +424,31 @@ class MainWindow(QMainWindow):
             return
 
         if self._using_galaxy():
-            self._map_view.show_galaxy()
-            self._map_view.center_galaxy_on_system(int(entity_id))
+            show_galaxy = getattr(self._map_view, "show_galaxy", None)
+            if callable(show_galaxy):
+                try: show_galaxy()
+                except Exception: pass
+            center_sys = getattr(self._map_view, "center_galaxy_on_system", None)
+            if callable(center_sys):
+                try: center_sys(int(entity_id))
+                except Exception: pass
         else:
-            self._map_view.show_solar()
-            self._map_view.center_solar_on_location(int(entity_id))
+            show_solar = getattr(self._map_view, "show_solar", None)
+            if callable(show_solar):
+                try: show_solar()
+                except Exception: pass
+            if entity_id < 0:
+                player = db.get_player_full() or {}
+                sys_id = int(player.get("current_player_system_id") or 0)
+                center_sys = getattr(self._map_view, "center_solar_on_system", None)
+                if callable(center_sys):
+                    try: center_sys(sys_id)
+                    except Exception: pass
+            else:
+                center_loc = getattr(self._map_view, "center_solar_on_location", None)
+                if callable(center_loc):
+                    try: center_loc(int(entity_id))
+                    except Exception: pass
 
     def _on_panel_open(self, entity_id: int) -> None:
         """Double-click: if in Galaxy view, switch to System tab and load that system."""
@@ -325,20 +456,80 @@ class MainWindow(QMainWindow):
             return
 
         if self._using_galaxy():
-            self._map_view.show_solar()
-            self._map_view.center_solar_on_system(int(entity_id))
+            # 1) switch tab
+            show_solar = getattr(self._map_view, "show_solar", None)
+            if callable(show_solar):
+                try:
+                    show_solar()
+                except Exception:
+                    pass
+
+            # 2) ensure solar is loaded for this system (robust, even if helpers differ)
+            try:
+                sys_id = int(entity_id)
+            except Exception:
+                return
+
+            # Preferred: helper that loads+centers
+            center_sys = getattr(self._map_view, "center_solar_on_system", None)
+            if callable(center_sys):
+                try:
+                    center_sys(sys_id)
+                except Exception:
+                    # Fallback: direct load on the Solar widget, then no-op center
+                    solar = getattr(self._map_view, "solar", None)
+                    load = getattr(solar, "load", None)
+                    if callable(load):
+                        try:
+                            load(sys_id)
+                        except Exception:
+                            pass
+            else:
+                # No helper → load directly
+                solar = getattr(self._map_view, "solar", None)
+                load = getattr(solar, "load", None)
+                if callable(load):
+                    try:
+                        load(sys_id)
+                    except Exception:
+                        pass
+
+            # 3) right panel now should reflect System list
+            self._refresh_location_panel()
         else:
+            # In System view: treat double-click like focus
             self._on_panel_focus(entity_id)
 
     def _on_panel_travel_here(self, entity_id: int) -> None:
         """Context menu 'Travel here'."""
+        begin_travel = getattr(self._map_view, "begin_travel", None)
         if self._using_galaxy():
+            # entity is a SYSTEM id → travel to its star
+            if callable(begin_travel):
+                try:
+                    begin_travel("star", int(entity_id))
+                    return
+                except Exception:
+                    pass
             self._begin_travel("star", int(entity_id))
+            return
+
+        if callable(begin_travel):
+            try:
+                if entity_id < 0:
+                    begin_travel("star", abs(entity_id))
+                else:
+                    begin_travel("loc", int(entity_id))
+                return
+            except Exception:
+                pass
+
+        if entity_id < 0:
+            self._begin_travel("star", abs(entity_id))
         else:
-            if entity_id < 0:
-                self._begin_travel("star", abs(entity_id))
-            else:
-                self._begin_travel("loc", int(entity_id))
+            self._begin_travel("loc", int(entity_id))
+
+    # --- Travel fallback with 10s arrival window ---
 
     def _begin_travel(self, kind: str, ident: int) -> None:
         try:
@@ -349,36 +540,28 @@ class MainWindow(QMainWindow):
 
             is_system_target = (kind == "star")
             target_id = int(ident or 0)
-            
-            current_view_system_id = None
-            if not self._using_galaxy() and self._map_view:
-                current_view_system_id = self._map_view.solar._system_id
-
-            td = travel.get_travel_display_data(
-                target_id=target_id, 
-                is_system_target=is_system_target,
-                current_view_system_id=current_view_system_id
-            )
-            if not td or not td.get("can_reach"):
-                self.append_log("No route available or destination unreachable.")
+            td = travel.get_travel_display_data(target_id=target_id, is_system_target=is_system_target)
+            if not td:
+                self.append_log("No route available.")
                 return
 
             sequence: List[tuple[str, int]] = []
-            current_status = self._real_ship_status()
+            current_status = ship_state.get_temporary_state() or self._real_ship_status()
             if current_status == "Docked":
                 sequence.append(("Un-docking...", 10_000))
             elif current_status == "Orbiting":
                 sequence.append(("Leaving Orbit...", 10_000))
 
             travel_time_ms = int((float(td.get("dist_ly", 0.0)) + float(td.get("dist_au", 0.0))) * 500)
-            if travel_time_ms > 0:
-                sequence.append(("Traveling", travel_time_ms))
+            if travel_time_ms <= 0:
+                travel_time_ms = 500
+            sequence.append(("Traveling", travel_time_ms))
 
             if is_system_target:
                 sequence.append(("Entering Orbit...", 10_000))
             else:
                 target_loc = db.get_location(target_id)
-                k = (target_loc.get("kind") or "").lower() if target_loc else ""
+                k = (target_loc.get("kind") or target_loc.get("location_type") or "").lower() if target_loc else ""
                 sequence.append(("Docking...", 10_000) if k == "station" else ("Entering Orbit...", 10_000))
 
             def finalize():
@@ -396,25 +579,26 @@ class MainWindow(QMainWindow):
         if not sequence:
             on_done()
             return
-        
-        def process_next_step():
-            if not sequence:
-                self._finish_sequence(on_done)()
-                return
-            
-            state, duration = sequence.pop(0)
-            ship_state.set_temporary_state(state)
-            self.status_panel.refresh()
-            QTimer.singleShot(duration, process_next_step)
-        
-        process_next_step()
-
+        ship_state.set_temporary_state(sequence[0][0])
+        elapsed = 0
+        for i, (label, dur) in enumerate(sequence):
+            def make_cb(lbl=label, last=(i == len(sequence) - 1), d=dur):
+                def cb():
+                    ship_state.set_temporary_state(lbl)
+                    if last:
+                        QTimer.singleShot(d, self._finish_sequence(on_done))
+                return cb
+            t = QTimer(self)
+            t.setSingleShot(True)
+            t.timeout.connect(make_cb())
+            t.start(elapsed)
+            elapsed += dur
 
     def _finish_sequence(self, on_done: Callable[[], None]) -> Callable[[], None]:
         def inner():
-            ship_state.set_temporary_state(None)
+            ship_state.clear_temporary_state()
             on_done()
-            ship_state.set_temporary_state(None)
+            ship_state.clear_temporary_state()
         return inner
 
     def _real_ship_status(self) -> str:
@@ -432,9 +616,13 @@ class MainWindow(QMainWindow):
     def _on_player_moved(self) -> None:
         self.refresh_status_counts()
         self.status_panel.refresh()
-        if self._map_view:
-            self._map_view.reload_all()
+        mv_reload = getattr(self._map_view, "reload_all", None)
+        if callable(mv_reload):
+            try: mv_reload()
+            except Exception: pass
         self._refresh_location_panel()
+
+    # ---------- window state ----------
 
     def _save_window_state(self):
         window_state.save_mainwindow_state(self.WIN_ID, self.saveGeometry(), self.saveState())
@@ -452,6 +640,8 @@ class MainWindow(QMainWindow):
         window_state.set_window_open(self.WIN_ID, False)
         self._save_window_state()
         super().closeEvent(e)
+
+    # ---------- logging & stats ----------
 
     def append_log(self, msg: str) -> None:
         if hasattr(self, "log"):
@@ -477,10 +667,9 @@ class MainWindow(QMainWindow):
         try:
             self.status_panel.refresh()
             self.refresh_status_counts()
-            # This is the root cause of the orbit reset.
-            # The map view contains animations and should not be hard-reloaded periodically.
-            # Instead, we only refresh the data-driven side panel.
-            if self.location_panel:
-                self._refresh_location_panel()
+            mv_reload = getattr(self._map_view, "reload_all", None)
+            if callable(mv_reload):
+                try: mv_reload()
+                except Exception: pass
         except Exception:
             pass

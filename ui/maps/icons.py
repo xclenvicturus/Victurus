@@ -102,33 +102,34 @@ class AnimatedGifItem(QGraphicsPixmapItem):
 
         self._movie = QMovie(str(gif_path))
         self._movie.setCacheMode(QMovie.CacheMode.CacheAll)
-        # Scale the movie frames to desired_px to avoid giant frames flashing in
-        self._movie.setScaledSize(QSize(self._desired_px, self._desired_px))
 
         self._movie.frameChanged.connect(self._on_frame)
         self._movie.start()
-        
-        # The direct call to _on_frame and the incorrect waitForFirstFrame have been removed.
-        # The frameChanged signal will now handle the initial frame update correctly and asynchronously.
+
+    def _on_frame(self, _frame_index: int) -> None:
+        pm_native = self._movie.currentPixmap()
+        if not pm_native.isNull():
+            pm_scaled = pm_native.scaled(
+                self._desired_px, 
+                self._desired_px, 
+                Qt.AspectRatioMode.KeepAspectRatio, 
+                Qt.TransformationMode.SmoothTransformation
+            )
+            self.setPixmap(pm_scaled)
+            self._apply_scale()
 
     def _apply_scale(self) -> None:
-        # Keep constant on-screen size by canceling the view transform scale
         pm = self.pixmap()
         if pm.isNull():
             return
-        w = max(1, pm.width())
+        
         view_scale = self._view.transform().m11() or 1.0
-        # Frames are already scaled to desired_px, so scale by 1/view_scale
+        if view_scale == 0: return
+
         scale = 1.0 / view_scale
         self.setScale(scale)
-        # Center the item locally (offset works in unscaled coords)
-        self.setOffset(-w / 2.0, -pm.height() / 2.0)
-
-    def _on_frame(self, _frame_index: int) -> None:
-        pm = self._movie.currentPixmap()
-        if not pm.isNull():
-            self.setPixmap(pm)
-            self._apply_scale()
+        
+        self.setOffset(-pm.width() / 2.0, -pm.height() / 2.0)
 
     def set_playing(self, playing: bool) -> None:
         playing = bool(playing)

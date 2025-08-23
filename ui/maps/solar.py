@@ -57,7 +57,8 @@ class SolarMapWidget(PanZoomView):
 
         self._spread = 12.0          # AU visual multiplier (orbit radii are in AU * spread)
         self.set_unit_scale(8.0)   # 1 AU base ~ 12 px
-
+        self._apply_unit_scale()
+        
         # Use a starfield here too
         self.enable_starfield(True)
         # Draw background in scene space so it aligns with (0,0)
@@ -251,7 +252,7 @@ class SolarMapWidget(PanZoomView):
         # ---- Stations (between rings, UNIQUE GIFs) ----
         # 50% CLOSER orbits: halve previous radius (around planet) and halve interleaved case
         min_px_station = 15
-        max_px_station = 25
+        max_px_station = 18
         station_count = max(1, len(station_rows))
         for j, l in enumerate(station_rows):
             ring_index = min(len(planet_rows) - 1, j % max(1, len(planet_rows))) if planet_rows else 0
