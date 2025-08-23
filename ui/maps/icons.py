@@ -6,6 +6,7 @@ GIF-only icon utilities for map visuals.
 - Provides icon_from_path_or_kind and pm_from_path_or_kind (GIF-first) so
   existing callers (e.g., tabs.py) continue to work without SVGs.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -19,6 +20,7 @@ import hashlib
 
 # Max growth as a fraction of the base size (0.50 = up to +50% bigger)
 ICON_SIZE_VARIANCE_MAX = 0.50
+
 
 def randomized_px(base_px: int, *, salt: Optional[object] = None, variance: float = ICON_SIZE_VARIANCE_MAX) -> int:
     """Return base_px grown by [0 .. variance], deterministically from salt."""
@@ -43,6 +45,7 @@ def list_gifs(folder: str | Path) -> List[Path]:
         return []
     return sorted([pp for pp in p.iterdir() if pp.suffix.lower() == ".gif"])
 
+
 # ---------- Small helpers for list icons / pixmaps (GIF-first) ----------
 
 def _first_frame_from_gif(path: Path) -> Optional[QPixmap]:
@@ -53,6 +56,7 @@ def _first_frame_from_gif(path: Path) -> Optional[QPixmap]:
     mv.jumpToFrame(0)
     pm = mv.currentPixmap()
     return pm if not pm.isNull() else None
+
 
 def pm_from_path_or_kind(path_or_none: Optional[str | Path], kind: str, desired_px: int = 24) -> QPixmap:
     """
@@ -72,6 +76,7 @@ def pm_from_path_or_kind(path_or_none: Optional[str | Path], kind: str, desired_
     ph.fill(Qt.GlobalColor.red)
     return ph
 
+
 def icon_from_path_or_kind(path_or_none: Optional[str | Path], kind: str) -> QIcon:
     """
     GIF-only: build a QIcon from the first frame of the GIF.
@@ -80,6 +85,7 @@ def icon_from_path_or_kind(path_or_none: Optional[str | Path], kind: str) -> QIc
     """
     pm = pm_from_path_or_kind(path_or_none, kind, desired_px=24)
     return QIcon(pm)
+
 
 # ---------- Animated map items (GIF-only) ----------
 
@@ -101,7 +107,9 @@ class AnimatedGifItem(QGraphicsPixmapItem):
 
         self._movie.frameChanged.connect(self._on_frame)
         self._movie.start()
-        self._on_frame(0)
+        
+        # The direct call to _on_frame and the incorrect waitForFirstFrame have been removed.
+        # The frameChanged signal will now handle the initial frame update correctly and asynchronously.
 
     def _apply_scale(self) -> None:
         # Keep constant on-screen size by canceling the view transform scale
@@ -131,6 +139,7 @@ class AnimatedGifItem(QGraphicsPixmapItem):
             self._movie.start()
         else:
             self._movie.stop()
+
 
 def make_map_symbol_item(
     gif_path: str | Path,
