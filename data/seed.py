@@ -39,7 +39,7 @@ def seed(conn: sqlite3.Connection) -> None:
     cur.executemany("INSERT INTO items(item_name, item_base_price, item_description, item_category) VALUES (?, ?, ?, ?);", items)
 
     # --- Ships ---
-    ships = [("Shuttle", 20, 100, 5.0, 50, 100, 100), ("Freighter", 80, 200, 3.0, 100, 200, 150)]
+    ships = [("Shuttle", 20, 200, 20.0, 50, 100, 100), ("Freighter", 80, 200, 3.0, 100, 200, 150)]
     cur.executemany(
         "INSERT INTO ships(ship_name, base_ship_cargo, base_ship_fuel, base_ship_jump_distance, base_ship_shield, base_ship_hull, base_ship_energy) VALUES (?, ?, ?, ?, ?, ?, ?);",
         ships,
@@ -68,7 +68,7 @@ def seed(conn: sqlite3.Connection) -> None:
         for p in range(6):
             dx, dy = _polar_to_xy(rng, 3.0, 40.0)
             cur.execute(
-                "INSERT INTO locations(system_id, location_name, location_category, location_x, location_y, parent_location_id, location_description) VALUES (?, ?, 'planet', ?, ?, NULL, ?);",
+                "INSERT INTO locations(system_id, location_name, location_type, location_x, location_y, parent_location_id, location_description) VALUES (?, ?, 'planet', ?, ?, NULL, ?);",
                 (sid, f"{sys_name} Planet {p+1}", dx, dy, f"A lovely planet named Planet {p+1} in the {sys_name} system."),
             )
             planet_ids.append(cur.lastrowid)
@@ -77,7 +77,7 @@ def seed(conn: sqlite3.Connection) -> None:
             parent_id = rng.choice(planet_ids)
             dx, dy = _polar_to_xy(rng, 0.05, 0.5)
             cur.execute(
-                "INSERT INTO locations(system_id, location_name, location_category, location_x, location_y, parent_location_id, location_description) VALUES (?, ?, 'station', ?, ?, ?, ?);",
+                "INSERT INTO locations(system_id, location_name, location_type, location_x, location_y, parent_location_id, location_description) VALUES (?, ?, 'station', ?, ?, ?, ?);",
                 (sid, f"{sys_name} Station {s+1}", dx, dy, parent_id, f"A bustling station orbiting a planet in the {sys_name} system."),
             )
             
@@ -88,7 +88,7 @@ def seed(conn: sqlite3.Connection) -> None:
 
     cur.execute(
         """
-        INSERT INTO player(id, name, current_wallet_credits, current_player_system_id, current_player_ship_id, current_player_ship_fuel, current_player_ship_hull, current_player_ship_shield, current_player_ship_energy, current_player_ship_cargo, current_location_id)
+        INSERT INTO player(id, name, current_wallet_credits, current_player_system_id, current_player_ship_id, current_player_ship_fuel, current_player_ship_hull, current_player_ship_shield, current_player_ship_energy, current_player_ship_cargo, current_player_location_id)
         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
         """,
         ("Captain Test", 1000, first_sid, shuttle_data[0], shuttle_data[2], shuttle_data[3], shuttle_data[4], shuttle_data[5], shuttle_data[7], first_planet_id),

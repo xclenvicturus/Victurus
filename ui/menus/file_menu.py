@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtWidgets import QFileDialog, QMessageBox, QDialog
+from PySide6.QtWidgets import QMessageBox, QDialog
 
 from PySide6.QtGui import QAction
 
 from save.manager import SaveManager
 from ui.dialogs.new_game_dialog import NewGameDialog
+from ui.dialogs.save_as_dialog import SaveAsDialog
+from ui.dialogs.load_game_dialog import LoadGameDialog
 
 
 def install_file_menu(main_window):
@@ -43,11 +45,29 @@ def _on_new_game(win):
         except Exception as e:
             QMessageBox.critical(win, "New Game Failed", str(e))
             return
-        win.start_game_ui()   # replace idle UI with live game UI
+        win.start_game_ui()
+        if win._map_view:
+            win._map_view.setCurrentIndex(1) # Switch to System tab
         win.status_panel.refresh()
+        win.append_log(f"New game '{save_name}' started.")
 
 
 def _on_save(win):
+    active_save = SaveManager.active_save_dir()
+    if not active_save:
+        _on_save_as(win) # If no active save, treat as "Save As"
+        return
+
+    reply = QMessageBox.question(
+        win,
+        "Save Game",
+        f"Overwrite the current save file '{active_save.name}'?",
+        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        QMessageBox.StandardButton.Yes,
+    )
+    if reply == QMessageBox.StandardButton.No:
+        return
+
     try:
         SaveManager.save_current()
         win.append_log("Game saved.")
@@ -57,18 +77,12 @@ def _on_save(win):
 
 
 def _on_save_as(win):
-    from save.paths import get_saves_dir
-    saves_dir = get_saves_dir()
-    # We only need a name; using file dialog to capture a base name.
-    fname, _ = QFileDialog.getSaveFileName(
-        win,
-        "Save As… (enter a new save name)",
-        str(saves_dir / "New Save"),
-        "SQLite DB (*.db)",
-    )
-    if fname:
-        path = Path(fname)
-        new_name = path.stem
+    dlg = SaveAsDialog(win)
+    if dlg.exec() == QDialog.DialogCode.Accepted:
+        new_name = dlg.get_save_name()
+        if not new_name:
+            QMessageBox.warning(win, "Save As", "Save name cannot be empty.")
+            return
         try:
             dest = SaveManager.save_as(new_name)
             win.append_log(f"Saved As: {dest.name}")
@@ -78,15 +92,17 @@ def _on_save_as(win):
 
 
 def _on_load(win):
-    from save.paths import get_saves_dir
-    root = get_saves_dir()
-    # Use QFileDialog to select a folder under Saves
-    dir_path = QFileDialog.getExistingDirectory(win, "Select Save Folder", str(root))
-    if dir_path:
-        try:
-            SaveManager.load_save(Path(dir_path))
-        except Exception as e:
-            QMessageBox.critical(win, "Load Failed", str(e))
-            return
-        win.start_game_ui()    # rebuild UI for loaded game
-        win.status_panel.refresh()
+    dlg = LoadGameDialog(win)
+    if dlg.exec() == QDialog.DialogCode.Accepted:
+        save_path = dlg.get_selected_save_path()
+        if save_path:
+            try:
+                SaveManager.load_save(save_path)
+            except Exception as e:
+                QMessageBox.critical(win, "Load Failed", str(e))
+                return
+            win.start_game_ui()
+            if win._map_view:
+                win._map_view.setCurrentIndex(1) # Switch to System tab
+            win.status_panel.refresh()
+            win.append_log(f"Loaded game: {save_path.name}")

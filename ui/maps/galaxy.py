@@ -13,7 +13,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
-from PySide6.QtCore import QPoint
+from PySide6.QtCore import QPoint, Signal
 from PySide6.QtGui import QPen, QColor, Qt
 from PySide6.QtWidgets import QGraphicsItem, QGraphicsScene
 
@@ -34,9 +34,10 @@ def _deterministic_star_gif(system_id: int, star_gifs: List[Path]) -> Optional[P
 
 
 class GalaxyMapWidget(PanZoomView):
-    def __init__(self, log_fn: Callable[[str], None], parent=None) -> None:
+    logMessage = Signal(str)
+    
+    def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self._log = log_fn
         self._scene = QGraphicsScene(self)
         self.setScene(self._scene)
 
@@ -52,14 +53,14 @@ class GalaxyMapWidget(PanZoomView):
         bg_path = next((p for p in candidates if p.exists()), None)
         if bg_path:
             self.set_background_image(str(bg_path))
-            self._log(f"Galaxy background: {bg_path}")
+            self.logMessage.emit(f"Galaxy background: {bg_path}")
         else:
             self.set_background_image(None)
-            self._log("Galaxy background: gradient (no image found).")
+            self.logMessage.emit("Galaxy background: gradient (no image found).")
 
         self._star_gifs: List[Path] = list_gifs(STARS_DIR)
         if not self._star_gifs:
-            self._log("WARNING: No star GIFs found; placeholders will be used.")
+            self.logMessage.emit("WARNING: No star GIFs found; placeholders will be used.")
 
         self.load()
 
@@ -92,9 +93,9 @@ class GalaxyMapWidget(PanZoomView):
             self._system_items[s["id"]] = item
 
         player = db.get_player_full()
-        if player and player.get("system_id") is not None:
-            self.refresh_highlight(player["system_id"])
-            self.center_on_system(player["system_id"])
+        if player and player.get("current_player_system_id") is not None:
+            self.refresh_highlight(player["current_player_system_id"])
+            self.center_on_system(player["current_player_system_id"])
         else:
             self.centerOn((min_x + max_x) / 2.0, (min_y + max_y) / 2.0)
         # Galaxy default zoom remains whatever unit*zoom currently is; lists can reset as needed.

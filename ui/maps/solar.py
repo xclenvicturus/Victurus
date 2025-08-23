@@ -15,7 +15,7 @@ from math import radians, sin, cos
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
-from PySide6.QtCore import QPoint, QPointF
+from PySide6.QtCore import QPoint, QPointF, Signal
 from PySide6.QtWidgets import QGraphicsItem, QGraphicsScene
 
 from data import db
@@ -30,9 +30,10 @@ STATIONS_DIR = ASSETS_ROOT / "stations"
 
 
 class SolarMapWidget(PanZoomView):
-    def __init__(self, log_fn: Callable[[str], None], parent=None) -> None:
+    logMessage = Signal(str)
+
+    def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self._log = log_fn
         self._scene = QGraphicsScene(self)
         self.setScene(self._scene)
 
@@ -143,10 +144,10 @@ class SolarMapWidget(PanZoomView):
         bg_path = next((p for p in candidates if p.exists()), None)
         if bg_path:
             self.set_background_image(str(bg_path))
-            self._log(f"Solar background (system {system_id}): {bg_path}")
+            self.logMessage.emit(f"Solar background (system {system_id}): {bg_path}")
         else:
             self.set_background_image(None)
-            self._log(f"Solar background (system {system_id}): gradient (no image found).")
+            self.logMessage.emit(f"Solar background (system {system_id}): gradient (no image found).")
 
         # Layout ingredients
         planets = [l for l in self._locs_cache if l["kind"] == "planet"]
@@ -236,7 +237,7 @@ class SolarMapWidget(PanZoomView):
 
             pgif = planet_assignments[i] if i < len(planet_assignments) else None
             if pgif is None:
-                self._log(f"WARNING: Not enough planet GIFs for system {system_id}; planet {l['id']} gets placeholder.")
+                self.logMessage.emit(f"WARNING: Not enough planet GIFs for system {system_id}; planet {l['id']} gets placeholder.")
                 pgif = Path("missing_planet.gif")
 
             item = make_map_symbol_item(pgif, int(desired_px_planet), self, salt=l.get("id"))
@@ -263,7 +264,7 @@ class SolarMapWidget(PanZoomView):
 
             sgif = station_assignments[j] if j < len(station_assignments) else None
             if sgif is None:
-                self._log(f"WARNING: Not enough station GIFs for system {system_id}; station {l['id']} gets placeholder.")
+                self.logMessage.emit(f"WARNING: Not enough station GIFs for system {system_id}; station {l['id']} gets placeholder.")
                 sgif = Path("missing_station.gif")
 
             # Size distributed across stations within the desired range [15, 25] px
@@ -332,8 +333,8 @@ class SolarMapWidget(PanZoomView):
 
         # Highlight player location if present
         player = db.get_player_full()
-        if player.get("current_location_id"):
-            self.refresh_highlight(player["current_location_id"])
+        if player and player.get("current_player_location_id"):
+            self.refresh_highlight(player["current_player_location_id"])
 
         # Center the camera on the star (aligns background scene draw)
         self.center_on_system(system_id)

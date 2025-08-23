@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS locations (
     location_id         INTEGER PRIMARY KEY AUTOINCREMENT,
     system_id           INTEGER NOT NULL,
     location_name       TEXT NOT NULL,
-    location_category   TEXT NOT NULL,        -- 'planet', 'station', etc.
+    location_type   TEXT NOT NULL,        -- 'planet', 'station', etc.
     location_x          REAL NOT NULL,        -- local AU offset (relative to parent or system)
     location_y          REAL NOT NULL,        -- local AU offset
     parent_location_id  INTEGER NULL,         -- NULL => parent is system center
@@ -72,10 +72,10 @@ CREATE TABLE IF NOT EXISTS player (
     current_player_ship_shield  INTEGER NOT NULL,
     current_player_ship_energy  INTEGER NOT NULL,
     current_player_ship_cargo   INTEGER NOT NULL,
-    current_location_id         INTEGER NULL,
+    current_player_location_id         INTEGER NULL,
     FOREIGN KEY (current_player_system_id) REFERENCES systems(system_id),
     FOREIGN KEY (current_player_ship_id) REFERENCES ships(ship_id),
-    FOREIGN KEY (current_location_id) REFERENCES locations(location_id)
+    FOREIGN KEY (current_player_location_id) REFERENCES locations(location_id)
 );
 
 -- Player inventory

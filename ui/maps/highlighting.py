@@ -9,31 +9,17 @@ from PySide6.QtWidgets import QWidget, QListWidget, QListWidgetItem, QTreeWidget
 from data import db
 
 
-GREEN = QColor("#22c55e")  # tailwind's green-500-ish
-
+GREEN = QColor("#22c55e")
 
 def _item_matches_location(item_text: str, target_name: str) -> bool:
-    """
-    Heuristics if the item's text corresponds to the location name.
-    Handles cases where the list shows "Sys-01 Planet 1" or just "Planet 1".
-    """
     it = (item_text or "").strip()
     tn = (target_name or "").strip()
     if not it or not tn:
         return False
-    if it == tn:
-        return True
-    # often lists prefix with system, so allow suffix match
-    if it.endswith(tn):
-        return True
-    return False
+    return it == tn or it.endswith(tn)
 
 
 def _mark_listwidget(listw: QListWidget, target_loc_id: int, target_loc_name: str) -> None:
-    """
-    Iterate items in a QListWidget and set green text on the item representing target_loc_id/name.
-    Items are expected (optionally) to store location_id at Qt.UserRole.
-    """
     default_color = listw.palette().color(QPalette.ColorRole.Text)
     for i in range(listw.count()):
         it: QListWidgetItem = listw.item(i)
@@ -44,12 +30,7 @@ def _mark_listwidget(listw: QListWidget, target_loc_id: int, target_loc_name: st
 
 
 def _walk_tree_items(root: Optional[QTreeWidgetItem]):
-    """
-    Depth-first traversal over a QTreeWidgetItem subtree.
-    Accepts Optional and no-ops if root is None for type-checker friendliness.
-    """
-    if root is None:
-        return
+    if root is None: return
     stack = [root]
     while stack:
         n = stack.pop()
@@ -59,16 +40,11 @@ def _walk_tree_items(root: Optional[QTreeWidgetItem]):
 
 
 def _mark_treewidget(tw: QTreeWidget, target_loc_id: int, target_loc_name: str) -> None:
-    """
-    Iterate items in a QTreeWidget and set green text on the item representing target_loc_id/name.
-    Items are expected (optionally) to store location_id at Qt.UserRole (column 0).
-    """
     default_color = tw.palette().color(QPalette.ColorRole.Text)
     for r in range(tw.topLevelItemCount()):
         root_item = tw.topLevelItem(r)
         for it in _walk_tree_items(root_item):
-            if it is None:
-                continue
+            if it is None: continue
             loc_id = it.data(0, Qt.ItemDataRole.UserRole)
             text = it.text(0)
             is_match = (loc_id is not None and loc_id == target_loc_id) or _item_matches_location(text, target_loc_name)
@@ -76,23 +52,16 @@ def _mark_treewidget(tw: QTreeWidget, target_loc_id: int, target_loc_name: str) 
 
 
 def apply_green_text_to_current_location(root_widget: QWidget) -> None:
-    """
-    Color the text green for the player's current location in all list/tree widgets
-    under `root_widget` (typically the MapView). Safe to call repeatedly.
-    """
     p = db.get_player_full()
-    if not p:
-        return
+    if not p: return
     
-    loc_id = p.get("current_location_id")
-    if not loc_id:
-        return
+    loc_id = p.get("current_player_location_id")
+    if not loc_id: return
         
     loc = db.get_location(int(loc_id))
-    if not loc:
-        return
+    if not loc: return
         
-    loc_name = loc.get("name", "")
+    loc_name = loc.get("location_name", "")
 
     for listw in root_widget.findChildren(QListWidget):
         _mark_listwidget(listw, int(loc_id), loc_name)

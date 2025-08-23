@@ -8,7 +8,7 @@ from typing import List, Optional, Tuple
 
 from data import db
 from data import seed as seed_module
-from .paths import get_saves_dir, save_folder_for
+from .paths import get_saves_dir, save_folder_for, sanitize_save_name
 from .serializers import write_meta, read_meta
 from .models import SaveMetadata
 
@@ -32,6 +32,7 @@ class SaveManager:
     def list_saves(cls) -> List[Tuple[str, Path]]:
         saves = []
         root = get_saves_dir()
+        if not root.exists(): return []
         for child in sorted(root.iterdir()):
             if child.is_dir() and (child / "game.db").exists():
                 saves.append((child.name, child))
@@ -39,24 +40,23 @@ class SaveManager:
 
     @classmethod
     def create_new_save(cls, save_name: str, commander_name: str, starting_location_label: str) -> Path:
-        # Create folder
+        # Close any existing connection to ensure we start fresh.
+        db.close_active_connection()
+
         dest = save_folder_for(save_name)
         if dest.exists():
             raise FileExistsError(f"Save folder '{dest.name}' already exists.")
         dest.mkdir(parents=True)
 
-        # Create DB and seed it
         db_path = dest / "game.db"
         conn = sqlite3.connect(db_path)
         try:
-            # Apply schema and seed content
             schema_path = Path(__file__).resolve().parents[1] / "data" / "schema.sql"
             with open(schema_path, "r", encoding="utf-8") as f:
                 conn.executescript(f.read())
             seed_module.seed(conn)
             conn.commit()
 
-            # Update player name and starting location
             cur = conn.cursor()
             label = starting_location_label.replace("•", "").strip()
             parts = label.split()
@@ -68,20 +68,20 @@ class SaveManager:
                 system_name = parts[0]
                 planet_name = " ".join(parts[1:]) if len(parts) > 1 else "Planet 1"
 
-            cur.execute("SELECT id FROM systems WHERE name = ?;", (system_name,))
+            cur.execute("SELECT system_id FROM systems WHERE system_name = ?;", (system_name,))
             row = cur.fetchone()
             if not row:
                 raise RuntimeError(f"System '{system_name}' not found for starting location.")
             system_id = row[0]
 
             cur.execute(
-                "SELECT id FROM locations WHERE system_id = ? AND name = ?;",
+                "SELECT location_id FROM locations WHERE system_id = ? AND location_name = ?;",
                 (system_id, f"{system_name} {planet_name}"),
             )
             row = cur.fetchone()
             if not row:
                 cur.execute(
-                    "SELECT id FROM locations WHERE system_id = ? AND kind='planet' ORDER BY id LIMIT 1;",
+                    "SELECT location_id FROM locations WHERE system_id = ? AND location_category='planet' ORDER BY location_id LIMIT 1;",
                     (system_id,)
                 )
                 row = cur.fetchone()
@@ -91,7 +91,7 @@ class SaveManager:
             location_id = row[0]
 
             cur.execute(
-                "UPDATE player SET name=?, system_id=?, current_location_id=? WHERE id=1;",
+                "UPDATE player SET name=?, current_player_system_id=?, current_player_location_id=? WHERE id=1;",
                 (commander_name, system_id, location_id),
             )
             conn.commit()
@@ -99,7 +99,6 @@ class SaveManager:
         finally:
             conn.close()
 
-        # Write metadata
         now = datetime.utcnow().isoformat()
         meta = SaveMetadata(
             save_name=dest.name,
@@ -110,11 +109,14 @@ class SaveManager:
         write_meta(dest / "meta.json", meta)
 
         cls.set_active_save(dest)
-        db.get_connection()  # This will handle schema checks and icon assignments
+        db.get_connection() # This will now open a new connection to the new DB
         return dest
 
     @classmethod
     def load_save(cls, save_dir: Path) -> None:
+        # Close any existing connection before loading a new one.
+        db.close_active_connection()
+        
         db_path = save_dir / "game.db"
         if not db_path.exists():
             raise FileNotFoundError(f"Save database not found: {db_path}")
@@ -155,3 +157,37 @@ class SaveManager:
             write_meta(meta_path, meta)
             
         return dest
+
+    @classmethod
+    def rename_save(cls, old_dir: Path, new_name: str) -> Path:
+        if not old_dir.exists():
+            raise FileNotFoundError("Original save directory not found.")
+        
+        new_dir = old_dir.parent / sanitize_save_name(new_name)
+        if new_dir.exists():
+            raise FileExistsError(f"A save named '{new_dir.name}' already exists.")
+            
+        old_dir.rename(new_dir)
+        
+        meta_path = new_dir / "meta.json"
+        meta = read_meta(meta_path)
+        if meta:
+            meta.save_name = new_dir.name
+            write_meta(meta_path, meta)
+            
+        if cls._active_save_dir == old_dir:
+            cls.set_active_save(new_dir)
+            
+        return new_dir
+
+    @classmethod
+    def delete_save(cls, save_dir: Path) -> None:
+        if not save_dir.exists():
+            raise FileNotFoundError("Save directory not found.")
+        if not save_dir.is_dir():
+            raise NotADirectoryError("Target for deletion is not a directory.")
+        
+        shutil.rmtree(save_dir)
+        
+        if cls._active_save_dir == save_dir:
+            cls._active_save_dir = None

@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QFontDatabase
 
-from data import db
+from game import player_status
 
 
 class TextGauge(QLabel):
@@ -76,7 +76,7 @@ class StatusSheet(QWidget):
         return gauge
 
     def refresh(self) -> None:
-        snapshot = db.get_status_snapshot()
+        snapshot = player_status.get_status_snapshot()
         self.lbl_player.setText(f"Name: {snapshot.get('player_name','—')}")
         self.lbl_location.setText(f"Location: {snapshot.get('location_name') or snapshot.get('system_name') or '—'}")
         self.lbl_credits.setText(f"Credits: {snapshot.get('credits','—'):,}")

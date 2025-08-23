@@ -66,7 +66,7 @@ def _ensure_schema_and_seed(conn: sqlite3.Connection) -> None:
         conn.executescript(f.read())
     conn.commit()
 
-    cur = conn.execute("SELECT COUNT(*) FROM systems")
+    cur = conn.execute("SELECT COUNT(system_id) FROM systems")
     if cur.fetchone()[0] == 0:
         import runpy
         ns = runpy.run_path(str(SEED_PY), run_name="__seed__")
@@ -74,6 +74,16 @@ def _ensure_schema_and_seed(conn: sqlite3.Connection) -> None:
         if callable(seed_fn):
             seed_fn(conn)
             conn.commit()
+
+def close_active_connection() -> None:
+    """Closes the current global database connection, if it's open."""
+    global _connection
+    if _connection is not None:
+        try:
+            _connection.close()
+        except Exception:
+            pass
+        _connection = None
 
 def _table_has_column(conn: sqlite3.Connection, table: str, col: str) -> bool:
     cur = conn.execute(f"PRAGMA table_info({table})")
@@ -96,7 +106,7 @@ def _list_image_files(p: Path) -> List[Path]:
 
 def _assign_for_kind(conn: sqlite3.Connection, system_id: int, kind: str, candidates: List[Path]) -> None:
     cur = conn.execute(
-        "SELECT location_id FROM locations WHERE system_id=? AND location_category=? AND icon_path IS NULL ORDER BY location_id",
+        "SELECT location_id FROM locations WHERE system_id=? AND location_type=? AND icon_path IS NULL ORDER BY location_id",
         (system_id, kind),
     )
     rows_to_update = [r[0] for r in cur.fetchall()]
@@ -135,9 +145,9 @@ def _assign_system_star_icons_if_missing(conn: sqlite3.Connection) -> None:
 def get_counts() -> Dict[str, int]:
     conn = get_connection()
     return {
-        "systems": conn.execute("SELECT COUNT(*) FROM systems").fetchone()[0],
-        "items": conn.execute("SELECT COUNT(*) FROM items").fetchone()[0],
-        "ships": conn.execute("SELECT COUNT(*) FROM ships").fetchone()[0],
+        "systems": conn.execute("SELECT COUNT(system_id) FROM systems").fetchone()[0],
+        "items": conn.execute("SELECT COUNT(item_id) FROM items").fetchone()[0],
+        "ships": conn.execute("SELECT COUNT(ship_id) FROM ships").fetchone()[0],
     }
 
 def get_systems() -> List[Dict]:
@@ -149,7 +159,7 @@ def get_system(system_id: int) -> Optional[Dict]:
 
 def get_locations(system_id: int) -> List[Dict]:
     return [dict(row) for row in get_connection().execute(
-        "SELECT *, location_id as id, location_name as name, location_category as kind, location_x as local_x_au, location_y as local_y_au FROM locations WHERE system_id=? ORDER BY location_name", (system_id,))]
+        "SELECT *, location_id as id, location_name as name, location_type as kind, location_x as local_x_au, location_y as local_y_au FROM locations WHERE system_id=? ORDER BY location_name", (system_id,))]
 
 def get_location(location_id: int) -> Optional[Dict]:
     row = get_connection().execute("SELECT *, location_id as id, location_name as name, location_x as local_x_au, location_y as local_y_au FROM locations WHERE location_id=?", (location_id,)).fetchone()
@@ -157,56 +167,24 @@ def get_location(location_id: int) -> Optional[Dict]:
 
 def set_player_system(system_id: int) -> None:
     conn = get_connection()
-    conn.execute("UPDATE player SET current_player_system_id=?, current_location_id=NULL WHERE id=1", (system_id,))
+    conn.execute("UPDATE player SET current_player_system_id=?, current_player_location_id=NULL WHERE id=1", (system_id,))
     conn.commit()
 
 def set_player_location(location_id: Optional[int]) -> None:
     conn = get_connection()
-    conn.execute("UPDATE player SET current_location_id=? WHERE id=1", (location_id,))
+    conn.execute("UPDATE player SET current_player_location_id=? WHERE id=1", (location_id,))
     conn.commit()
 
 def get_player_full() -> Optional[Dict]:
     row = get_connection().execute("SELECT * FROM player WHERE id=1").fetchone()
     return dict(row) if row else None
 
+def get_player_summary() -> Dict:
+    player = get_player_full()
+    return {"credits": player.get("current_wallet_credits", 0)} if player else {"credits": 0}
+
 def get_player_ship() -> Optional[Dict]:
     player = get_player_full()
     if not player or not player.get("current_player_ship_id"): return None
     row = get_connection().execute("SELECT *, ship_id as id, ship_name as name FROM ships WHERE ship_id = ?", (player["current_player_ship_id"],)).fetchone()
     return dict(row) if row else None
-
-def get_status_snapshot() -> Dict[str, Any]:
-    player = get_player_full() or {}
-    ship = get_player_ship() or {}
-    system = get_system(player.get("current_player_system_id", 0)) if player.get("current_player_system_id") else None
-    location = get_location(player.get("current_location_id", 0)) if player.get("current_location_id") else None
-
-    fuel_frac = player.get("current_player_ship_fuel", 0) / ship.get("base_ship_fuel", 1) if ship.get("base_ship_fuel") else 0
-    
-    return {
-        "player_name": player.get("name", "—"),
-        "credits": player.get("current_wallet_credits", 0),
-        "system_name": system.get("system_name", "—") if system else "—",
-        "location_name": location.get("location_name", "—") if location else "—",
-        "ship_name": ship.get("ship_name", "—"),
-        "ship_state": "Docked" if player.get("current_location_id") else "Traveling",
-        "hull": player.get("current_player_ship_hull", 0),
-        "hull_max": ship.get("base_ship_hull", 1),
-        "shield": player.get("current_player_ship_shield", 0),
-        "shield_max": ship.get("base_ship_shield", 1),
-        "fuel": player.get("current_player_ship_fuel", 0),
-        "fuel_max": ship.get("base_ship_fuel", 1),
-        "energy": player.get("current_player_ship_energy", 0),
-        "energy_max": ship.get("base_ship_energy", 1),
-        "cargo": player.get("current_player_ship_cargo", 0),
-        "cargo_max": ship.get("base_ship_cargo", 1),
-        "base_jump_distance": ship.get("base_ship_jump_distance", 0.0),
-        "current_jump_distance": ship.get("base_ship_jump_distance", 0.0) * fuel_frac
-    }
-
-def get_distance(p1, p2):
-    return ((p1[0]-p2[0])**2 + (p1[1]-p2[1])**2)**0.5
-
-def can_reach(distance):
-    status = get_status_snapshot()
-    return status["current_jump_distance"] >= distance
