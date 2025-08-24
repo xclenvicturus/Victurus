@@ -15,7 +15,7 @@ from math import radians, sin, cos
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
-from PySide6.QtCore import QPoint, QPointF, Signal
+from PySide6.QtCore import QPoint, QPointF, Signal, QTimer, Qt
 from PySide6.QtGui import QPen, QColor
 from PySide6.QtWidgets import QGraphicsItem, QGraphicsScene
 
@@ -422,9 +422,10 @@ class SolarMapWidget(PanZoomView):
         if enabled:
             if self._orbit_timer is None:
                 self._orbit_timer = QTimer(self)
-                self._orbit_timer.setInterval(33)
+                self._orbit_timer.setTimerType(Qt.TimerType.PreciseTimer)
+                self._orbit_timer.setInterval(16)                # <-- ~60 FPS
                 self._orbit_timer.timeout.connect(self._tick_orbits)
-            self._last_orbit_t = time.monotonic()
+                self._last_orbit_t = time.monotonic()
             if not self._orbit_timer.isActive():
                 self._orbit_timer.start()
         else:

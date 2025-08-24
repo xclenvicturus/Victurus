@@ -115,13 +115,14 @@ class PanZoomView(QGraphicsView):
     def _ensure_star_timer(self) -> None:
         if self._star_timer is None and self._animations_enabled and self._star_enabled:
             self._star_timer = QTimer(self)
-            self._star_timer.setInterval(60)  # gentle ~16–17 FPS
+            self._star_timer.setTimerType(Qt.TimerType.PreciseTimer)
+            self._star_timer.setInterval(16)                 # <-- ~60 FPS
             self._star_timer.timeout.connect(self._tick_starfield)
             self._star_timer.start()
             self._star_time = 0.0
 
     def _tick_starfield(self) -> None:
-        self._star_time += 0.06
+        self._star_time += 0.016  # keep ≈1.0 “time units” per second at 60 FPS
         self.viewport().update()
 
     def _regen_starfield(self) -> None:
@@ -234,8 +235,10 @@ class PanZoomView(QGraphicsView):
 
         if self._leader_timer is None:
             self._leader_timer = QTimer(self)
-            self._leader_timer.setInterval(16)  # ~60 FPS
+            self._leader_timer.setTimerType(Qt.TimerType.PreciseTimer)
+            self._leader_timer.setInterval(16)                # ~60 FPS
             self._leader_timer.timeout.connect(self._tick_leader)
+
         if not self._leader_timer.isActive():
             self._leader_timer.start()
 

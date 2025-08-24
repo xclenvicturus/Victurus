@@ -230,9 +230,10 @@ class MainWindow(QMainWindow):
             # Right panel
             panel = LocationList(
                 categories=["All", "System", "Star", "Planet", "Station", "Warp Gate"],
-                sorts=["Name A–Z", "Name Z–A", "Distance", "X", "Y"],  # if you split LY/AU, update here
+                sorts=["Name A–Z", "Name Z–A", "Distance ↑", "Distance ↓", "Fuel ↑", "Fuel ↓"],
                 title="Locations",
             )
+
             self.location_panel = panel
             central.addWidget(panel)
             central.setStretchFactor(0, 1)
