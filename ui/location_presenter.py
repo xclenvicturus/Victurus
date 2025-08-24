@@ -1,7 +1,7 @@
-# ui/location_presenter.py
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Iterable
+from typing import Dict, List, Optional, Iterable, Any
+import math
 
 from PySide6.QtGui import QFont, QIcon
 from PySide6.QtWidgets import QTabWidget
@@ -11,6 +11,27 @@ from game import travel
 from .maps.tabs import MapTabs
 from .widgets.location_list import LocationList
 from .constants import STAR_ID_SENTINEL
+
+
+def _safe_float(v: Any, default: float = 0.0) -> float:
+    try:
+        return float(v)  # type: ignore[arg-type]
+    except Exception:
+        return default
+
+
+def _safe_int(v: Any, default: int = 0) -> int:
+    try:
+        return int(v)  # type: ignore[arg-type]
+    except Exception:
+        return default
+
+
+def _fallback_fuel_from_au(dist_au: float) -> int:
+    """Mirror of travel._intra_fuel_cost for a presenter-side fallback."""
+    if dist_au <= 0.0:
+        return 0
+    return max(1, int(math.ceil(dist_au / 5.0)))
 
 
 class LocationPresenter:
@@ -28,8 +49,8 @@ class LocationPresenter:
     def refresh(self) -> None:
         list_font = QFont()
         player = db.get_player_full() or {}
-        cur_sys_id = int(player.get("current_player_system_id") or 0)
-        cur_loc_id = int(player.get("current_player_location_id") or 0)
+        cur_sys_id = _safe_int(player.get("current_player_system_id") or player.get("system_id"), 0)
+        cur_loc_id = _safe_int(player.get("current_player_location_id") or player.get("location_id"), 0)
 
         if self._using_galaxy():
             rows = self._build_galaxy_rows(cur_sys_id)
@@ -44,7 +65,6 @@ class LocationPresenter:
     # -------- internals --------
 
     def _tab_widget(self) -> Optional[QTabWidget]:
-        """Return the inner QTabWidget from MapTabs if present and typed."""
         tw = getattr(self._tabs, "tabs", None)
         return tw if isinstance(tw, QTabWidget) else None
 
@@ -60,24 +80,41 @@ class LocationPresenter:
     def _using_galaxy(self) -> bool:
         return self._current_tab_index() == 0
 
-    def _coerce_list(self, obj) -> List[Dict]:
+    def _coerce_list(self, obj: Any) -> List[Dict[str, Any]]:
         if isinstance(obj, list):
-            return obj
+            return obj  # type: ignore[return-value]
         if isinstance(obj, tuple):
-            return list(obj)
+            return list(obj)  # type: ignore[return-value]
         if isinstance(obj, Iterable):
-            return list(obj)
+            return list(obj)  # type: ignore[return-value]
         return []
 
-    def _icon_provider(self, r: Dict):
+    def _icon_provider(self, r: Dict[str, Any]):
         p = r.get("icon_path")
-        return QIcon(p) if p else None
+        return QIcon(p) if isinstance(p, str) and p else None
 
-    def _build_galaxy_rows(self, cur_sys_id: int) -> List[Dict]:
-        rows: List[Dict] = []
+    # ---------- distance formatting helpers ----------
+
+    def _fmt_galaxy_distance(self, td: Dict[str, Any]) -> str:
+        ly = _safe_float(td.get("dist_ly", 0.0), 0.0)
+        return f"{ly:.2f} ly"
+
+    def _fmt_system_distance(self, td: Dict[str, Any]) -> str:
+        same = bool(td.get("same_system", False))
+        au = _safe_float(td.get("dist_au", 0.0), 0.0)
+        if same:
+            return f"{au:.2f} AU"
+        ly = _safe_float(td.get("dist_ly", 0.0), 0.0)
+        tail_au = _safe_float(td.get("intra_target_au", 0.0), 0.0)
+        return f"{ly:.2f} ly + {tail_au:.2f} AU"
+
+    # ---------- row builders ----------
+
+    def _build_galaxy_rows(self, cur_sys_id: int) -> List[Dict[str, Any]]:
+        rows: List[Dict[str, Any]] = []
         gal = getattr(self._tabs, "galaxy", None)
         get_entities = getattr(gal, "get_entities", None)
-        entities: List[Dict] = []
+        entities: List[Dict[str, Any]] = []
         if callable(get_entities):
             try:
                 entities = self._coerce_list(get_entities())
@@ -90,31 +127,41 @@ class LocationPresenter:
                 entities = []
 
         for s in entities:
-            sid = int(s.get("id") or 0)
+            sid = _safe_int(s.get("id") or s.get("system_id"), 0)
             try:
-                td = travel.get_travel_display_data(target_id=sid, is_system_target=True) or {}
+                td: Dict[str, Any] = travel.get_travel_display_data("star", sid) or {}
             except Exception:
                 td = {}
-            dist_ly = float(td.get("dist_ly", 0.0) or 0.0)
+
+            # Fuel fallback (galaxy): if planner didn't provide one, use the "to gate" leg
+            fuel_cost_val = td.get("fuel_cost", None)
+            if not isinstance(fuel_cost_val, (int, float)) or fuel_cost_val <= 0:
+                fuel_cost_val = _fallback_fuel_from_au(_safe_float(td.get("intra_current_au", 0.0), 0.0))
+
             rows.append({
                 "id": sid,
                 "name": s.get("name", "System"),
                 "kind": "system",
-                "distance": td.get("distance", f"{dist_ly:.2f} ly"),
-                "fuel_cost": td.get("fuel_cost", "—"),
-                "x": s.get("x", 0.0),
-                "y": s.get("y", 0.0),
-                "can_reach": True,
+                "distance": self._fmt_galaxy_distance(td),
+                "dist_ly": _safe_float(td.get("dist_ly", 0.0), 0.0),
+                "dist_au": _safe_float(td.get("dist_au", 0.0), 0.0),
+                "jump_dist": _safe_float(td.get("dist_ly", 0.0), 0.0),
+                "fuel_cost": int(fuel_cost_val) if fuel_cost_val > 0 else "—",
+                "x": _safe_float(s.get("x", s.get("system_x", 0.0)), 0.0),
+                "y": _safe_float(s.get("y", s.get("system_y", 0.0)), 0.0),
+                "can_reach": bool(td.get("can_reach", True)),
+                "can_reach_jump": bool(td.get("can_reach_jump", True)),
+                "can_reach_fuel": bool(td.get("can_reach_fuel", True)),
                 "icon_path": s.get("icon_path"),
                 "is_current": (sid == cur_sys_id),
             })
         return rows
 
-    def _build_system_rows(self, viewed_sys_id: int, cur_loc_id: int) -> List[Dict]:
-        rows: List[Dict] = []
+    def _build_system_rows(self, viewed_sys_id: int, cur_loc_id: int) -> List[Dict[str, Any]]:
+        rows: List[Dict[str, Any]] = []
 
         # Prefer entities coming from the solar widget
-        entities: List[Dict] = []
+        entities: List[Dict[str, Any]] = []
         sol = getattr(self._tabs, "solar", None)
         get_entities = getattr(sol, "get_entities", None)
         if callable(get_entities):
@@ -147,20 +194,20 @@ class LocationPresenter:
                 pass
 
         # Current player location coord (fallback 0,0)
-        player = db.get_player_full() or {}
         cur_x = 0.0
         cur_y = 0.0
         if cur_loc_id:
             try:
                 cur_loc = db.get_location(cur_loc_id) or {}
-                cur_x = float(cur_loc.get("x", 0.0) or 0.0)
-                cur_y = float(cur_loc.get("y", 0.0) or 0.0)
+                # Prefer AU aliases from db.py
+                cur_x = _safe_float(cur_loc.get("local_x_au", cur_loc.get("location_x", 0.0)), 0.0)
+                cur_y = _safe_float(cur_loc.get("local_y_au", cur_loc.get("location_y", 0.0)), 0.0)
             except Exception:
                 pass
 
         for e in entities:
-            eid = int(e.get("id") or 0)
-            kind = (e.get("kind") or e.get("location_type") or "location").lower()
+            eid = _safe_int(e.get("id"), 0)
+            kind = str(e.get("kind") or e.get("location_type") or "location").lower()
 
             # coords
             ex = e.get("x", None)
@@ -168,54 +215,61 @@ class LocationPresenter:
             if ex is None or ey is None:
                 if eid >= 0:
                     locrow = db.get_location(eid) or {}
-                    ex = locrow.get("x", 0.0)
-                    ey = locrow.get("y", 0.0)
+                    # use db.py AU aliases, fallback to raw columns
+                    ex = locrow.get("local_x_au", locrow.get("location_x", 0.0))
+                    ey = locrow.get("local_y_au", locrow.get("location_y", 0.0))
                 else:
                     ex = 0.0
                     ey = 0.0
-            try:
-                ex = float(ex or 0.0)
-                ey = float(ey or 0.0)
-            except Exception:
-                ex = 0.0
-                ey = 0.0
+            exf = _safe_float(ex, 0.0)
+            eyf = _safe_float(ey, 0.0)
 
-            # AU distance (prefer travel module, else baked, else geometry)
-            dist_au = 0.0
-            td: Dict = {}
+            # Query travel for distances
             try:
-                td = travel.get_travel_display_data(
-                    target_id=(viewed_sys_id if eid < 0 else eid),
-                    is_system_target=(eid < 0),
-                    current_view_system_id=viewed_sys_id,
-                ) or {}
-                v = td.get("dist_au", None)
-                if v is not None:
-                    dist_au = float(v)
+                if eid < 0:
+                    td: Dict[str, Any] = travel.get_travel_display_data("star", viewed_sys_id) or {}
+                else:
+                    td = travel.get_travel_display_data("loc", eid) or {}
             except Exception:
-                pass
+                td = {}
+
+            # AU fallback if travel couldn't provide
+            dist_au = _safe_float(td.get("dist_au", 0.0), 0.0)
             if not dist_au:
+                # try baked values on the entity
                 for k in ("distance_au", "orbit_radius_au", "au", "orbit_au"):
                     v = e.get(k)
                     if v not in (None, ""):
-                        try:
-                            dist_au = float(str(v))
+                        dist_au = _safe_float(v, 0.0)
+                        if dist_au:
                             break
-                        except Exception:
-                            pass
             if not dist_au:
-                from math import hypot
-                dist_au = hypot(ex - cur_x, ey - cur_y)
+                # geometric as last resort
+                dist_au = math.hypot(exf - cur_x, eyf - cur_y)
+
+            # Fuel: prefer travel module; fallback to a coarse AU-based estimate
+            fuel_cost_val = td.get("fuel_cost", None)
+            if not isinstance(fuel_cost_val, (int, float)) or fuel_cost_val <= 0:
+                # same-system: use dist_au; inter-system: use arrival leg as a floor
+                if bool(td.get("same_system", False)):
+                    fuel_cost_val = _fallback_fuel_from_au(dist_au)
+                else:
+                    fuel_cost_val = _fallback_fuel_from_au(_safe_float(td.get("intra_target_au", 0.0), 0.0))
 
             rows.append({
                 "id": eid,
                 "name": e.get("name", "—"),
                 "kind": kind,
-                "distance": td.get("distance", f"0.00 ly, {dist_au:.2f} AU"),
-                "fuel_cost": td.get("fuel_cost", "—"),
-                "x": ex,
-                "y": ey,
-                "can_reach": True,
+                "distance": self._fmt_system_distance(td),
+                "dist_ly": _safe_float(td.get("dist_ly", 0.0), 0.0),
+                "dist_au": _safe_float(dist_au, 0.0),
+                "jump_dist": _safe_float(td.get("dist_ly", 0.0), 0.0),
+                "fuel_cost": int(fuel_cost_val) if fuel_cost_val > 0 else "—",
+                "x": exf,
+                "y": eyf,
+                "can_reach": bool(td.get("can_reach", True)),
+                "can_reach_jump": bool(td.get("can_reach_jump", True)),
+                "can_reach_fuel": bool(td.get("can_reach_fuel", True)),
                 "icon_path": e.get("icon_path"),
                 "is_current": (eid == cur_loc_id) if eid >= 0 else False,
             })

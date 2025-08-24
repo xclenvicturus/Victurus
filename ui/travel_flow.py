@@ -1,115 +1,171 @@
 # ui/travel_flow.py
 from __future__ import annotations
 
-from typing import Callable, List, Tuple
+from typing import Callable, List, Tuple, Optional
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QObject, QTimer
 
 from data import db
 from game import travel, ship_state
 
 
-class TravelFlow:
+PHASE_WRAP_MS = 5000          # fixed 5s for all enter/leave phases
+CRUISE_MS_PER_AU = 500        # scaling for cruising time (ms per AU)
+WARP_MS_PER_LY = 500          # scaling for warp time (ms per LY)
+
+
+class TravelFlow(QObject):
     """
-    Simple UI wrapper around game.travel with a "progression" sequence using timers.
-    Call begin(kind, ident) where kind is 'star' or 'loc'.
+    UI wrapper around game.travel with a phase-based sequence.
+    Call begin(kind, ident) where kind is 'loc' (location_id) or 'star' (system_id).
     """
 
-    def __init__(self, on_arrival: Callable[[], None], log: Callable[[str], None]) -> None:
+    def __init__(self, on_arrival: Callable[[], None], log: Optional[Callable[[str], None]] = None) -> None:
+        super().__init__()
         self._on_arrival = on_arrival
-        self._log = log
+        self._log = log or (lambda m: None)
+        self._timers: List[QTimer] = []
 
-    # -------- public API --------
-
+    # ---- public API ----
     def begin(self, kind: str, ident: int) -> None:
+        """
+        Start a travel sequence to a target.
+        kind: 'loc' for a location_id target, 'star' for a system_id target (to its star).
+        """
         try:
-            player = db.get_player_full()
-            if not player:
-                self._log("No player loaded.")
-                return
-
-            is_system_target = (kind == "star")
-            target_id = int(ident or 0)
-            td = travel.get_travel_display_data(target_id=target_id, is_system_target=is_system_target)
-            if not td:
-                self._log("No route available.")
-                return
-
-            sequence: List[tuple[str, int]] = []
-            current_status = ship_state.get_temporary_state() or self._real_ship_status()
-            if current_status == "Docked":
-                sequence.append(("Un-docking...", 10_000))
-            elif current_status == "Orbiting":
-                sequence.append(("Leaving Orbit...", 10_000))
-
-            travel_time_ms = int((float(td.get("dist_ly", 0.0)) + float(td.get("dist_au", 0.0))) * 500)
-            if travel_time_ms <= 0:
-                travel_time_ms = 500
-            sequence.append(("Traveling", travel_time_ms))
-
-            if is_system_target:
-                sequence.append(("Entering Orbit...", 10_000))
-            else:
-                target_loc = db.get_location(target_id)
-                k = (target_loc.get("kind") or target_loc.get("location_type") or "").lower() if target_loc else ""
-                sequence.append(("Docking...", 10_000) if k == "station" else ("Entering Orbit...", 10_000))
-
-            def finalize():
-                if is_system_target:
-                    travel.travel_to_system(target_id)
-                else:
-                    travel.travel_to_location(target_id)
-                self._after_arrival()
-
-            self._execute_sequence(sequence, finalize)
-
+            route = travel.get_travel_display_data(kind, ident)
         except Exception as e:
-            self._log(f"Travel error: {e!r}")
-
-    # -------- internals --------
-
-    def _execute_sequence(self, sequence: List[tuple[str, int]], on_done: Callable[[], None]) -> None:
-        if not sequence:
-            on_done()
+            self._log(f"Travel error: {e}")
             return
 
-        # Kick off and chain timers
-        ship_state.set_temporary_state(sequence[0][0])
-        elapsed = 0
-        for i, (label, dur) in enumerate(sequence):
-            def make_cb(lbl=label, last=(i == len(sequence) - 1), d=dur):
-                def cb():
-                    ship_state.set_temporary_state(lbl)
-                    if last:
-                        fin = QTimer()
-                        fin.setSingleShot(True)
-                        fin.timeout.connect(self._finish_sequence(on_done))
-                        fin.start(d)
-                return cb
-            t = QTimer()
+        if not isinstance(route, dict) or not route.get("ok", True):
+            self._log("Unable to plan route.")
+            return
+
+        seq: List[Tuple[str, int]] = []
+
+        # --- source depart wrapper if currently parked somewhere ---
+        source_kind = (route.get("source_kind") or "").lower()
+        if source_kind == "station":
+            seq.append(("Undocking", PHASE_WRAP_MS))
+        elif source_kind in ("planet", "star", "warpgate"):
+            seq.append(("Leaving Orbit", PHASE_WRAP_MS))
+
+        same_system = bool(route.get("same_system", False))
+        if same_system:
+            # -------- Intra-system: single cruise leg --------
+            dist_au = float(route.get("dist_au", 0.0))
+            cruise_ms = max(0, int(round(dist_au * CRUISE_MS_PER_AU)))
+            seq.extend([
+                ("Entering Cruise", PHASE_WRAP_MS),
+                ("Cruising", cruise_ms),
+                ("Leaving Cruise", PHASE_WRAP_MS),
+            ])
+        else:
+            # -------- Inter-system: cruise to gate, warp, cruise from gate --------
+            intra_current_au = float(route.get("intra_current_au", 0.0))
+            intra_target_au = float(route.get("intra_target_au", 0.0))
+            dist_ly = float(route.get("dist_ly", 0.0))
+
+            seq.extend([
+                ("Entering Cruise", PHASE_WRAP_MS),
+                ("Cruising", max(0, int(round(intra_current_au * CRUISE_MS_PER_AU)))),
+                ("Leaving Cruise", PHASE_WRAP_MS),
+
+                ("Initializing Warp", PHASE_WRAP_MS),
+                ("Warping", max(0, int(round(dist_ly * WARP_MS_PER_LY)))),
+                ("Leaving Warp", PHASE_WRAP_MS),
+
+                ("Entering Cruise", PHASE_WRAP_MS),
+                ("Cruising", max(0, int(round(intra_target_au * CRUISE_MS_PER_AU)))),
+                ("Leaving Cruise", PHASE_WRAP_MS),
+            ])
+
+        # --- perform the actual DB move just before arrival wrappers ---
+        def _do_move() -> None:
+            try:
+                msg = travel.perform_travel(kind, ident)
+                if msg:
+                    self._log(str(msg))
+            except Exception as e:
+                self._log(f"Travel apply error: {e}")
+
+        # --- arrival wrapper ---
+        target_kind = (route.get("target_kind") or "").lower()
+        if target_kind == "station":
+            arrival_tail: List[Tuple[str, int]] = [
+                ("Docking", PHASE_WRAP_MS),
+                ("Docked", 0),
+            ]
+        else:
+            arrival_tail = [
+                ("Entering Orbit", PHASE_WRAP_MS),
+                ("Orbiting", 0),
+            ]
+
+        # Split run: transit (pre-arrival), then perform move, then arrival wrapper
+        pre_arrival = list(seq)            # all phases up to arrival
+        post_arrival = arrival_tail        # the arrival wrapper
+
+        def _after_transit() -> None:
+            _do_move()
+            self._run_sequence(post_arrival, on_done=self._after_arrival)
+
+        self._run_sequence(pre_arrival, on_done=_after_transit)
+
+    # ---- internals ----
+
+    def _set_temp_state(self, label: str, ms: int) -> None:
+        """
+        Call ship_state.set_temporary_state in a way that satisfies both runtime and Pylance.
+        Some builds accept (label, ms); others accept only (label).
+        """
+        set_tmp = getattr(ship_state, "set_temporary_state", None)
+        if callable(set_tmp):
+            try:
+                set_tmp(label, ms)  # type: ignore[call-arg]
+            except TypeError:
+                try:
+                    set_tmp(label)  # type: ignore[misc]
+                except Exception:
+                    pass
+
+    def _run_sequence(self, phases: List[Tuple[str, int]], on_done: Optional[Callable[[], None]] = None) -> None:
+        """Drive the temporary ship status through the given phases."""
+        # Clean up any existing timers
+        for t in self._timers:
+            try:
+                t.stop()
+                t.deleteLater()
+            except Exception:
+                pass
+        self._timers.clear()
+
+        if not phases:
+            if on_done:
+                on_done()
+            return
+
+        # Chain timers
+        def _kick(i: int) -> None:
+            if i >= len(phases):
+                if on_done:
+                    on_done()
+                return
+            label, ms = phases[i]
+            try:
+                self._set_temp_state(label, ms)
+            except Exception:
+                pass
+
+            t = QTimer(self)
             t.setSingleShot(True)
-            t.timeout.connect(make_cb())
-            t.start(elapsed)
-            elapsed += dur
+            t.setInterval(max(0, int(ms)))
+            self._timers.append(t)
+            t.timeout.connect(lambda: _kick(i + 1))
+            t.start()
 
-    def _finish_sequence(self, on_done: Callable[[], None]) -> Callable[[], None]:
-        def inner():
-            ship_state.clear_temporary_state()
-            on_done()
-            ship_state.clear_temporary_state()
-        return inner
-
-    def _real_ship_status(self) -> str:
-        player = db.get_player_full() or {}
-        loc_id = player.get("current_player_location_id")
-        if loc_id:
-            loc = db.get_location(int(loc_id))
-            if loc:
-                k = (loc.get("kind") or loc.get("location_type") or "").lower()
-                return "Docked" if k == "station" else "Orbiting"
-        if player.get("current_player_system_id"):
-            return "Orbiting"
-        return "Traveling"
+        _kick(0)
 
     def _after_arrival(self) -> None:
         try:

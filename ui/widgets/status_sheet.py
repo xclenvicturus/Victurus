@@ -1,90 +1,165 @@
+# ui/widgets/status_sheet.py
 from __future__ import annotations
 
-from typing import Dict
+from typing import Any, Optional
 
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel, QGridLayout
-)
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont, QFontDatabase
+from PySide6.QtWidgets import (
+    QWidget,
+    QGridLayout,
+    QVBoxLayout,
+    QLabel,
+    QProgressBar,
+    QFrame,
+)
 
 from game import player_status
 
 
-class TextGauge(QLabel):
-    def __init__(self, total_chars: int = 28, parent=None) -> None:
-        super().__init__(parent)
-        self.total_chars = total_chars
-        mono_font = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
-        self.setFont(mono_font)
-        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+def _as_int(val: Any, default: int = 0) -> int:
+    """Robust int conversion that keeps Pylance happy."""
+    try:
+        if isinstance(val, bool):
+            return int(val)
+        if val is None:
+            return default
+        if isinstance(val, int):
+            return val
+        if isinstance(val, float):
+            return int(val)
+        # str or other -> try float then int to accept "123.0"
+        return int(float(str(val)))
+    except Exception:
+        return default
 
-    def set_values(self, value: int, maximum: int) -> None:
-        maximum = max(1, int(maximum))
-        value = max(0, min(int(value), maximum))
-        fill_chars = int(round((value / maximum) * self.total_chars))
-        bar = "|" * fill_chars + " " * (self.total_chars - fill_chars)
-        text = f"{value}/{maximum}"
-        start = (self.total_chars - len(text)) // 2
-        bar_list = list(bar)
-        for i, char in enumerate(text):
-            if start + i < self.total_chars:
-                bar_list[start + i] = char
-        self.setText(f"({ ''.join(bar_list) })")
+
+def _as_float(val: Any, default: float = 0.0) -> float:
+    try:
+        if val is None:
+            return default
+        if isinstance(val, (int, float)):
+            return float(val)
+        return float(str(val))
+    except Exception:
+        return default
+
+
+class _Gauge(QProgressBar):
+    """
+    Minimal wrapper around QProgressBar that exposes set_values(current, max).
+    """
+    def __init__(self, text: str, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.setTextVisible(True)
+        self.setFormat(text + ": %v / %m")
+        self.setRange(0, 1)
+        self.setValue(0)
+
+    def set_values(self, current: int, maximum: int) -> None:
+        m = _as_int(maximum, 1)
+        if m < 1:
+            m = 1
+        v = _as_int(current, 0)
+        if v < 0:
+            v = 0
+        if v > m:
+            v = m
+        self.setRange(0, m)
+        self.setValue(v)
 
 
 class StatusSheet(QWidget):
-    def __init__(self, parent=None) -> None:
-        super().__init__(parent)
-        self.setObjectName("StatusSheet")
-        layout = QVBoxLayout(self)
-        
-        self.lbl_title = QLabel("Commander Status")
-        self.lbl_title.setStyleSheet("font-weight: 600; font-size: 14px;")
-        layout.addWidget(self.lbl_title)
+    """
+    Dockable status panel with player/ship info and resource gauges.
+    """
 
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+
+        # Top labels
         self.lbl_player = QLabel("Name: —")
         self.lbl_location = QLabel("Location: —")
         self.lbl_credits = QLabel("Credits: —")
-        layout.addWidget(self.lbl_player)
-        layout.addWidget(self.lbl_location)
-        layout.addWidget(self.lbl_credits)
-
         self.lbl_ship = QLabel("Active Ship: —")
         self.lbl_ship_status = QLabel("Ship Status: —")
-        layout.addWidget(self.lbl_ship)
-        layout.addWidget(self.lbl_ship_status)
+        self.lbl_jump = QLabel("Jump: base 0.0 ly | current 0.0 ly")
 
-        bars_layout = QGridLayout()
-        self.g_hull = self._add_gauge(bars_layout, 0, "Hull")
-        self.g_shield = self._add_gauge(bars_layout, 1, "Shield")
-        self.g_fuel = self._add_gauge(bars_layout, 2, "Fuel")
-        self.g_energy = self._add_gauge(bars_layout, 3, "Energy")
-        self.g_cargo = self._add_gauge(bars_layout, 4, "Cargo")
-        layout.addLayout(bars_layout)
+        # Gauges
+        self.g_hull = _Gauge("Hull", self)
+        self.g_shield = _Gauge("Shield", self)
+        self.g_fuel = _Gauge("Fuel", self)
+        self.g_energy = _Gauge("Energy", self)
+        self.g_cargo = _Gauge("Cargo", self)
 
-        self.lbl_jump = QLabel("Jump: base — ly | current — ly")
-        layout.addWidget(self.lbl_jump)
-        layout.addStretch(1)
+        # Layout
+        root = QVBoxLayout(self)
+        root.setContentsMargins(8, 8, 8, 8)
+        root.setSpacing(6)
+
+        top = QGridLayout()
+        top.setHorizontalSpacing(10)
+        top.setVerticalSpacing(4)
+
+        row = 0
+        top.addWidget(self.lbl_player, row, 0, 1, 2); row += 1
+        top.addWidget(self.lbl_location, row, 0, 1, 2); row += 1
+        top.addWidget(self.lbl_credits, row, 0, 1, 2); row += 1
+        top.addWidget(self.lbl_ship, row, 0, 1, 2); row += 1
+        top.addWidget(self.lbl_ship_status, row, 0, 1, 2); row += 1
+        top.addWidget(self.lbl_jump, row, 0, 1, 2); row += 1
+
+        root.addLayout(top)
+
+        # Separator (use enum-scoped names for Pylance)
+        sep = QFrame(self)
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setFrameShadow(QFrame.Shadow.Sunken)
+        root.addWidget(sep)
+
+        # Gauges block
+        root.addWidget(self.g_hull)
+        root.addWidget(self.g_shield)
+        root.addWidget(self.g_fuel)
+        root.addWidget(self.g_energy)
+        root.addWidget(self.g_cargo)
+        root.addStretch(1)
+
+        # Initial fill
         self.refresh()
 
-    def _add_gauge(self, layout, row, name):
-        label = QLabel(f"{name}:")
-        gauge = TextGauge(total_chars=28, parent=self)
-        layout.addWidget(label, row, 0)
-        layout.addWidget(gauge, row, 1)
-        return gauge
+    # ---------- Public API ----------
 
     def refresh(self) -> None:
-        snapshot = player_status.get_status_snapshot()
+        """
+        Pull a fresh snapshot and update labels + gauges.
+        Defensive against type mismatches so the UI never throws.
+        """
+        snapshot = player_status.get_status_snapshot() or {}
+
+        # Basic strings
         self.lbl_player.setText(f"Name: {snapshot.get('player_name','—')}")
-        self.lbl_location.setText(f"Location: {snapshot.get('location_name') or snapshot.get('system_name') or '—'}")
-        self.lbl_credits.setText(f"Credits: {snapshot.get('credits','—'):,}")
+        self.lbl_location.setText(
+            f"Location: {snapshot.get('location_name') or snapshot.get('system_name') or '—'}"
+        )
+
+        # Credits: format with thousands separator, but only if numeric
+        val = snapshot.get('credits', None)
+        if isinstance(val, (int, float)) or (isinstance(val, str) and val.replace('_', '').replace(',', '').isdigit()):
+            self.lbl_credits.setText(f"Credits: {_as_int(val):,}")
+        else:
+            self.lbl_credits.setText(f"Credits: {str(val) if val is not None else '—'}")
+
         self.lbl_ship.setText(f"Active Ship: {snapshot.get('ship_name','—')}")
         self.lbl_ship_status.setText(f"Ship Status: {snapshot.get('ship_state','—')}")
-        self.g_hull.set_values(snapshot.get("hull", 0), snapshot.get("hull_max", 1))
-        self.g_shield.set_values(snapshot.get("shield", 0), snapshot.get("shield_max", 1))
-        self.g_fuel.set_values(snapshot.get("fuel", 0), snapshot.get("fuel_max", 1))
-        self.g_energy.set_values(snapshot.get("energy", 0), snapshot.get("energy_max", 1))
-        self.g_cargo.set_values(snapshot.get("cargo", 0), snapshot.get("cargo_max", 1))
-        self.lbl_jump.setText(f"Jump: base {snapshot.get('base_jump_distance', 0.0):.1f} ly | current {snapshot.get('current_jump_distance', 0.0):.1f} ly")
+
+        # Gauges (use helpers to coerce)
+        self.g_hull.set_values(_as_int(snapshot.get("hull", 0)), _as_int(snapshot.get("hull_max", 1), 1))
+        self.g_shield.set_values(_as_int(snapshot.get("shield", 0)), _as_int(snapshot.get("shield_max", 1), 1))
+        self.g_fuel.set_values(_as_int(snapshot.get("fuel", 0)), _as_int(snapshot.get("fuel_max", 1), 1))
+        self.g_energy.set_values(_as_int(snapshot.get("energy", 0)), _as_int(snapshot.get("energy_max", 1), 1))
+        self.g_cargo.set_values(_as_int(snapshot.get("cargo", 0)), _as_int(snapshot.get("cargo_max", 1), 1))
+
+        # Jump distances
+        base = _as_float(snapshot.get('base_jump_distance', 0.0))
+        curr = _as_float(snapshot.get('current_jump_distance', 0.0))
+        self.lbl_jump.setText(f"Jump: base {base:.1f} ly | current {curr:.1f} ly")
