@@ -112,10 +112,26 @@ class SolarMapWidget(BackgroundView):
         return rows
     
     def center_on_entity(self, entity_id: int) -> None:
+        """
+        Center on either a star (negative id => -system_id) or a location id.
+        If the target lives in a different system than what's currently loaded,
+        load that system first, then center on the target.
+        """
+        # Clicked a system/star row (galaxy view exposes star as -system_id)
         if entity_id < 0:
-            self.center_on_system(self._system_id)
-        else:
-            self.center_on_location(entity_id)
+            target_sys_id = -entity_id
+            if self._system_id != target_sys_id:
+                self.load(target_sys_id)
+            # star is at (0,0) in scene space
+            self.center_on_system(target_sys_id)
+            return
+
+        # Normal location id: ensure the right system is loaded before centering
+        loc = db.get_location(entity_id) or {}
+        target_sys_id = _to_int(loc.get("system_id") or loc.get("system"))
+        if target_sys_id is not None and self._system_id != target_sys_id:
+            self.load(target_sys_id)
+        self.center_on_location(entity_id)
 
     def map_entity_to_viewport(self, entity_id: int) -> Optional[QPoint]:
         info = self.get_entity_viewport_center_and_radius(entity_id)
@@ -431,7 +447,7 @@ class SolarMapWidget(BackgroundView):
         if player and player.get("current_player_location_id"):
             self.refresh_highlight(player["current_player_location_id"])
 
-        # Center the camera on the star
+        # Center the camera on the star (safe default when loading directly)
         self.center_on_system(system_id)
 
     # ---------- Highlight / Center ----------

@@ -82,8 +82,8 @@ class MapTabs(QWidget):
 
     def center_solar_on_location(self, location_id: int) -> None:
         try:
-            # Ensure solar is loaded for current player context
-            self._ensure_solar_loaded_from_player()
+            # IMPORTANT: do NOT reload to player's system here.
+            # We are already viewing a specific system in Solar; just center there.
             self.solar.center_on_location(int(location_id))
         except Exception:
             pass
