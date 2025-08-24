@@ -1,3 +1,5 @@
+# /ui/maps/galaxy.py
+
 """
 GalaxyMapWidget (display-only, GIF-only stars):
 - systems shown with a star GIF (no SVGs)

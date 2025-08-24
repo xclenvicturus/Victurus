@@ -1,4 +1,5 @@
-# ui/maps/panzoom_view.py
+# /ui/maps/panzoom_view.py
+
 """
 PanZoomView
 - Optional static background image; can be drawn in viewport ("screen") or scene space

@@ -16,8 +16,8 @@
 - 🟩 **New Game** (dialog, initial save creation, player setup)
 - 🟩 **Load Game** (dialog, loading from save file)
 - 🟩 **Save Game / Save As** (persisting current game state)
-- 🟨 **Travel System** (player can move between systems and locations)
-- 🟨 **Fuel Mechanic** (travel consumes fuel)
+- 🟩 **Travel System** (player can move between systems and locations)
+- 🟩 **Fuel Mechanic** (travel consumes fuel)
 - 🟥 **Economy / Markets** (buy/sell goods)
 - 🟥 **Ship Upgrades** (purchase new ships or components)
 - 🟥 **Missions / Quests**
@@ -28,16 +28,14 @@
 - 🟩 **Location List** (filterable, sortable list of destinations)
 - 🟩 **Status Panel** (shows player, ship, and resource info)
 - 🟩 **Log Panel** (displays game messages)
-- 🟨 **Leader Line** (visual aid connecting list to map)
+- 🟩 **Leader Line** (visual aid connecting list to map)
 
 ## Improvements to pursue next
-- **Implement Economy:** The `markets` table exists but there is no UI to interact with it. Building a trade screen would be the next logical feature.
-- **Flesh out Ship Stats:** The `ships` table has stats like shields and energy, but they are not used in gameplay yet. Travel is the only core mechanic implemented.
-- **Add Game Events:** The universe is static. Adding random events, pirate encounters, or dynamic market prices would make the game more engaging.
-- **Refine UI State Saving:** The `save/manager.py` now supports saving UI state per-save file. This should be expanded to include things like the last selected item in the location list or map zoom levels.
+- **Implement Economy:** The database schema supports markets, but there is no UI to interact with them. A trading screen would be a natural next step.
+- **Add Ship Stats:** The `ships` table in the database includes columns for shields, energy, and hull, but these are not yet used in gameplay.
+- **Introduce Game Events:** The game world is currently static. Adding random events, such as pirate encounters or fluctuating market prices, would enhance gameplay.
 
 ## Possible additions
-- **Ship Combat:** A turn-based or real-time combat system.
-- **Storyline:** A main quest to guide the player through the galaxy.
-- **Factions:** Different groups with reputations that the player can influence.
-- **Crafting/Mining:** Allow players to gather resources and build items.
+- **Ship Combat:** A system for ship-to-ship combat.
+- **Main Quest:** A central storyline to guide the player through the game.
+- **Factions:** Introduce different factions with which the player can build or lose reputation.

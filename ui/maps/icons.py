@@ -1,3 +1,5 @@
+# /ui/maps/icons.py
+
 """
 GIF-only icon utilities for map visuals.
 

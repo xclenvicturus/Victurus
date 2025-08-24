@@ -1,3 +1,5 @@
+# /ui/maps/solar.py
+
 """
 SolarMapWidget (display-only, GIF-only assets):
 - central star at (0,0) using a star GIF

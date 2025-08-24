@@ -1,3 +1,5 @@
+# /ui/utils/symbols.py
+
 """
 Shape helpers for map rendering.
 """

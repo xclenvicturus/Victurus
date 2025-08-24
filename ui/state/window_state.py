@@ -1,3 +1,5 @@
+# /ui/state/window_state.py
+
 from __future__ import annotations
 
 import json

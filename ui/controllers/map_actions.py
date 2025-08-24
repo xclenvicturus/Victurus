@@ -1,4 +1,5 @@
-# ui/map_actions.py
+# /ui/map_actions.py
+
 from __future__ import annotations
 
 from typing import Callable, Optional

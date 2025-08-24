@@ -1,4 +1,4 @@
-# data/db.py
+# /data/db.py
 """
 data/db.py
 SQLite access layer + schema/seed + first-run icon assignment.

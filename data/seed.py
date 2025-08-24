@@ -1,4 +1,5 @@
-# data/seed.py
+# /data/seed.py
+
 """
 spacegame/data/seed.py
 Populate a demo galaxy with items, ships, markets, and hierarchical solar locations.

@@ -1,3 +1,5 @@
+# /ui/main_window.py
+
 from __future__ import annotations
 
 from typing import Optional, List, Dict, Any
@@ -26,8 +28,9 @@ from .widgets.status_sheet import StatusSheet
 from .widgets.location_list import LocationList
 from .maps.tabs import MapTabs
 
-# controllers
-from .controllers.leadline_controller import LeaderLineController
+# controllers (merged into maps/leadline.py)
+from .maps.leadline import LeaderLineController
+
 from .controllers.location_presenter import LocationPresenter
 from .controllers.map_actions import MapActions
 from game.travel_flow import TravelFlow
@@ -46,9 +49,11 @@ class MainWindow(QMainWindow):
         self._map_view: Optional[MapTabs] = None
         self._pending_logs: List[str] = []
 
-        # Leader-line style state (UI-adjustable)
+        # Leader-line style state (UI-adjustable; defaults match LeadLine)
         self._leader_color: QColor = QColor(0, 255, 128)  # neon green default
         self._leader_width: int = 2
+        self._leader_glow: bool = True
+        self.act_leader_glow: Optional[QAction] = None
 
         # Central placeholder (idle)
         self._idle_label = QLabel("No game loaded.\nUse File → New Game or Load Game to begin.")
@@ -129,7 +134,7 @@ class MainWindow(QMainWindow):
         if view_menu is None:
             view_menu = mb.addMenu("&View")  # returns QMenu
 
-        # Leader Line submenu (use real QMenu instance to satisfy Pylance)
+        # Leader Line submenu
         ll_menu = QMenu("Leader Line", self)
         view_menu.addMenu(ll_menu)
 
@@ -137,23 +142,47 @@ class MainWindow(QMainWindow):
         act_color.triggered.connect(self._choose_leader_color)
         ll_menu.addAction(act_color)
 
-        act_width_inc = QAction("Increase Width", self)
-        act_width_inc.setShortcut("Ctrl++")  # often typed as Ctrl+=
-        act_width_inc.triggered.connect(lambda: self._nudge_leader_width(+1))
-        ll_menu.addAction(act_width_inc)
-
-        act_width_dec = QAction("Decrease Width", self)
-        act_width_dec.setShortcut("Ctrl+-")
-        act_width_dec.triggered.connect(lambda: self._nudge_leader_width(-1))
-        ll_menu.addAction(act_width_dec)
-
         act_width_set = QAction("Set Width…", self)
         act_width_set.triggered.connect(self._choose_leader_width)
         ll_menu.addAction(act_width_set)
 
+        # --- Toggle glow effect (LeadLine.set_style glow_enabled=...) ---
+        act_glow = QAction("Glow", self)
+        act_glow.setCheckable(True)
+        act_glow.setChecked(bool(self._leader_glow))
+        act_glow.toggled.connect(self._toggle_leader_glow)
+        ll_menu.addAction(act_glow)
+        self.act_leader_glow = act_glow
+
+        # Ensure the line reflects the menu's initial state immediately
+        self._apply_leader_style()
+
+    def _toggle_leader_glow(self, enabled: bool) -> None:
+        """Menu handler: enable/disable the soft glow underlay on the leader line."""
+        self._leader_glow = bool(enabled)
+        if self.act_leader_glow and self.act_leader_glow.isChecked() != self._leader_glow:
+            self.act_leader_glow.setChecked(self._leader_glow)
+        self._apply_leader_style()
+
     def _apply_leader_style(self) -> None:
-        if self.lead:
-            self.lead.set_line_style(color=self._leader_color, width=self._leader_width)
+        """Push the current leader-line style to the overlay via controller."""
+        # Ensure defaults exist and keep types correct (QColor expected)
+        self._leader_color = getattr(self, "_leader_color", None) or QColor("#00FF80")
+        self._leader_width = int(getattr(self, "_leader_width", 2))
+        self._leader_glow  = bool(getattr(self, "_leader_glow", True))
+
+        if self.lead is None:
+            return
+
+        try:
+            # Controller API exposes set_line_style(...)
+            self.lead.set_line_style(
+                color=self._leader_color,
+                width=self._leader_width,
+                glow_enabled=self._leader_glow,
+            )
+        except Exception:
+            pass
 
     def _choose_leader_color(self) -> None:
         c = QColorDialog.getColor(self._leader_color, self, "Choose Leader Line Color")
@@ -173,7 +202,6 @@ class MainWindow(QMainWindow):
             self._leader_width,
             1,   # min
             12,  # max
-            1,   # step
         )
         if ok:
             self._leader_width = int(w)
@@ -248,7 +276,8 @@ class MainWindow(QMainWindow):
             # Leader line (hover; set enable_lock=True if you want click-lock)
             self.lead = LeaderLineController(mv, panel, log=self.append_log, enable_lock=False)
 
-            # Apply initial style to leader line
+            # Attach overlay first, then apply initial style
+            self.lead.attach()
             self._apply_leader_style()
 
             # Wire signals
@@ -263,9 +292,6 @@ class MainWindow(QMainWindow):
                 tabs.currentChanged.connect(lambda i: self.lead and self.lead.on_tab_changed(i))
 
             self.setCentralWidget(central)
-
-            # Create leader overlay + first refresh
-            self.lead.attach()
 
             # ---- Restore per-save UI state (if any) ----
             try:
@@ -412,10 +438,11 @@ class MainWindow(QMainWindow):
         except Exception:
             state["map_tab_index"] = 0
 
-        # Leader line style (color + width) — store as #RRGGBB
+        # Leader line style (color + width + glow) — store as #RRGGBB
         try:
             state["leader_color"] = self._leader_color.name()   # HexRgb
             state["leader_width"] = int(self._leader_width)
+            state["leader_glow"]  = bool(self._leader_glow)
         except Exception:
             pass
 
@@ -473,9 +500,13 @@ class MainWindow(QMainWindow):
         try:
             c = state.get("leader_color")
             w = int(state.get("leader_width", self._leader_width))
+            g = state.get("leader_glow", self._leader_glow)
             if isinstance(c, str) and c:
                 self._leader_color = QColor(c)
             self._leader_width = max(1, w)
+            self._leader_glow  = bool(g)
+            if self.act_leader_glow:
+                self.act_leader_glow.setChecked(self._leader_glow)
             self._apply_leader_style()
         except Exception:
             pass

@@ -1,3 +1,5 @@
+# /main.py
+
 from __future__ import annotations
 
 # --- ensure project root is on sys.path BEFORE importing ui.* ---

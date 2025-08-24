@@ -1,4 +1,5 @@
-# ui/maps/tabs.py
+# /ui/maps/tabs.py
+
 """
 ui/maps/tabs.py
 This module only owns the two map views.

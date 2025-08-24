@@ -1,4 +1,4 @@
-# Victurus — Project Structure (updated 2025-08-22)
+# Victurus — Project Structure (updated 2025-08-24)
 
 This document summarizes the repository layout and what each part is responsible for.
 
@@ -21,7 +21,7 @@ Victurus/
 │ └─ schema.sql
 │ └─ seed.py
 └─ database/
-│ └─ .gitignore  (contains game.db)
+│ └─ game.db
 └─ docs/
 │ └─ structure.md
 │ └─ feature_checklist.md
@@ -55,7 +55,6 @@ Victurus/
   │ └─ file_menu.py
   └─ maps/
   │ └─ galaxy.py
-  │ └─ highlighting.py
   │ └─ icons.py
   │ └─ leadline.py
   │ └─ panzoom_view.py

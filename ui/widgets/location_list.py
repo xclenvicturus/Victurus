@@ -1,3 +1,5 @@
+# /ui/widgets/location_list.py
+
 from __future__ import annotations
 
 from typing import Callable, Dict, List, Optional, Tuple
