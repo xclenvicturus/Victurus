@@ -46,7 +46,6 @@ Victurus/
   └─ constants.py
   └─ controllers/
   │ └─ __init__.py
-  │ └─ leadline_controller.py
   │ └─ location_presenter.py
   │ └─ map_actions.py
   └─ dialogs/

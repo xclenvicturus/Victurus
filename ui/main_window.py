@@ -49,6 +49,10 @@ class MainWindow(QMainWindow):
         self._map_view: Optional[MapTabs] = None
         self._pending_logs: List[str] = []
 
+        # Predeclare central/content pieces before menus use them
+        self._central_splitter: Optional[QSplitter] = None
+        self.location_panel: Optional[LocationList] = None
+
         # Leader-line style state (defaults match LeadLine)
         self._leader_color: QColor = QColor(0, 255, 128)
         self._leader_width: int = 2
@@ -69,11 +73,11 @@ class MainWindow(QMainWindow):
         # Log dock
         self.log = QPlainTextEdit(self)
         self.log.setReadOnly(True)
-        log_dock = QDockWidget("Log", self)
-        log_dock.setObjectName("dock_Log")
-        log_dock.setWidget(self.log)
-        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, log_dock)
-        self._register_dock(log_dock)
+        self.log_dock = QDockWidget("Log", self)  # store as attribute
+        self.log_dock.setObjectName("dock_Log")
+        self.log_dock.setWidget(self.log)
+        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.log_dock)
+        self._register_dock(self.log_dock)
 
         # Status Sheet dock
         self.status_panel = StatusSheet(self)
@@ -94,7 +98,14 @@ class MainWindow(QMainWindow):
         for w in (self.lbl_systems, self.lbl_items, self.lbl_ships, self.lbl_credits):
             sb.addPermanentWidget(w)
 
-        # Menus (installed after 'lead' attribute exists)
+        # Menu action handles for Panels submenu
+        self.act_panel_status: Optional[QAction] = None
+        self.act_panel_log: Optional[QAction] = None
+        self.act_panel_location: Optional[QAction] = None
+        self.act_panels_show_all: Optional[QAction] = None
+        self.act_panels_hide_all: Optional[QAction] = None
+
+        # Menus (installed after attributes exist)
         install_file_menu(self)
         self._install_view_menu_extras()
 
@@ -110,14 +121,10 @@ class MainWindow(QMainWindow):
         self._status_timer.setInterval(1500)
         self._status_timer.timeout.connect(self._safe_refresh_status)
 
-        # central UI built in start_game_ui()
-        self._central_splitter: Optional[QSplitter] = None
-        self.location_panel: Optional[LocationList] = None
-
         # Per-save UI-state persistence
         SaveManager.install_ui_state_provider(self._collect_ui_state)
 
-    # ---------- menus: View → Leader Line ----------
+    # ---------- menus: View → Leader Line + Panels ----------
 
     def _install_view_menu_extras(self) -> None:
         mb = self.menuBar()
@@ -154,8 +161,116 @@ class MainWindow(QMainWindow):
         ll_menu.addAction(act_glow)
         self.act_leader_glow = act_glow
 
-        # Safe: this no-ops until self.lead exists
+        # Panels submenu
+        panels_menu = QMenu("Panels", self)
+        view_menu.addMenu(panels_menu)
+
+        # Status dock
+        act_p_status = QAction("Status", self)
+        act_p_status.setCheckable(True)
+        act_p_status.setChecked(self.status_dock.isVisible())
+        act_p_status.toggled.connect(self._toggle_status_panel)
+        panels_menu.addAction(act_p_status)
+        self.act_panel_status = act_p_status
+
+        # Log dock
+        act_p_log = QAction("Log", self)
+        act_p_log.setCheckable(True)
+        act_p_log.setChecked(self.log_dock.isVisible())
+        act_p_log.toggled.connect(self._toggle_log_panel)
+        panels_menu.addAction(act_p_log)
+        self.act_panel_log = act_p_log
+
+        # Location List (created later; start disabled)
+        act_p_loc = QAction("Location List", self)
+        act_p_loc.setCheckable(True)
+        act_p_loc.setEnabled(False)  # will enable once start_game_ui creates it
+        act_p_loc.toggled.connect(self._toggle_location_list_panel)
+        panels_menu.addAction(act_p_loc)
+        self.act_panel_location = act_p_loc
+
+        panels_menu.addSeparator()
+
+        # Show/Hide all
+        act_show_all = QAction("Show All", self)
+        act_show_all.triggered.connect(lambda: self._set_all_panels_visible(True))
+        panels_menu.addAction(act_show_all)
+        self.act_panels_show_all = act_show_all
+
+        act_hide_all = QAction("Hide All", self)
+        act_hide_all.triggered.connect(lambda: self._set_all_panels_visible(False))
+        panels_menu.addAction(act_hide_all)
+        self.act_panels_hide_all = act_hide_all
+
+        # Safe: these no-op until self.lead exists
         self._apply_leader_style()
+        # Sync panel action states
+        self._sync_panels_menu_state()
+
+    # ----- Panels submenu handlers -----
+
+    def _toggle_status_panel(self, visible: bool) -> None:
+        try:
+            self.status_dock.setVisible(bool(visible))
+        finally:
+            self._sync_panels_menu_state()
+
+    def _toggle_log_panel(self, visible: bool) -> None:
+        try:
+            self.log_dock.setVisible(bool(visible))
+        finally:
+            self._sync_panels_menu_state()
+
+    def _toggle_location_list_panel(self, visible: bool) -> None:
+        # Location panel exists after start_game_ui
+        if self.location_panel is None:
+            # Keep action unchecked/disabled until available
+            if self.act_panel_location:
+                self._with_blocked(self.act_panel_location, lambda a: a.setChecked(False))
+                self.act_panel_location.setEnabled(False)
+            return
+        try:
+            self.location_panel.setVisible(bool(visible))
+        finally:
+            self._sync_panels_menu_state()
+
+    def _set_all_panels_visible(self, visible: bool) -> None:
+        # Show/hide docks
+        self.status_dock.setVisible(bool(visible))
+        self.log_dock.setVisible(bool(visible))
+        # Show/hide location list if present
+        if self.location_panel is not None:
+            self.location_panel.setVisible(bool(visible))
+        self._sync_panels_menu_state()
+
+    def _sync_panels_menu_state(self) -> None:
+        """Reflect actual widget visibility into the Panels submenu actions."""
+        # Status
+        if self.act_panel_status is not None:
+            self._with_blocked(self.act_panel_status, lambda a: a.setChecked(self.status_dock.isVisible()))
+        # Log
+        if self.act_panel_log is not None:
+            self._with_blocked(self.act_panel_log, lambda a: a.setChecked(self.log_dock.isVisible()))
+        # Location List
+        if self.act_panel_location is not None:
+            loc = getattr(self, "location_panel", None)
+            has_loc = loc is not None
+            self.act_panel_location.setEnabled(has_loc)
+            if has_loc:
+                self._with_blocked(self.act_panel_location, lambda a, loc=loc: a.setChecked(loc.isVisible()))
+            else:
+                self._with_blocked(self.act_panel_location, lambda a: a.setChecked(False))
+
+    @staticmethod
+    def _with_blocked(action: QAction, fn) -> None:
+        """Run fn(action) with the action's signals blocked to avoid recursive toggles."""
+        old = action.blockSignals(True)
+        try:
+            fn(action)
+        finally:
+            action.blockSignals(old)
+
+    # ----- Leader Line submenu -----
 
     def _toggle_leader_glow(self, enabled: bool) -> None:
         self._leader_glow = bool(enabled)
@@ -211,6 +326,7 @@ class MainWindow(QMainWindow):
         dock.visibilityChanged.connect(
             lambda vis, d=dock: window_state.set_window_open(d.objectName(), bool(vis))
         )
+        dock.visibilityChanged.connect(lambda _vis: self._sync_panels_menu_state())
         dock.installEventFilter(self)
 
     def eventFilter(self, obj, event):
@@ -293,6 +409,11 @@ class MainWindow(QMainWindow):
                     self._restore_ui_state(ui_state)
             except Exception:
                 pass
+
+            # Now that Location List exists, enable its menu action and sync
+            if self.act_panel_location is not None:
+                self.act_panel_location.setEnabled(True)
+                self._sync_panels_menu_state()
 
         mv_reload = getattr(self._map_view, "reload_all", None)
         if callable(mv_reload):
@@ -420,6 +541,7 @@ class MainWindow(QMainWindow):
         except Exception:
             state["map_tab_index"] = 0
 
+        # Leader line style
         try:
             state["leader_color"] = self._leader_color.name()
             state["leader_width"] = int(self._leader_width)
@@ -427,6 +549,13 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
+        # Location List visibility
+        try:
+            state["location_list_visible"] = bool(self.location_panel.isVisible()) if self.location_panel else True
+        except Exception:
+            pass
+
+        # Location panel settings + column widths
         try:
             if self.location_panel:
                 state["panel_category_index"] = int(self.location_panel.category.currentIndex())
@@ -469,6 +598,7 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
+        # Leader line style
         try:
             c = state.get("leader_color")
             w = int(state.get("leader_width", self._leader_width))
@@ -483,6 +613,16 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
+        # Location List visibility (apply after panel exists)
+        try:
+            vis = state.get("location_list_visible", True)
+            if self.location_panel is not None:
+                self.location_panel.setVisible(bool(vis))
+                self._sync_panels_menu_state()
+        except Exception:
+            pass
+
+        # Location panel settings
         try:
             if self.location_panel:
                 cat_idx = int(state.get("panel_category_index", 0))
