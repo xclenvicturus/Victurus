@@ -1,5 +1,3 @@
-# /ui/controllers/location_presenter.py
-
 from __future__ import annotations
 
 from typing import Dict, List, Optional, Iterable, Any
@@ -161,6 +159,7 @@ class LocationPresenter:
 
     def _build_system_rows(self, viewed_sys_id: int, cur_loc_id: int) -> List[Dict[str, Any]]:
         rows: List[Dict[str, Any]] = []
+        sys_id = int(viewed_sys_id)  # ensure defined for rows below
 
         # Prefer entities coming from the solar widget
         entities: List[Dict[str, Any]] = []
@@ -214,17 +213,34 @@ class LocationPresenter:
             # coords
             ex = e.get("x", None)
             ey = e.get("y", None)
+            locrow_cache: Dict[str, Any] = {}
             if ex is None or ey is None:
                 if eid >= 0:
-                    locrow = db.get_location(eid) or {}
-                    # use db.py AU aliases, fallback to raw columns
-                    ex = locrow.get("local_x_au", locrow.get("location_x", 0.0))
-                    ey = locrow.get("local_y_au", locrow.get("location_y", 0.0))
+                    locrow_cache = db.get_location(eid) or {}
+                    ex = locrow_cache.get("local_x_au", locrow_cache.get("location_x", 0.0))
+                    ey = locrow_cache.get("local_y_au", locrow_cache.get("location_y", 0.0))
                 else:
                     ex = 0.0
                     ey = 0.0
             exf = _safe_float(ex, 0.0)
             eyf = _safe_float(ey, 0.0)
+
+            # ---- ALWAYS resolve parent for moons/stations from DB (authoritative) ----
+            parent_id_val = None
+            if kind in ("moon", "station") and eid >= 0:
+                if not locrow_cache:
+                    locrow_cache = db.get_location(eid) or {}
+                parent_id_val = (
+                    locrow_cache.get("parent_location_id")
+                    if locrow_cache.get("parent_location_id") not in (None, "", 0)
+                    else locrow_cache.get("parent_id")
+                )
+
+            else:
+                # non-child kinds keep whatever hints were present
+                parent_id_val = e.get("parent_location_id")
+                if parent_id_val in (None, "", 0):
+                    parent_id_val = e.get("parent_id")
 
             # Query travel for distances
             try:
@@ -260,18 +276,19 @@ class LocationPresenter:
 
             rows.append({
                 "id": eid,
+                "system_id": sys_id,
                 "name": e.get("name", "—"),
-                "kind": kind,
+                "kind": kind.strip().lower(),
+                # authoritative parent id for moons/stations (or hints for others)
+                "parent_location_id": parent_id_val,
+
                 "distance": self._fmt_system_distance(td),
-                "dist_ly": _safe_float(td.get("dist_ly", 0.0), 0.0),
-                "dist_au": _safe_float(dist_au, 0.0),
-                "jump_dist": _safe_float(td.get("dist_ly", 0.0), 0.0),
-                "fuel_cost": int(fuel_cost_val) if fuel_cost_val > 0 else "—",
+                "dist_ly": float(td.get("dist_ly") or 0.0),
+                "dist_au": float(dist_au or 0.0),
+                "fuel_cost": int(td.get("fuel_cost") or 0),
                 "x": exf,
                 "y": eyf,
-                "can_reach": bool(td.get("can_reach", True)),
-                "can_reach_jump": bool(td.get("can_reach_jump", True)),
-                "can_reach_fuel": bool(td.get("can_reach_fuel", True)),
+                "can_reach": True,
                 "icon_path": e.get("icon_path"),
                 "is_current": (eid == cur_loc_id) if eid >= 0 else False,
             })

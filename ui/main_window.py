@@ -1,5 +1,3 @@
-# /ui/main_window.py
-
 from __future__ import annotations
 
 from typing import Optional, List, Dict, Any
@@ -358,6 +356,7 @@ class MainWindow(QMainWindow):
             mv = _make_map_view()
             self._map_view = mv
 
+            # optional MapTabs.logMessage
             log_sig = getattr(mv, "logMessage", None)
             connect = getattr(log_sig, "connect", None)
             if callable(connect):
@@ -368,26 +367,37 @@ class MainWindow(QMainWindow):
 
             central.addWidget(mv)
 
-            # Right panel
+            # Right panel (has “Default View” in sorts)
             panel = LocationList(
-                categories=["All", "System", "Star", "Planet", "Station", "Warp Gate"],
-                sorts=["Name A–Z", "Name Z–A", "Distance ↑", "Distance ↓", "Fuel ↑", "Fuel ↓"],
+                categories=["All", "System", "Star", "Planet", "Moon", "Station", "Warp Gate"],
+                sorts=["Default View", "Name A–Z", "Name Z–A", "Distance ↑", "Distance ↓", "Fuel ↑", "Fuel ↓"],
                 title="Locations",
             )
+
+            # Select "Default View" at startup (UI state restore may override later)
+            try:
+                i = panel.sort.findText("Default View")
+                if i >= 0:
+                    panel.sort.setCurrentIndex(i)
+            except Exception:
+                pass
 
             self.location_panel = panel
             central.addWidget(panel)
             central.setStretchFactor(0, 1)
             central.setStretchFactor(1, 0)
 
-            # Presenter / Actions
+            # Presenter
             self.presenter = LocationPresenter(mv, panel)
+
+            # Actions (focus/open/travel)
             self.map_actions = MapActions(mv, begin_travel_cb=lambda kind, ident: self._begin_travel(kind, ident))
 
-            # Leader line
+            # Leader line (hover; set enable_lock=True if you want click-lock)
             self.lead = LeaderLineController(mv, panel, log=self.append_log, enable_lock=False)
-            self.lead.attach()
-            self._apply_leader_style()  # now the controller exists
+
+            # Apply initial style to leader line
+            self._apply_leader_style()
 
             # Wire signals
             panel.refreshRequested.connect(self.presenter.refresh)
@@ -402,6 +412,9 @@ class MainWindow(QMainWindow):
 
             self.setCentralWidget(central)
 
+            # Create leader overlay + first refresh
+            self.lead.attach()
+
             # ---- Restore per-save UI state (if any) ----
             try:
                 ui_state = SaveManager.read_ui_state_for_active()
@@ -410,11 +423,7 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
 
-            # Now that Location List exists, enable its menu action and sync
-            if self.act_panel_location is not None:
-                self.act_panel_location.setEnabled(True)
-                self._sync_panels_menu_state()
-
+        # Initial refresh
         mv_reload = getattr(self._map_view, "reload_all", None)
         if callable(mv_reload):
             try:
@@ -430,6 +439,7 @@ class MainWindow(QMainWindow):
 
         QTimer.singleShot(0, self._pin_status_dock_for_transition)
 
+        # Flush pending logs
         for m in self._pending_logs:
             self.log.appendPlainText(m)
         self._pending_logs.clear()

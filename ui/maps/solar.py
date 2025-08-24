@@ -1,5 +1,3 @@
-# /ui/maps/solar.py
-
 """
 SolarMapWidget (display-only, GIF-only assets):
 - central star at (0,0) using a star GIF
@@ -9,9 +7,6 @@ SolarMapWidget (display-only, GIF-only assets):
 - animated starfield overlay
 - get_entities() surfaces assigned icon_path so list thumbnails match the map exactly
 
-Debug trails:
-- Optional live trails that render the actual path of each orbiting body (parents and children).
-- Toggle at runtime with Ctrl+D, or call set_debug_orbit_trails_enabled(True/False).
 """
 
 from __future__ import annotations
@@ -31,20 +26,20 @@ from data import db
 from .background import BackgroundView
 from .icons import make_map_symbol_item, list_gifs
 
-ASSETS_ROOT = Path(__file__).resolve().parents[2] / "assets"
+ASSETS_ROOT  = Path(__file__).resolve().parents[2] / "assets"
 SOL_BG_DIR   = ASSETS_ROOT / "solar_backgrounds"
 STARS_DIR    = ASSETS_ROOT / "stars"
 PLANETS_DIR  = ASSETS_ROOT / "planets"
 STATIONS_DIR = ASSETS_ROOT / "stations"
 WARP_GATE_DIR = ASSETS_ROOT / "warp_gate"
+MOONS_DIR    = ASSETS_ROOT / "moons"   # <-- NEW
 
-# ---- Debug trails config ----
-DEBUG_TRAILS_DEFAULT = False
-DEBUG_TRAIL_MAX_POINTS = 600       # ~10s at 60fps if sampling every tick
-DEBUG_TRAIL_SAMPLE_EVERY = 1       # record every N ticks (raise to reduce cost)
-DEBUG_COLOR_PARENT = QColor(255, 0, 255, 170)  # magenta-ish
-DEBUG_COLOR_CHILD  = QColor(0, 255, 255, 170)  # cyan-ish
-DEBUG_TRAIL_Z = -8.5               # under items (-8) but above rings (-9)
+
+def _to_int(x) -> Optional[int]:
+    try:
+        return int(x)  # type: ignore[arg-type]
+    except Exception:
+        return None
 
 
 class SolarMapWidget(BackgroundView):
@@ -83,12 +78,6 @@ class SolarMapWidget(BackgroundView):
         self.enable_starfield(True)
         # Draw background in scene space so it aligns with (0,0)
         self.set_background_mode("viewport")
-
-        # ---- Debug trails state ----
-        self._debug_trails_enabled: bool = DEBUG_TRAILS_DEFAULT
-        # entity_id -> (path_item, deque[QPointF], is_child)
-        self._debug_trails: Dict[int, Tuple[QGraphicsPathItem, Deque[QPointF], bool]] = {}
-        self._debug_sample_accum: int = 0
 
     # ---------- External list helpers ----------
     def get_entities(self) -> List[Dict]:
@@ -158,9 +147,6 @@ class SolarMapWidget(BackgroundView):
         self._star_item = None
         self._star_entity_id = -system_id
 
-        # reset debug trails
-        self._reset_debug_trails()
-
         # Cache rows
         self._locs_cache = [dict(r) for r in db.get_locations(system_id)]
 
@@ -179,9 +165,10 @@ class SolarMapWidget(BackgroundView):
             self.logMessage.emit(f"Solar background (system {system_id}): gradient (no image found).")
 
         # Layout ingredients
-        planets = [l for l in self._locs_cache if l["kind"] == "planet"]
-        stations = [l for l in self._locs_cache if l["kind"] == "station"]
-        warp_gates = [l for l in self._locs_cache if l["kind"] == "warp_gate"]
+        planets    = [l for l in self._locs_cache if l.get("kind") == "planet"]
+        stations   = [l for l in self._locs_cache if l.get("kind") == "station"]
+        warp_gates = [l for l in self._locs_cache if l.get("kind") == "warp_gate"]
+        moons      = [l for l in self._locs_cache if l.get("kind") == "moon"]
 
         # Scene rect fits all rings comfortably around (0,0)
         n_rings = max(1, len(planets) + max(0, len(stations) // max(1, len(planets))) + len(warp_gates) + 2)
@@ -193,10 +180,11 @@ class SolarMapWidget(BackgroundView):
         self._scene.setSceneRect(-R, -R, 2 * R, 2 * R)
 
         # ---- GIF catalogs & deterministic unique assignments ----
-        star_gifs    = list_gifs(STARS_DIR)
-        planet_gifs  = list_gifs(PLANETS_DIR)
-        station_gifs = list_gifs(STATIONS_DIR)
+        star_gifs     = list_gifs(STARS_DIR)
+        planet_gifs   = list_gifs(PLANETS_DIR)
+        station_gifs  = list_gifs(STATIONS_DIR)
         warp_gate_gifs = list_gifs(WARP_GATE_DIR)
+        moon_gifs     = list_gifs(MOONS_DIR)
 
         rng = random.Random(10_000 + system_id)
 
@@ -221,10 +209,12 @@ class SolarMapWidget(BackgroundView):
         planet_rows = sorted(planets, key=lambda x: x["id"])
         station_rows = sorted(stations, key=lambda x: x["id"])
         warp_gate_rows = sorted(warp_gates, key=lambda x: x["id"])
+        moon_rows = sorted(moons, key=lambda x: x["id"])     # <-- NEW
 
-        planet_assignments  = assign_unique(planet_gifs,  len(planet_rows), 1)
-        station_assignments = assign_unique(station_gifs, len(station_rows), 2)
+        planet_assignments   = assign_unique(planet_gifs,  len(planet_rows),   1)
+        station_assignments  = assign_unique(station_gifs, len(station_rows),  2)
         warp_gate_assignments = assign_unique(warp_gate_gifs, len(warp_gate_rows), 3)
+        moon_assignments     = assign_unique(moon_gifs,     len(moon_rows),    4)
 
         # ---- Orbit rings (under everything) ----
         pen = QPen()
@@ -236,12 +226,12 @@ class SolarMapWidget(BackgroundView):
             ring.setZValue(-9)
 
         # ---- Central star (GIF-only) ----
-        min_px_star = 100
-        max_px_star = 250
+        min_px_star = 180
+        max_px_star = 300
         desired_px_star = rng.randint(min_px_star, max_px_star)
         star_gif = pick_star_gif()
         star_path = star_gif if star_gif is not None else Path("missing_star.gif")
-        star_item = make_map_symbol_item(star_path, desired_px_star, self, salt=system_id)
+        star_item = make_map_symbol_item(star_path, int(desired_px_star), self, salt=system_id)
         star_item.setPos(0.0, 0.0)
         star_item.setZValue(-8)
         self._scene.addItem(star_item)
@@ -249,8 +239,8 @@ class SolarMapWidget(BackgroundView):
         self._star_radius_px = desired_px_star / 2.0
 
         # ---- Planets (even angles, UNIQUE GIFs) ----
-        min_px_planet = 30
-        max_px_planet = 75
+        min_px_planet = 45
+        max_px_planet = 95
         n_planets = max(1, len(planet_rows))
         for i, l in enumerate(planet_rows):
             if n_planets == 1:
@@ -281,25 +271,37 @@ class SolarMapWidget(BackgroundView):
             omega = base_speed * (1.0 / (1.0 + i * 0.25))
             self._orbit_specs.append({"id": l["id"], "parent": None, "radius_px": ring_r, "theta0": a0, "omega": omega, "angle": a0})
 
-        # ---- Stations (FIXED: seed proper initial angle & place on orbit around parent) ----
+        # ---- Stations (RESPECT DB PARENT if present) ----
         min_px_station = 15
         max_px_station = 18
         station_count = max(1, len(station_rows))
         planet_ids = [l["id"] for l in planet_rows]
+        planets_with_station: set[int] = set()   # <-- track for moon radii spacing
 
         for j, l in enumerate(station_rows):
-            # parent selection and orbit radius
-            if planet_ids:
+            # Choose parent:
+            parent_from_db = _to_int(l.get("parent_location_id") or l.get("parent_id"))
+            chosen_parent: Optional[int] = None
+            parent_source = "RR"
+            if parent_from_db is not None and parent_from_db in planet_ids:
+                chosen_parent = parent_from_db
+                parent_source = "DB"
+            elif planet_ids:
+                # fallback: round-robin across planets to spread visuals
                 ring_index = min(len(planet_ids) - 1, j % len(planet_ids))
-                parent_id = planet_ids[ring_index]
-                radius_px = 8.0
-                parent_px, parent_py = self._drawpos.get(parent_id, (0.0, 0.0))
-            else:
-                parent_id = None
-                radius_px = ((base_au + 0.5) * self._spread) * 0.5
-                parent_px, parent_py = (0.0, 0.0)  # star at origin
+                chosen_parent = planet_ids[ring_index]
+                parent_source = "RR"
 
-            # DETERMINISTIC initial angle for the station (stable per system/id)
+            if chosen_parent is not None:
+                radius_px = 8.0
+                parent_px, parent_py = self._drawpos.get(chosen_parent, (0.0, 0.0))
+                planets_with_station.add(chosen_parent)
+            else:
+                # No planets; orbit the star
+                radius_px = ((base_au + 0.5) * self._spread) * 0.5
+                parent_px, parent_py = (0.0, 0.0)
+
+            # Deterministic initial angle for the station (stable per system/id)
             a0 = radians(((l["id"] * 211.73) % 360.0))
 
             # Place station ON ITS ORBIT relative to parent immediately
@@ -324,13 +326,10 @@ class SolarMapWidget(BackgroundView):
             self._items[l["id"]] = item
             self._assigned_icons[l["id"]] = sgif
 
-            # Station angular speed (kept similar to before; adjust if you want tighter-looking chase)
+            # Station angular speed
             omega = random.Random(10_000 + system_id * 97 + l["id"]).uniform(0.15, 0.30)  # rad/sec
-
-            # Orbit spec uses parent reference; with seeded theta0 and initial placement,
-            # stations start in the right place and stay glued to their planet.
             self._orbit_specs.append({
-                "id": l["id"], "parent": parent_id,
+                "id": l["id"], "parent": chosen_parent,
                 "radius_px": radius_px, "theta0": a0, "omega": omega, "angle": a0
             })
 
@@ -360,6 +359,66 @@ class SolarMapWidget(BackgroundView):
             base_speed = random.Random(20_000 + system_id * 131 + l["id"]).uniform(0.08, 0.15)
             omega = base_speed * (1.0 / (1.0 + outer_ring_index * 0.25))
             self._orbit_specs.append({"id": l["id"], "parent": None, "radius_px": ring_r, "theta0": a0, "omega": omega, "angle": a0})
+
+        # ---- Moons (RESPECT DB PARENT; avoid station radius) ----
+        ring_gap_px = ring_gap_au * self._spread
+        max_sat_radius = max(3.0, min(10.0, ring_gap_px * 0.6))
+        base_sat_radii = [max_sat_radius * 0.35, max_sat_radius * 0.55, max_sat_radius * 0.75]
+        sat_radii_template = sorted({max(3.0, min(float(r), max_sat_radius - 0.75)) for r in base_sat_radii})
+
+        next_radius_index: Dict[int, int] = {pid: 0 for pid in [p["id"] for p in planet_rows]}
+
+        moon_count = len(moon_rows)
+        for m_idx, l in enumerate(moon_rows):
+            if not planet_ids:
+                continue
+
+            pid_from_db = _to_int(l.get("parent_location_id") or l.get("parent_id"))
+            if pid_from_db in planet_ids:
+                parent_id = pid_from_db
+                parent_src = "DB"
+            else:
+                parent_id = planet_ids[m_idx % len(planet_ids)]
+                parent_src = "RR"
+
+            parent_key = int(parent_id) if parent_id is not None else 0
+            parent_px, parent_py = self._drawpos.get(parent_key, (0.0, 0.0))
+
+            has_station_here = parent_key in planets_with_station
+            if has_station_here:
+                candidates = [r for r in sat_radii_template if abs(r - 8.0) >= 1.0]
+            else:
+                candidates = sat_radii_template[:]
+
+            ridx = next_radius_index.get(parent_key, 0)
+            if ridx >= len(candidates):
+                ridx = len(candidates) - 1 if candidates else 0
+            radius_px = candidates[ridx] if candidates else 5.0
+            next_radius_index[parent_key] = min(ridx + 1, max(0, len(candidates) - 1))
+
+            a0 = radians(((l["id"] * 997.13) % 360.0))
+            mx = parent_px + radius_px * math.cos(a0)
+            my = parent_py + radius_px * math.sin(a0)
+            self._drawpos[l["id"]] = (mx, my)
+
+            mgif = moon_assignments[m_idx] if m_idx < len(moon_assignments) else None
+            if mgif is None:
+                self.logMessage.emit(f"WARNING: Not enough moon GIFs for system {system_id}; moon {l['id']} gets placeholder.")
+                mgif = Path("missing_moon.gif")
+
+            desired_px_moon = int(random.Random(30_000 + system_id * 29 + l["id"]).uniform(14, 18))
+            item = make_map_symbol_item(mgif, desired_px_moon, self, salt=l.get("id"))
+            item.setPos(mx, my)
+            item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
+            self._scene.addItem(item)
+            self._items[l["id"]] = item
+            self._assigned_icons[l["id"]] = mgif
+
+            omega = random.Random(40_000 + system_id * 171 + l["id"]).uniform(0.20, 0.35)  # rad/sec
+            self._orbit_specs.append({
+                "id": l["id"], "parent": parent_id,
+                "radius_px": radius_px, "theta0": a0, "omega": omega, "angle": a0
+            })
 
         # Start/stop orbits respecting global animation toggle
         try:
@@ -454,10 +513,7 @@ class SolarMapWidget(BackgroundView):
                     item.setPos(x, y)
                 parent_pos[ent_id] = (x, y)
 
-                # debug trail
-                self._debug_record_point(ent_id, QPointF(x, y), is_child=False)
-
-        # Update children (stations around their parent)
+        # Update children (stations & moons around their parent)
         for spec in self._orbit_specs:
             if spec.get("parent") is not None:
                 a = angle_for(spec, self._orbit_t0, now)
@@ -474,82 +530,3 @@ class SolarMapWidget(BackgroundView):
                 item = self._items.get(ent_id)
                 if item is not None:
                     item.setPos(x, y)
-
-                # debug trail
-                self._debug_record_point(ent_id, QPointF(x, y), is_child=True)
-
-        # throttle path rebuild frequency if needed
-        self._debug_sample_accum = (self._debug_sample_accum + 1) % max(1, DEBUG_TRAIL_SAMPLE_EVERY)
-
-    # ---------- Debug trails ----------
-    def set_debug_orbit_trails_enabled(self, enabled: bool) -> None:
-        """Turn live path trails on/off."""
-        if self._debug_trails_enabled == bool(enabled):
-            return
-        self._debug_trails_enabled = bool(enabled)
-        if not enabled:
-            self._clear_debug_trails()
-        else:
-            # fresh trail containers for current scene items
-            self._reset_debug_trails()
-
-    def _reset_debug_trails(self) -> None:
-        self._clear_debug_trails()
-        if not self._debug_trails_enabled:
-            return
-        self._debug_trails = {}
-        self._debug_sample_accum = 0
-
-    def _clear_debug_trails(self) -> None:
-        if not self._debug_trails:
-            return
-        for item, _buf, _is_child in list(self._debug_trails.values()):
-            try:
-                self._scene.removeItem(item)
-            except Exception:
-                pass
-        self._debug_trails.clear()
-
-    def _ensure_trail_item(self, ent_id: int, is_child: bool) -> Tuple[QGraphicsPathItem, Deque[QPointF], bool]:
-        trail = self._debug_trails.get(ent_id)
-        if trail:
-            return trail
-        path_item = QGraphicsPathItem()
-        path_item.setZValue(DEBUG_TRAIL_Z)
-        pen = QPen(DEBUG_COLOR_CHILD if is_child else DEBUG_COLOR_PARENT)
-        pen.setCosmetic(True)        # width=0 device pixel
-        pen.setWidth(0)              # hairline
-        path_item.setPen(pen)
-        self._scene.addItem(path_item)
-        buf: Deque[QPointF] = deque(maxlen=DEBUG_TRAIL_MAX_POINTS)
-        self._debug_trails[ent_id] = (path_item, buf, is_child)
-        return self._debug_trails[ent_id]
-
-    def _debug_record_point(self, ent_id: int, pos: QPointF, is_child: bool) -> None:
-        if not self._debug_trails_enabled:
-            return
-        # sample every N ticks (optional)
-        if self._debug_sample_accum != 0:
-            return
-        item, buf, _child_flag = self._ensure_trail_item(ent_id, is_child)
-        buf.append(QPointF(pos))  # copy
-
-        # rebuild path (cheap for <= ~1k points)
-        if len(buf) >= 2:
-            path = QPainterPath(buf[0])
-            for i in range(1, len(buf)):
-                path.lineTo(buf[i])
-            item.setPath(path)
-
-    # ---------- Hotkey toggle ----------
-    def keyPressEvent(self, e) -> None:
-        # Ctrl+D toggles debug orbit trails
-        try:
-            if (e.modifiers() & Qt.KeyboardModifier.ControlModifier) and e.key() == Qt.Key.Key_D:
-                self.set_debug_orbit_trails_enabled(not self._debug_trails_enabled)
-                self.logMessage.emit(f"Debug orbit trails: {'ON' if self._debug_trails_enabled else 'OFF'}")
-                e.accept()
-                return
-        except Exception:
-            pass
-        super().keyPressEvent(e)

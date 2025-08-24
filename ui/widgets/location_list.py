@@ -1,5 +1,3 @@
-# /ui/widgets/location_list.py
-
 from __future__ import annotations
 
 from typing import Callable, Dict, List, Optional, Tuple
@@ -32,13 +30,17 @@ def _norm(s: Optional[str]) -> str:
             out.append(ch)
     return "".join(out)
 
+def _to_int(x) -> Optional[int]:
+    try:
+        return int(x)  # type: ignore[arg-type]
+    except Exception:
+        return None
 
 _LY_RE = re.compile(r"([+-]?\d+(?:\.\d+)?)\s*ly\b", re.IGNORECASE)
 _AU_RE = re.compile(r"([+-]?\d+(?:\.\d+)?)\s*au\b", re.IGNORECASE)
 
 def _extract_ly(r: Dict) -> float:
     """Prefer numeric LY, else parse from 'distance'. Unknown -> inf."""
-    # numeric first
     try:
         v = r.get("dist_ly")
         if v not in (None, ""):
@@ -51,7 +53,6 @@ def _extract_ly(r: Dict) -> float:
             return float(v)
     except Exception:
         pass
-    # parse from string
     try:
         txt = str(r.get("distance") or "")
         m = _LY_RE.search(txt)
@@ -61,17 +62,14 @@ def _extract_ly(r: Dict) -> float:
         pass
     return float("inf")
 
-
 def _extract_au(r: Dict) -> float:
     """Prefer numeric AU, else sum intra legs, else parse AU from 'distance'. Unknown -> inf."""
-    # numeric first
     try:
         v = r.get("dist_au")
         if v not in (None, ""):
             return float(v)
     except Exception:
         pass
-    # sum legs if present
     total = 0.0
     has_leg = False
     try:
@@ -88,7 +86,6 @@ def _extract_au(r: Dict) -> float:
         pass
     if has_leg:
         return total
-    # parse last AU in the string (handles "XX ly + YY AU")
     try:
         txt = str(r.get("distance") or "")
         ms = _AU_RE.findall(txt)
@@ -98,23 +95,12 @@ def _extract_au(r: Dict) -> float:
         pass
     return float("inf")
 
-
 def _smart_distance_key(r: Dict, descending: bool) -> Tuple[float, float, str]:
-    """
-    Calculates a distance key using a simple, robust priority system.
-    - If any numeric distance fields exist, they are summed and used as the definitive total.
-    - If no numeric fields exist, it falls back to parsing the 'distance' string.
-    This prevents conflicts and double-counting between numeric and string sources.
-    """
     name = (r.get("name", "") or "").lower()
     total_au = 0.0
     has_ly_numeric = False
     has_au_numeric = False
 
-    # --- Step 1: Process all available NUMERIC fields first. ---
-    # We sum all numeric components we can find.
-    
-    # LY numeric components
     v_ly_str = None
     try:
         v_ly_str = r.get("dist_ly")
@@ -127,7 +113,6 @@ def _smart_distance_key(r: Dict, descending: bool) -> Tuple[float, float, str]:
     except (ValueError, TypeError):
         pass
 
-    # AU numeric components
     if not has_ly_numeric:
         try:
             v_au_str = r.get("dist_au")
@@ -154,7 +139,6 @@ def _smart_distance_key(r: Dict, descending: bool) -> Tuple[float, float, str]:
     except (ValueError, TypeError):
         pass
 
-    # --- Step 2: Fallback parsing for missing parts ---
     has_parsed = False
     txt = str(r.get("distance") or "")
     try:
@@ -174,18 +158,15 @@ def _smart_distance_key(r: Dict, descending: bool) -> Tuple[float, float, str]:
     except (ValueError, TypeError):
         pass
 
-    # --- Step 3: If we have any distance (numeric or parsed), use it; else unknown ---
     if has_ly_numeric or has_au_numeric or has_parsed:
         val = total_au
         key = (0.0, -val if descending else val, name)
         return key
     else:
-        # No string to parse or no matches, it's an unknown distance.
         key = (1.0, 0.0, name)
         return key
 
 def _fuel_sort_key(r: Dict, descending: bool) -> Tuple[float, float, str]:
-    """Fuel key that keeps unknown at bottom in both directions."""
     name = (r.get("name", "") or "").lower()
     v = r.get("fuel_cost", None)
     try:
@@ -200,13 +181,11 @@ def _fuel_sort_key(r: Dict, descending: bool) -> Tuple[float, float, str]:
 
 class LocationList(QWidget):
     """
-    Reusable right-side panel with:
-    - category dropdown
-    - sort dropdown
-    - live search box
-    - list view with hover/click/double-click signals
-    - distance and fuel columns (Jump column removed)
-    - right-click context menu with "Travel to"
+    Default view (no search, All category, **Default View** sort only):
+    - Planets shown as top-level
+    - Their stations and moons shown as indented children
+
+    All other sorts/filters/searches (including “Name A–Z”) render a flat list like before.
     """
     hovered = Signal(int)
     clicked = Signal(int)
@@ -263,7 +242,10 @@ class LocationList(QWidget):
         item = self.tree.itemAt(pos)
         if not item:
             return
-        entity_id = int(item.data(0, Qt.ItemDataRole.UserRole))
+        val = item.data(0, Qt.ItemDataRole.UserRole)
+        if not isinstance(val, int):
+            return
+        entity_id = val
         menu = QMenu(self)
         travel_action = QAction("Travel to", self)
         travel_action.triggered.connect(lambda: self.travelHere.emit(entity_id))
@@ -279,34 +261,110 @@ class LocationList(QWidget):
             elif ev.type() == QEvent.Type.MouseMove:
                 it = self.current_hover_item()
                 if it:
-                    self.hovered.emit(int(it.data(0, Qt.ItemDataRole.UserRole)))
+                    val = it.data(0, Qt.ItemDataRole.UserRole)
+                    if isinstance(val, int):
+                        self.hovered.emit(val)
             elif ev.type() in (QEvent.Type.Resize, QEvent.Type.Paint):
                 self.anchorMoved.emit()
         return super().eventFilter(obj, ev)
 
     def _on_item_entered(self, item: QTreeWidgetItem):
-        self.hovered.emit(int(item.data(0, Qt.ItemDataRole.UserRole)))
+        val = item.data(0, Qt.ItemDataRole.UserRole)
+        if isinstance(val, int):
+            self.hovered.emit(val)
 
     def _on_item_clicked(self, item: QTreeWidgetItem):
-        self.clicked.emit(int(item.data(0, Qt.ItemDataRole.UserRole)))
+        val = item.data(0, Qt.ItemDataRole.UserRole)
+        if isinstance(val, int):
+            self.clicked.emit(val)
 
     def _on_item_double_clicked(self, item: QTreeWidgetItem):
-        self.doubleClicked.emit(int(item.data(0, Qt.ItemDataRole.UserRole)))
+        val = item.data(0, Qt.ItemDataRole.UserRole)
+        if isinstance(val, int):
+            self.doubleClicked.emit(val)
 
     # ----- Utilities -----
 
+    def _find_item_recursive(self, parent: QTreeWidgetItem, entity_id: int) -> Optional[QTreeWidgetItem]:
+        for i in range(parent.childCount()):
+            ch = parent.child(i)
+            val = ch.data(0, Qt.ItemDataRole.UserRole)
+            if isinstance(val, int) and val == entity_id:
+                return ch
+            hit = self._find_item_recursive(ch, entity_id)
+            if hit:
+                return hit
+        return None
+
     def find_item_by_id(self, entity_id: int) -> Optional[QTreeWidgetItem]:
-        """Finds a top-level item in the tree by its stored entity ID."""
+        """Finds an item (top-level or child) by its stored entity ID."""
         for i in range(self.tree.topLevelItemCount()):
             item = self.tree.topLevelItem(i)
             if item is None:
                 continue
-            data = item.data(0, Qt.ItemDataRole.UserRole)
-            if data == entity_id:
+            val = item.data(0, Qt.ItemDataRole.UserRole)
+            if isinstance(val, int) and val == entity_id:
                 return item
+            hit = self._find_item_recursive(item, entity_id)
+            if hit:
+                return hit
         return None
 
     # ----- Population & styling -----
+
+    def _apply_row_styling(self, it: QTreeWidgetItem, r: Dict, *, red: QBrush, green: QBrush, yellow: QBrush) -> None:
+        is_current = bool(r.get("is_current", False))
+        can_reach = r.get("can_reach", True)
+        can_reach_jump = r.get("can_reach_jump", True)
+        can_reach_fuel = r.get("can_reach_fuel", True)
+
+        if is_current:
+            it.setForeground(0, yellow)
+        elif not can_reach:
+            it.setForeground(0, red)
+
+        try:
+            jump_val = 0.0
+            if "dist_ly" in r and r["dist_ly"] not in (None, ""):
+                jump_val = float(r["dist_ly"])
+            elif "jump_dist" in r and r["jump_dist"] not in (None, ""):
+                jump_val = float(r["jump_dist"])
+        except Exception:
+            jump_val = 0.0
+
+        if jump_val > 0.0:
+            it.setForeground(1, green if can_reach_jump else red)
+        else:
+            it.setForeground(1, green)
+
+        try:
+            fuel_val = r.get("fuel_cost", "—")
+            if isinstance(fuel_val, (int, float)) and float(fuel_val) > 0:
+                it.setForeground(2, green if can_reach_fuel else red)
+        except Exception:
+            pass
+
+    def _is_default_group_view(self) -> bool:
+        """
+        Grouped (parent/child) view is **only** when:
+        - Category is All (or empty)
+        - Search is empty
+        - Sort is exactly "Default View"
+        """
+        cat_ok = (self.category.currentText() in ("", "All"))
+        no_search = (self.search.text().strip() == "")
+        sort_txt = self.sort.currentText()
+        sort_ok = (sort_txt == "Default View")
+        return bool(cat_ok and no_search and sort_ok)
+
+    def _kind_of(self, r: Dict) -> str:
+        return (r.get("kind") or r.get("location_type") or "").strip().lower()
+
+    def _parent_id_of(self, r: Dict) -> Optional[int]:
+        p = r.get("parent_location_id")
+        if p in (None, ""):
+            p = r.get("parent_id")
+        return _to_int(p)
 
     def populate(
         self,
@@ -321,52 +379,138 @@ class LocationList(QWidget):
         green_brush  = QBrush(QColor("green"))
         yellow_brush = QBrush(QColor("yellow"))
 
+        grouped = self._is_default_group_view()
+        self.tree.setRootIsDecorated(grouped)
+
+        if not grouped:
+            # ---- Flat list as before ----
+            for r in rows:
+                rid = _to_int(r.get("id"))
+                if rid is None:
+                    continue
+                dist_text = r.get("distance", "—")
+                fuel_val = r.get("fuel_cost", "—")
+                fuel_text = str(fuel_val) if fuel_val != "—" else "—"
+
+                it = QTreeWidgetItem(self.tree, [r.get("name", "Unknown"), dist_text, fuel_text])
+                it.setData(0, Qt.ItemDataRole.UserRole, rid)
+
+                if icon_provider:
+                    icon = icon_provider(r)
+                    if icon:
+                        it.setIcon(0, icon)
+
+                self._apply_row_styling(it, r, red=red_brush, green=green_brush, yellow=yellow_brush)
+            return
+
+        # ---- Grouped view: planets as parents; stations + moons as children ----
+        by_id: Dict[int, Dict] = {}
+        children_of: Dict[int, List[Dict]] = {}
+
         for r in rows:
+            rid = _to_int(r.get("id"))
+            if rid is None:
+                continue
+            by_id[rid] = r
+            pid = self._parent_id_of(r)
+            if pid is not None:
+                children_of.setdefault(pid, []).append(r)
+
+        used_child_ids: set[int] = set()
+
+        # Iterate rows to preserve the current top-level order, create planet/star/gate top-levels
+        for r in rows:
+            rid = _to_int(r.get("id"))
+            if rid is None:
+                continue
+            k = self._kind_of(r)
+            is_planet = (k == "planet")
+
+            # Non-planet top-levels (star / gate) remain top-level
+            if not is_planet and k in ("star", "warp_gate", "warpgate"):
+                dist_text = r.get("distance", "—")
+                fuel_val = r.get("fuel_cost", "—")
+                fuel_text = str(fuel_val) if fuel_val != "—" else "—"
+
+                it = QTreeWidgetItem(self.tree, [r.get("name", "Unknown"), dist_text, fuel_text])
+                it.setData(0, Qt.ItemDataRole.UserRole, rid)
+                if icon_provider:
+                    icon = icon_provider(r)
+                    if icon:
+                        it.setIcon(0, icon)
+                self._apply_row_styling(it, r, red=red_brush, green=green_brush, yellow=yellow_brush)
+                it.setExpanded(True)
+                continue
+
+            if not is_planet:
+                # Non-planet items that are not heads will be added under their parent later
+                continue
+
+            # Create the planet top-level
+            dist_text = r.get("distance", "—")
+            fuel_val = r.get("fuel_cost", "—")
+            fuel_text = str(fuel_val) if fuel_val != "—" else "—"
+
+            planet_it = QTreeWidgetItem(self.tree, [r.get("name", "Unknown"), dist_text, fuel_text])
+            planet_it.setData(0, Qt.ItemDataRole.UserRole, rid)
+            if icon_provider:
+                icon = icon_provider(r)
+                if icon:
+                    planet_it.setIcon(0, icon)
+            self._apply_row_styling(planet_it, r, red=red_brush, green=green_brush, yellow=yellow_brush)
+
+            # Order children: stations first, then moons, then others (if any)
+            def _child_sort_key(rr: Dict) -> Tuple[int, str]:
+                kk = self._kind_of(rr)
+                rank = 0 if kk == "station" else (1 if kk == "moon" else 2)
+                return (rank, (rr.get("name", "") or "").lower())
+
+            # Attach children (stations + moons under this planet)
+            kids = sorted(children_of.get(rid, []), key=_child_sort_key)
+
+            for ch in kids:
+                cid = _to_int(ch.get("id"))
+                if cid is None:
+                    continue
+                used_child_ids.add(cid)
+
+                c_dist = ch.get("distance", "—")
+                c_fuel_val = ch.get("fuel_cost", "—")
+                c_fuel = str(c_fuel_val) if c_fuel_val != "—" else "—"
+
+                child_it = QTreeWidgetItem(planet_it, [ch.get("name", "Unknown"), c_dist, c_fuel])
+                child_it.setData(0, Qt.ItemDataRole.UserRole, cid)
+                if icon_provider:
+                    c_icon = icon_provider(ch)
+                    if c_icon:
+                        child_it.setIcon(0, c_icon)
+                self._apply_row_styling(child_it, ch, red=red_brush, green=green_brush, yellow=yellow_brush)
+
+            planet_it.setExpanded(True)
+
+        # Any remaining items that didn't get placed (e.g., stations/moons orphaned)
+        for r in rows:
+            rid = _to_int(r.get("id"))
+            if rid is None:
+                continue
+            if rid in used_child_ids:
+                continue
+            k = self._kind_of(r)
+            if k in ("planet", "star", "warp_gate", "warpgate"):
+                # already added above as top-level/group head
+                continue
+
             dist_text = r.get("distance", "—")
             fuel_val = r.get("fuel_cost", "—")
             fuel_text = str(fuel_val) if fuel_val != "—" else "—"
 
             it = QTreeWidgetItem(self.tree, [r.get("name", "Unknown"), dist_text, fuel_text])
-            it.setData(0, Qt.ItemDataRole.UserRole, r.get("id"))
-
+            it.setData(0, Qt.ItemDataRole.UserRole, rid)
             if icon_provider:
                 icon = icon_provider(r)
                 if icon:
                     it.setIcon(0, icon)
-
-            # --- Coloring rules ---
-            is_current = bool(r.get("is_current", False))
-            can_reach = r.get("can_reach", True)
-            can_reach_jump = r.get("can_reach_jump", True)
-            can_reach_fuel = r.get("can_reach_fuel", True)
-
-            # Name column: current rows are YELLOW; unreachable rows turn red.
-            if is_current:
-                it.setForeground(0, yellow_brush)
-            elif not can_reach:
-                it.setForeground(0, red_brush)
-
-            # Distance column (index 1): green if jumpable, red if too far.
-            try:
-                jump_val = 0.0
-                if "dist_ly" in r and r["dist_ly"] not in (None, ""):
-                    jump_val = float(r["dist_ly"])
-                elif "jump_dist" in r and r["jump_dist"] not in (None, ""):
-                    jump_val = float(r["jump_dist"])
-            except Exception:
-                jump_val = 0.0
-
-            if jump_val > 0.0:
-                it.setForeground(1, green_brush if can_reach_jump else red_brush)
-            else:
-                it.setForeground(1, green_brush)
-
-            # Fuel column (index 2): green if enough fuel for a positive cost, red if not.
-            try:
-                if isinstance(fuel_val, (int, float)) and float(fuel_val) > 0:
-                    it.setForeground(2, green_brush if can_reach_fuel else red_brush)
-            except Exception:
-                pass
+            self._apply_row_styling(it, r, red=red_brush, green=green_brush, yellow=yellow_brush)
 
     # ----- Filtering & sorting -----
 
@@ -406,17 +550,20 @@ class LocationList(QWidget):
             ks = k.lower()
             return ("↓" in k) or ("down" in ks) or ("desc" in ks)
 
+        if sort_key in ("Default View",):
+            # Grouping happens in populate(); just return a stable order for headings
+            rows.sort(key=lambda r: (r.get("name", "") or "").lower())
+            return rows
+
         if "Name" in sort_key:
             reverse = sort_key.endswith("Z–A") or sort_key.endswith("Z-A")
             rows.sort(key=lambda r: (r.get("name", "") or "").lower(), reverse=reverse)
 
         elif sort_key.startswith("Distance"):
-            # Two labels only: "Distance ↑" / "Distance ↓"
             desc = _is_desc(sort_key)
             rows.sort(key=lambda rr: _smart_distance_key(rr, descending=desc))
 
         elif sort_key.startswith("Fuel"):
-            # "Fuel ↑" / "Fuel ↓"
             desc = _is_desc(sort_key)
             rows.sort(key=lambda rr: _fuel_sort_key(rr, descending=desc))
 

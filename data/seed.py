@@ -38,10 +38,16 @@ def seed(conn: sqlite3.Connection) -> None:
         ("Food", 60, "description for Food", "trade_item"),
         ("Fuel", 40, "description for Fuel", "consumable_item"),
     ]
-    cur.executemany("INSERT INTO items(item_name, item_base_price, item_description, item_category) VALUES (?, ?, ?, ?);", items)
+    cur.executemany(
+        "INSERT INTO items(item_name, item_base_price, item_description, item_category) VALUES (?, ?, ?, ?);",
+        items,
+    )
 
     # --- Ships ---
-    ships = [("Shuttle", 20, 200, 50.0, 50, 100, 100), ("Freighter", 80, 200, 75.0, 100, 200, 150)]
+    ships = [
+        ("Shuttle",   20, 200, 50.0,  50, 100, 100),
+        ("Freighter", 80, 200, 75.0, 100, 200, 150),
+    ]
     cur.executemany(
         "INSERT INTO ships(ship_name, base_ship_cargo, base_ship_fuel, base_ship_jump_distance, base_ship_shield, base_ship_hull, base_ship_energy) VALUES (?, ?, ?, ?, ?, ?, ?);",
         ships,
@@ -54,55 +60,151 @@ def seed(conn: sqlite3.Connection) -> None:
     item_map = {name: iid for iid, name in cur.fetchall()}
     cur.execute("SELECT ship_id, ship_name, base_ship_fuel, base_ship_hull, base_ship_shield, base_ship_energy, base_ship_jump_distance, base_ship_cargo FROM ships;")
     ship_map = {ship_data[1]: ship_data for ship_data in cur.fetchall()}
-    
-    shuttle_data = ship_map['Shuttle']
+    shuttle_data = ship_map["Shuttle"]
 
     # --- Markets ---
     market_rows = [
         (sys_id, item_id, rng.randint(50, 150), rng.randint(10, 100))
-        for sys_id in sys_map.values() for item_id in item_map.values()
+        for sys_id in sys_map.values()
+        for item_id in item_map.values()
     ]
-    cur.executemany("INSERT INTO markets(system_id, item_id, local_market_price, local_market_stock) VALUES (?, ?, ?, ?);", market_rows)
+    cur.executemany(
+        "INSERT INTO markets(system_id, item_id, local_market_price, local_market_stock) VALUES (?, ?, ?, ?);",
+        market_rows,
+    )
 
-    # --- Locations ---
+    # --- Locations (planets, stations, moons, gate) ---
     for sys_name, sid in sys_map.items():
-        planet_ids = []
+        # Planets (absolute positions around star)
+        planet_ids: list[int] = []
         for p in range(6):
             dx, dy = _polar_to_xy(rng, 3.0, 40.0)
             cur.execute(
-                "INSERT INTO locations(system_id, location_name, location_type, location_x, location_y, parent_location_id, location_description) VALUES (?, ?, 'planet', ?, ?, NULL, ?);",
+                """
+                INSERT INTO locations(system_id, location_name, location_type, location_x, location_y, parent_location_id, location_description)
+                VALUES (?, ?, 'planet', ?, ?, NULL, ?);
+                """,
                 (sid, f"{sys_name} Planet {p+1}", dx, dy, f"A lovely planet named Planet {p+1} in the {sys_name} system."),
             )
-            planet_ids.append(cur.lastrowid)
+            last_id = cur.lastrowid
+            if last_id is None:
+                raise RuntimeError("Failed to retrieve lastrowid after inserting planet")
+            planet_ids.append(last_id)
 
-        for s in range(4):
-            parent_id = rng.choice(planet_ids)
-            dx, dy = _polar_to_xy(rng, 0.05, 0.5)
+        # Stations — ≤ 4 per system, ≤ 1 per planet
+        # Pick unique parent planets so no planet ends up with more than one station.
+        station_parent_planets = planet_ids[:]
+        rng.shuffle(station_parent_planets)
+        station_parent_planets = station_parent_planets[: min(4, len(station_parent_planets))]
+
+        for s, parent_id in enumerate(station_parent_planets, start=1):
+            # small orbital offset around parent (absolute; UI computes its own orbits)
+            offx, offy = _polar_to_xy(rng, 0.05, 0.50)
             cur.execute(
-                "INSERT INTO locations(system_id, location_name, location_type, location_x, location_y, parent_location_id, location_description) VALUES (?, ?, 'station', ?, ?, ?, ?);",
-                (sid, f"{sys_name} Station {s+1}", dx, dy, parent_id, f"A bustling station orbiting a planet in the {sys_name} system."),
+                """
+                INSERT INTO locations(system_id, location_name, location_type, location_x, location_y, parent_location_id, location_description)
+                VALUES (?, ?, 'station', ?, ?, ?, ?);
+                """,
+                (sid, f"{sys_name} Station {s}", offx, offy, parent_id, f"A bustling station orbiting a planet in the {sys_name} system."),
             )
-        
-        # Add warp gate
+
+        # Moons — 0..3 per planet with rarity; only one planet may have >2, and up to two planets may have 2
+        # Strategy:
+        #   - Choose at most one "three-capable" planet (rare).
+        #   - Choose up to two "two-capable" planets (uncommon).
+        #   - Other planets can get at most 1.
+        if planet_ids:
+            shuffled_planets = planet_ids[:]
+            rng.shuffle(shuffled_planets)
+
+            three_capable: set[int] = set()
+            if rng.random() < 0.15:  # rare chance a system has a 3-moon planet
+                three_capable.add(shuffled_planets[0])
+
+            # pick 0-2 two-capable planets (excluding three-capable)
+            remaining = [pid for pid in shuffled_planets if pid not in three_capable]
+            rng.shuffle(remaining)
+            # Bias toward fewer: 0:40%, 1:40%, 2:20%
+            r = rng.random()
+            two_count = 0 if r < 0.40 else (1 if r < 0.80 else 2)
+            two_capable = set(remaining[: min(two_count, len(remaining))])
+
+            # Probabilities: 1st moon fairly likely, 2nd harder, 3rd rare
+            P1, P2, P3 = 0.60, 0.35, 0.15
+
+            for idx, parent_id in enumerate(planet_ids, start=1):
+                moons_here = 0
+                if rng.random() < P1:
+                    moons_here = 1
+                    can_two = (parent_id in two_capable) or (parent_id in three_capable)
+                    if can_two and rng.random() < P2:
+                        moons_here = 2
+                        if (parent_id in three_capable) and (rng.random() < P3):
+                            moons_here = 3
+
+                for m in range(moons_here):
+                    # small orbital offset around parent (absolute; UI computes its own orbits)
+                    m_offx, m_offy = _polar_to_xy(rng, 0.03, 0.25)
+                    cur.execute(
+                        """
+                        INSERT INTO locations(system_id, location_name, location_type, location_x, location_y, parent_location_id, location_description)
+                        VALUES (?, ?, 'moon', ?, ?, ?, ?);
+                        """,
+                        (
+                            sid,
+                            f"{sys_name} Planet {idx} Moon {m+1}",
+                            m_offx,
+                            m_offy,
+                            parent_id,
+                            f"A natural satellite orbiting Planet {idx} in the {sys_name} system.",
+                        ),
+                    )
+
+        # Warp gate
         warp_dx, warp_dy = _polar_to_xy(rng, 45.0, 55.0)
         cur.execute(
-            "INSERT INTO locations(system_id, location_name, location_type, location_x, location_y, parent_location_id, location_description) VALUES (?, ?, 'warp_gate', ?, ?, NULL, ?);",
+            """
+            INSERT INTO locations(system_id, location_name, location_type, location_x, location_y, parent_location_id, location_description)
+            VALUES (?, ?, 'warp_gate', ?, ?, NULL, ?);
+            """,
             (sid, f"{sys_name} Warp Gate", warp_dx, warp_dy, "Warp gate for inter-system jumps."),
         )
-            
+
     # --- Player ---
     first_sid = sys_map["Sys-01"]
-    cur.execute("SELECT location_id FROM locations WHERE system_id = ? AND location_name = ?;",(first_sid, "Sys-01 Planet 1"))
+    cur.execute(
+        "SELECT location_id FROM locations WHERE system_id = ? AND location_name = ?;",
+        (first_sid, "Sys-01 Planet 1"),
+    )
     first_planet_id = cur.fetchone()[0]
 
     cur.execute(
         """
-        INSERT INTO player(id, name, current_wallet_credits, current_player_system_id, current_player_ship_id, current_player_ship_fuel, current_player_ship_hull, current_player_ship_shield, current_player_ship_energy, current_player_ship_cargo, current_player_location_id)
+        INSERT INTO player(
+            id, name, current_wallet_credits, current_player_system_id, current_player_ship_id,
+            current_player_ship_fuel, current_player_ship_hull, current_player_ship_shield,
+            current_player_ship_energy, current_player_ship_cargo, current_player_location_id
+        )
         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
         """,
-        ("Captain Test", 1000, first_sid, shuttle_data[0], shuttle_data[2], shuttle_data[3], shuttle_data[4], shuttle_data[5], 0, first_planet_id),
+        (
+            "Captain Test",
+            1000,
+            first_sid,
+            shuttle_data[0],
+            shuttle_data[2],
+            shuttle_data[3],
+            shuttle_data[4],
+            shuttle_data[5],
+            0,
+            first_planet_id,
+        ),
     )
 
     # --- Cargohold ---
-    cur.executemany("INSERT INTO cargohold(item_id, item_qty) VALUES (?, 0);", [(item_id,) for item_id in item_map.values()])
+    cur.executemany(
+        "INSERT INTO cargohold(item_id, item_qty) VALUES (?, 0);",
+        [(item_id,) for item_id in item_map.values()],
+    )
+
     conn.commit()

@@ -1,5 +1,4 @@
 # /game/travel.py
-
 from __future__ import annotations
 
 from typing import Dict, Any, Optional, Tuple, cast
@@ -21,6 +20,10 @@ def _safe_int(x: Any, default: int = 0) -> int:
 
 
 def _norm_kind(value: Optional[str]) -> str:
+    """
+    Normalize various kind/location_type aliases used by DB/UI into a compact set.
+    Now includes 'moon' to support the new moon locations.
+    """
     v = (value or "").strip().lower()
     aliases = {
         "location_type": {
@@ -28,13 +31,15 @@ def _norm_kind(value: Optional[str]) -> str:
             "planet": "planet", "world": "planet",
             "station": "station", "outpost": "station", "dock": "station",
             "warp gate": "warpgate", "warp_gate": "warpgate", "gate": "warpgate",
+            "moon": "moon",
         },
         "kind": {
             "star": "star", "planet": "planet", "station": "station",
             "warp gate": "warpgate", "warpgate": "warpgate", "gate": "warpgate",
+            "moon": "moon",
         },
     }
-    if v in ("star", "planet", "station", "warpgate"):
+    if v in ("star", "planet", "station", "warpgate", "moon"):
         return v
     if v in aliases["location_type"]:
         return aliases["location_type"][v]
@@ -136,10 +141,10 @@ def get_travel_display_data(kind: str, ident: int) -> Dict[str, Any]:
     """
     Return a dict describing the route and distances needed for UI/flow sequencing.
 
-    Keys (existing + new):
+    Keys:
       ok: bool
       same_system: bool
-      source_kind: 'station'|'planet'|'star'|'warpgate'|''  (where the player is parked, if any)
+      source_kind: 'station'|'planet'|'moon'|'star'|'warpgate'|''  (where the player is parked, if any)
       target_kind: same set as above
       dist_au: float (only for intra-system routes)
       dist_ly: float (for inter-system routes; measured between system centers/gates)
@@ -148,7 +153,7 @@ def get_travel_display_data(kind: str, ident: int) -> Dict[str, Any]:
       target_system_id: int
       target_location_id: Optional[int]
 
-      # NEW (for UI)
+      # UI helpers
       distance: str           # "<ly> ly, <au> AU"
       jump_dist: float        # same as dist_ly (info column)
       fuel_cost: int          # cruise + warp fuel (warp costs 2/ly)
@@ -190,7 +195,7 @@ def get_travel_display_data(kind: str, ident: int) -> Dict[str, Any]:
     elif cur_sys_id:
         source_kind = "star"
 
-    # Target kind
+    # Target kind (now includes 'moon')
     target_kind = _loc_kind(target_loc) if target_loc else "star"
 
     out: Dict[str, Any] = {
@@ -206,13 +211,14 @@ def get_travel_display_data(kind: str, ident: int) -> Dict[str, Any]:
     try:
         status = player_status.get_status_snapshot()
         player_fuel = float(status.get("fuel", 0))
+        # Status may expose 'current_jump_distance' (preferred) or just base.
         jump_range_ly = float(status.get("current_jump_distance", status.get("base_jump_distance", 0.0)) or 0.0)
     except Exception:
         player_fuel = 0.0
         jump_range_ly = 0.0
 
     if same_system:
-        # pure intra-system leg
+        # pure intra-system leg (planet <-> moon <-> station <-> star all handled by coord diff)
         target_xy = _loc_xy_au(target_loc) if target_loc else (0.0, 0.0)
         cur_xy = (0.0, 0.0)
         if cur_loc_id is not None:

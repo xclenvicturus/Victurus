@@ -1,8 +1,7 @@
 # /ui/map_actions.py
-
 from __future__ import annotations
 
-from typing import Callable, Optional
+from typing import Callable, Optional, Tuple, cast
 
 from PySide6.QtWidgets import QWidget, QTabWidget
 
@@ -21,6 +20,39 @@ class MapActions:
         self._tabs = tabs
         self._begin_travel_cb = begin_travel_cb
 
+    # -------- helpers --------
+
+    def _tab_widget(self) -> Optional[QTabWidget]:
+        tw = getattr(self._tabs, "tabs", None)
+        return tw if isinstance(tw, QTabWidget) else None
+
+    def _using_galaxy(self) -> bool:
+        tw = self._tab_widget()
+        if tw is not None:
+            try:
+                return tw.currentIndex() == 0
+            except Exception:
+                pass
+        return True
+
+    def _solar(self):
+        return getattr(self._tabs, "solar", None)
+
+    def _resolve_virtual(self, entity_id: int) -> Optional[Tuple[str, int]]:
+        """
+        Ask the Solar widget to resolve virtual ids (moons or star).
+        Returns ('loc', location_id) or ('star', system_id) or None.
+        """
+        solar = self._solar()
+        resolver = getattr(solar, "resolve_entity", None)
+        if callable(resolver):
+            try:
+                typed_resolver = cast(Callable[[int], Optional[Tuple[str, int]]], resolver)
+                return typed_resolver(int(entity_id))
+            except Exception:
+                return None
+        return None
+
     # -------- public API --------
 
     def focus(self, entity_id: int) -> None:
@@ -32,22 +64,24 @@ class MapActions:
                 except Exception:
                     pass
         else:
+            # We can center on the virtual item directly (moons are real items in scene)
             if entity_id < 0:
-                # star for the viewed system
-                sys_id = int(getattr(self._tabs, "solar", None)._system_id or 0)  # type: ignore[attr-defined]
+                sol = self._solar()
                 center_sys = getattr(self._tabs, "center_solar_on_system", None)
-                if callable(center_sys):
-                    try:
-                        center_sys(sys_id)
-                    except Exception:
-                        pass
-            else:
-                center_loc = getattr(self._tabs, "center_solar_on_location", None)
-                if callable(center_loc):
-                    try:
-                        center_loc(int(entity_id))
-                    except Exception:
-                        pass
+                if callable(center_sys) and sol is not None:
+                    vr = self._resolve_virtual(entity_id)
+                    if vr and vr[0] == "star":
+                        try:
+                            center_sys(int(vr[1]))
+                            return
+                        except Exception:
+                            pass
+            center_loc = getattr(self._tabs, "center_solar_on_location", None)
+            if callable(center_loc):
+                try:
+                    center_loc(int(entity_id))
+                except Exception:
+                    pass
 
     def open(self, entity_id: int) -> None:
         """
@@ -61,14 +95,13 @@ class MapActions:
             except Exception:
                 return
 
-            # 1) Load the Solar widget with the target system *before* tab switch
-            solar = getattr(self._tabs, "solar", None)
+            # 1) Load Solar with the target system *before* switching tabs
+            solar = self._solar()
             load = getattr(solar, "load", None)
             if callable(load):
                 try:
                     load(sys_id)
                 except Exception:
-                    # fall back to MapTabs-level center if load isn't available
                     pass
 
             # 2) Switch to Solar tab
@@ -79,7 +112,7 @@ class MapActions:
                 except Exception:
                     pass
 
-            # 3) Center on that system (no-ops if already centered)
+            # 3) Center on that system
             center_sys = getattr(self._tabs, "center_solar_on_system", None)
             if callable(center_sys):
                 try:
@@ -95,25 +128,18 @@ class MapActions:
             return
         if self._using_galaxy():
             self._begin_travel_cb("star", int(entity_id))
-        else:
-            if entity_id < 0:
-                self._begin_travel_cb("star", abs(int(entity_id)))
-            else:
-                self._begin_travel_cb("loc", int(entity_id))
+            return
 
-    # -------- internals --------
+        # System view: support star sentinel and virtual moon ids
+        if entity_id < 0:
+            vr = self._resolve_virtual(entity_id)
+            if vr:
+                kind, ident = vr
+                if kind == "star":
+                    self._begin_travel_cb("star", int(ident))
+                elif kind == "loc":
+                    self._begin_travel_cb("loc", int(ident))
+                return
 
-    def _tab_widget(self) -> Optional[QTabWidget]:
-        """Return the inner QTabWidget from MapTabs if present and typed."""
-        tw = getattr(self._tabs, "tabs", None)
-        return tw if isinstance(tw, QTabWidget) else None
-
-    def _using_galaxy(self) -> bool:
-        tw = self._tab_widget()
-        if tw is not None:
-            try:
-                return tw.currentIndex() == 0
-            except Exception:
-                pass
-        # default to galaxy if uncertain
-        return True
+        # Regular location
+        self._begin_travel_cb("loc", int(entity_id))
