@@ -1,11 +1,9 @@
 # /ui/maps/panzoom_view.py
 
 """
-PanZoomView
-- Optional static background image; can be drawn in viewport ("screen") or scene space
+BackgroundView
+- background image; can be drawn in viewport ("screen") or scene space
 - Animated starfield layers (optional)
-- No mouse panning/zoom (navigation is via lists)
-- Leader line overlay at ~60 FPS (configurable thickness & color)
 """
 
 from __future__ import annotations
@@ -19,7 +17,7 @@ from PySide6.QtGui import QBrush, QColor, QImage, QLinearGradient, QPainter, QPi
 from PySide6.QtWidgets import QGraphicsScene, QGraphicsView
 
 
-class PanZoomView(QGraphicsView):
+class BackgroundView(QGraphicsView):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
 
@@ -47,25 +45,13 @@ class PanZoomView(QGraphicsView):
         # Background image cache and mode
         self._bg_pixmap: Optional[QPixmap] = None
         # "viewport" (fixed to screen) or "scene" (locked to scene coordinates)
-        self._bg_mode: str = "viewport"
+        self._bg_mode: str = "scene"
 
         # Starfield
         self._star_enabled = False
         self._star_timer: Optional[QTimer] = None
         self._star_time = 0.0
         self._star_layers: List[dict] = []
-
-        # Leader line (screen-space)
-        self._leader_active = False
-        self._leader_src_vp: Optional[QPoint] = None
-        self._leader_dst_getter: Optional[Callable[[], Optional[QPoint]]] = None
-        self._leader_timer: Optional[QTimer] = None  # ~60 FPS refresher
-
-        # Leader style (you can change via set_leader_style)
-        self._leader_glow_width = 1
-        self._leader_core_width = 1
-        self._leader_glow_color = QColor(50, 255, 120, 120)
-        self._leader_core_color = QColor(120, 255, 180, 255)
 
         # Composition modes (handle PySide runtime + type-checkers)
         self._cm_plus = self._resolve_composition_mode("CompositionMode_Plus", "Plus")
@@ -214,62 +200,6 @@ class PanZoomView(QGraphicsView):
         ]
         self.viewport().update()
 
-    # ---------- Leader line (60 FPS, configurable) ----------
-    def set_leader_from_viewport_to_getter(self, src_vp: Optional[QPoint], dst_getter: Optional[Callable[[], Optional[QPoint]]]) -> None:
-        """
-        Enable/disable a leader line that connects a UI point (src in viewport coords)
-        to a dynamic target (dst getter returns a viewport QPoint).
-        Pass (None, None) to disable.
-        """
-        if src_vp is None or dst_getter is None:
-            self._leader_active = False
-            self._leader_src_vp = None
-            self._leader_dst_getter = None
-            if self._leader_timer is not None and self._leader_timer.isActive():
-                self._leader_timer.stop()
-            self.viewport().update()
-            return
-
-        self._leader_active = True
-        self._leader_src_vp = QPoint(src_vp)
-        self._leader_dst_getter = dst_getter
-
-        if self._leader_timer is None:
-            self._leader_timer = QTimer(self)
-            self._leader_timer.setTimerType(Qt.TimerType.PreciseTimer)
-            self._leader_timer.setInterval(16)                # ~60 FPS
-            self._leader_timer.timeout.connect(self._tick_leader)
-
-        if not self._leader_timer.isActive():
-            self._leader_timer.start()
-
-    def set_leader_style(
-        self,
-        *,
-        glow_width: Optional[int] = None,
-        core_width: Optional[int] = None,
-        glow_color: Optional[QColor] = None,
-        core_color: Optional[QColor] = None,
-    ) -> None:
-        """
-        Adjust the visual style of the leader line.
-        Example: view.set_leader_style(glow_width=4, core_width=1)
-        """
-        if glow_width is not None:
-            self._leader_glow_width = max(1, int(glow_width))
-        if core_width is not None:
-            self._leader_core_width = max(1, int(core_width))
-        if glow_color is not None:
-            self._leader_glow_color = QColor(glow_color)
-        if core_color is not None:
-            self._leader_core_color = QColor(core_color)
-        self.viewport().update()
-
-    def _tick_leader(self) -> None:
-        if not self._leader_active:
-            return
-        self.viewport().update()
-
     # ---------- Painting ----------
     def drawBackground(self, painter: QPainter, rect) -> None:
         # Background
@@ -331,32 +261,6 @@ class PanZoomView(QGraphicsView):
                 painter.setCompositionMode(self._cm_src_over)
             painter.restore()
 
-    def drawForeground(self, painter: QPainter, rect) -> None:
-        """Draw the glowing green leader line in device coords for crispness."""
-        if not (self._leader_active and self._leader_src_vp and self._leader_dst_getter):
-            return
-        dst = self._leader_dst_getter()
-        if dst is None:
-            return
-
-        painter.save()
-        painter.resetTransform()
-
-        # Glow (wide, translucent)
-        glow_pen = QPen(self._leader_glow_color)
-        glow_pen.setWidth(self._leader_glow_width)
-        glow_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-        painter.setPen(glow_pen)
-        painter.drawLine(self._leader_src_vp, dst)
-
-        # Core (thin, bright)
-        core_pen = QPen(self._leader_core_color)
-        core_pen.setWidth(self._leader_core_width)
-        core_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-        painter.setPen(core_pen)
-        painter.drawLine(self._leader_src_vp, dst)
-
-        painter.restore()
 
     # ---------- Events ----------
     def resizeEvent(self, ev) -> None:

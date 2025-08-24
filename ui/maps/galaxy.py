@@ -20,7 +20,7 @@ from PySide6.QtGui import QPen, QColor, Qt
 from PySide6.QtWidgets import QGraphicsItem, QGraphicsScene
 
 from data import db
-from .panzoom_view import PanZoomView
+from .background import BackgroundView
 from .icons import make_map_symbol_item, list_gifs
 
 ASSETS_ROOT = Path(__file__).resolve().parents[2] / "assets"
@@ -35,7 +35,7 @@ def _deterministic_star_gif(system_id: int, star_gifs: List[Path]) -> Optional[P
     return star_gifs[idx]
 
 
-class GalaxyMapWidget(PanZoomView):
+class GalaxyMapWidget(BackgroundView):
     logMessage = Signal(str)
     
     def __init__(self, parent=None) -> None:

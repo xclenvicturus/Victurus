@@ -7,16 +7,24 @@ GIF-only icon utilities for map visuals.
 - Deterministic size variance support (up to +50% by default).
 - Provides icon_from_path_or_kind and pm_from_path_or_kind (GIF-first) so
   existing callers (e.g., tabs.py) continue to work without SVGs.
+
+Smoothness fixes:
+- Each frame is painted onto a fixed-size transparent canvas (movie.frameRect()) to
+  eliminate per-frame crop/offset jitter from trimmed GIFs.
+- Scaled size and item offset are constant across frames.
+- Uses ItemCoordinateCache (avoids device-pixel snapping).
+- No ItemIgnoresTransformations; instead we apply an inverse view-scale so icons keep
+  a constant on-screen size without rounding artifacts.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
-from PySide6.QtCore import Qt, QSize
-from PySide6.QtGui import QIcon, QImage, QMovie, QPixmap
-from PySide6.QtWidgets import QGraphicsPixmapItem, QGraphicsView
+from PySide6.QtCore import Qt, QSize, QPoint
+from PySide6.QtGui import QIcon, QImage, QMovie, QPixmap, QPainter
+from PySide6.QtWidgets import QGraphicsPixmapItem, QGraphicsView, QGraphicsItem
 
 import hashlib
 
@@ -94,53 +102,118 @@ def icon_from_path_or_kind(path_or_none: Optional[str | Path], kind: str) -> QIc
 class AnimatedGifItem(QGraphicsPixmapItem):
     """
     QGraphicsPixmapItem that plays an animated GIF via QMovie and keeps a stable
-    on-screen size (desired_px) irrespective of view scale.
+    on-screen size (desired_px), with minimal jitter.
+
+    - Uses a fixed logical canvas based on movie.frameRect().
+    - Scales the canvas once to a constant target size; offset stays constant.
+    - ItemCoordinateCache avoids device rounding artifacts.
+    - Applies inverse view scale so icons remain constant size on screen.
     """
     def __init__(self, gif_path: str | Path, desired_px: int, view: QGraphicsView, parent=None):
         super().__init__(parent)
         self._desired_px = int(desired_px)
         self._view = view
-        self._playing = True
 
         self._movie = QMovie(str(gif_path))
         self._movie.setCacheMode(QMovie.CacheMode.CacheAll)
 
+        # Fixed canvas & scaled size computed on first valid frame
+        self._canvas_size: Optional[QSize] = None
+        self._scaled_w: Optional[int] = None
+        self._scaled_h: Optional[int] = None
+        self._const_offset: Optional[Tuple[float, float]] = None
+
+        # Cache in item coordinates to avoid device-pixel snapping
+        self.setCacheMode(QGraphicsItem.CacheMode.ItemCoordinateCache)
+
         self._movie.frameChanged.connect(self._on_frame)
         self._movie.start()
 
-    def _on_frame(self, _frame_index: int) -> None:
+    def _ensure_geometry(self, pm_native: QPixmap) -> None:
+        """Compute constant canvas size, scaled size, and offset once."""
+        if self._canvas_size is not None:
+            return
+
+        # Use the movie's logical frame rect as a stable canvas.
+        base_rect = self._movie.frameRect()
+        base_size = base_rect.size()
+        if not base_size.isValid() or base_size.width() <= 0 or base_size.height() <= 0:
+            base_size = pm_native.size()
+        w0 = max(1, base_size.width())
+        h0 = max(1, base_size.height())
+        self._canvas_size = QSize(w0, h0)
+
+        # Compute final scaled size (keep aspect) to approx desired_px box
+        if w0 >= h0:
+            scale = self._desired_px / float(w0)
+            sw = self._desired_px
+            sh = max(1, int(round(h0 * scale)))
+        else:
+            scale = self._desired_px / float(h0)
+            sh = self._desired_px
+            sw = max(1, int(round(w0 * scale)))
+        self._scaled_w = sw
+        self._scaled_h = sh
+
+        # Constant offset so the item is centered about its position
+        self._const_offset = (-sw / 2.0, -sh / 2.0)
+
+    def _on_frame(self, _frame_idx: int) -> None:
         pm_native = self._movie.currentPixmap()
-        if not pm_native.isNull():
-            pm_scaled = pm_native.scaled(
-                self._desired_px, 
-                self._desired_px, 
-                Qt.AspectRatioMode.KeepAspectRatio, 
-                Qt.TransformationMode.SmoothTransformation
-            )
-            self.setPixmap(pm_scaled)
-            self._apply_scale()
+        if pm_native.isNull():
+            return
+
+        self._ensure_geometry(pm_native)
+
+        # ---- FIX: build QImage via (w, h, format) to avoid Optional[QSize] complaints ----
+        size = self._canvas_size or pm_native.size()
+        canvas = QImage(
+            int(size.width()),
+            int(size.height()),
+            QImage.Format.Format_ARGB32_Premultiplied,
+        )
+        canvas.fill(Qt.GlobalColor.transparent)
+
+        # Draw at the movie's logical top-left so trimmed frames align consistently
+        base_rect = self._movie.frameRect()
+        tl = base_rect.topLeft()
+        p = QPainter(canvas)
+        p.drawPixmap(QPoint(tl.x(), tl.y()), pm_native)
+        p.end()
+
+        # Scale to the constant final size (smooth)
+        pm_canvas = QPixmap.fromImage(canvas)
+        pm_scaled = pm_canvas.scaled(
+            int(self._scaled_w or pm_canvas.width()),
+            int(self._scaled_h or pm_canvas.height()),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+
+        self.setPixmap(pm_scaled)
+
+        # Constant offset (centered)
+        if self._const_offset is not None:
+            self.setOffset(self._const_offset[0], self._const_offset[1])
+
+        # Keep size constant on screen by inverting current view scale
+        self._apply_scale()
 
     def _apply_scale(self) -> None:
-        pm = self.pixmap()
-        if pm.isNull():
+        tr = self._view.transform()
+        sx = tr.m11()
+        sy = tr.m22()
+        if sx == 0 or sy == 0:
             return
-        
-        view_scale = self._view.transform().m11() or 1.0
-        if view_scale == 0: return
-
-        scale = 1.0 / view_scale
-        self.setScale(scale)
-        
-        self.setOffset(-pm.width() / 2.0, -pm.height() / 2.0)
+        # Use uniform inverse scale to avoid anisotropic jitter if pixels are non-square
+        inv = 1.0 / max(abs(sx), abs(sy))
+        if self.scale() != inv:
+            self.setScale(inv)
 
     def set_playing(self, playing: bool) -> None:
-        playing = bool(playing)
-        if self._playing == playing:
-            return
-        self._playing = playing
-        if playing:
+        if playing and self._movie.state() != QMovie.MovieState.Running:
             self._movie.start()
-        else:
+        elif not playing and self._movie.state() == QMovie.MovieState.Running:
             self._movie.stop()
 
 
@@ -159,12 +232,16 @@ def make_map_symbol_item(
     - Size is randomized by up to `variance` (default ICON_SIZE_VARIANCE_MAX) using `salt`.
     """
     p = Path(gif_path)
-    if p.suffix.lower() != ".gif" or not p.exists():
-        # Tiny red placeholder rather than crashing; visible but harmless.
-        pm = QPixmap(2, 2)
-        pm.fill(Qt.GlobalColor.red)
-        return QGraphicsPixmapItem(pm)
-
     var = ICON_SIZE_VARIANCE_MAX if variance is None else float(variance)
     final_px = randomized_px(int(desired_px), salt=salt, variance=var)
-    return AnimatedGifItem(p, final_px, view)
+
+    if p.suffix.lower() == ".gif" and p.exists():
+        return AnimatedGifItem(p, final_px, view)
+
+    # Tiny red placeholder rather than crashing; visible but harmless.
+    pm = QPixmap(2, 2)
+    pm.fill(Qt.GlobalColor.red)
+    item = QGraphicsPixmapItem(pm)
+    item.setCacheMode(QGraphicsItem.CacheMode.ItemCoordinateCache)
+    item.setOffset(-pm.width() / 2.0, -pm.height() / 2.0)
+    return item

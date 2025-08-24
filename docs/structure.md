@@ -58,7 +58,7 @@ Victurus/
   │ └─ galaxy.py
   │ └─ icons.py
   │ └─ leadline.py
-  │ └─ panzoom_view.py
+  │ └─ background.py
   │ └─ solar.py
   │ └─ tabs.py
   └─ state/
