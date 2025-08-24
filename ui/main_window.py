@@ -21,14 +21,14 @@ from PySide6.QtWidgets import (
 
 from data import db
 from game import player_status
-from save.manager import SaveManager  # <-- UI state lives per-save
+from save.manager import SaveManager
 from .menus.file_menu import install_file_menu
 from .state import window_state
 from .widgets.status_sheet import StatusSheet
 from .widgets.location_list import LocationList
 from .maps.tabs import MapTabs
 
-# controllers (merged into maps/leadline.py)
+# merged controller lives here
 from .maps.leadline import LeaderLineController
 
 from .controllers.location_presenter import LocationPresenter
@@ -49,11 +49,17 @@ class MainWindow(QMainWindow):
         self._map_view: Optional[MapTabs] = None
         self._pending_logs: List[str] = []
 
-        # Leader-line style state (UI-adjustable; defaults match LeadLine)
-        self._leader_color: QColor = QColor(0, 255, 128)  # neon green default
+        # Leader-line style state (defaults match LeadLine)
+        self._leader_color: QColor = QColor(0, 255, 128)
         self._leader_width: int = 2
         self._leader_glow: bool = True
         self.act_leader_glow: Optional[QAction] = None
+
+        # controllers (declare early so methods can safely reference them)
+        self.lead: Optional[LeaderLineController] = None
+        self.presenter: Optional[LocationPresenter] = None
+        self.map_actions: Optional[MapActions] = None
+        self.travel_flow: Optional[TravelFlow] = None
 
         # Central placeholder (idle)
         self._idle_label = QLabel("No game loaded.\nUse File → New Game or Load Game to begin.")
@@ -88,7 +94,7 @@ class MainWindow(QMainWindow):
         for w in (self.lbl_systems, self.lbl_items, self.lbl_ships, self.lbl_credits):
             sb.addPermanentWidget(w)
 
-        # Menus
+        # Menus (installed after 'lead' attribute exists)
         install_file_menu(self)
         self._install_view_menu_extras()
 
@@ -107,12 +113,6 @@ class MainWindow(QMainWindow):
         # central UI built in start_game_ui()
         self._central_splitter: Optional[QSplitter] = None
         self.location_panel: Optional[LocationList] = None
-
-        # controllers (created in start_game_ui)
-        self.lead: Optional[LeaderLineController] = None
-        self.presenter: Optional[LocationPresenter] = None
-        self.map_actions: Optional[MapActions] = None      # avoid QWidget.actions clash
-        self.travel_flow: Optional[TravelFlow] = None
 
         # Per-save UI-state persistence
         SaveManager.install_ui_state_provider(self._collect_ui_state)
@@ -146,7 +146,7 @@ class MainWindow(QMainWindow):
         act_width_set.triggered.connect(self._choose_leader_width)
         ll_menu.addAction(act_width_set)
 
-        # --- Toggle glow effect (LeadLine.set_style glow_enabled=...) ---
+        # --- Toggle glow effect ---
         act_glow = QAction("Glow", self)
         act_glow.setCheckable(True)
         act_glow.setChecked(bool(self._leader_glow))
@@ -154,11 +154,10 @@ class MainWindow(QMainWindow):
         ll_menu.addAction(act_glow)
         self.act_leader_glow = act_glow
 
-        # Ensure the line reflects the menu's initial state immediately
+        # Safe: this no-ops until self.lead exists
         self._apply_leader_style()
 
     def _toggle_leader_glow(self, enabled: bool) -> None:
-        """Menu handler: enable/disable the soft glow underlay on the leader line."""
         self._leader_glow = bool(enabled)
         if self.act_leader_glow and self.act_leader_glow.isChecked() != self._leader_glow:
             self.act_leader_glow.setChecked(self._leader_glow)
@@ -166,17 +165,16 @@ class MainWindow(QMainWindow):
 
     def _apply_leader_style(self) -> None:
         """Push the current leader-line style to the overlay via controller."""
-        # Ensure defaults exist and keep types correct (QColor expected)
         self._leader_color = getattr(self, "_leader_color", None) or QColor("#00FF80")
         self._leader_width = int(getattr(self, "_leader_width", 2))
         self._leader_glow  = bool(getattr(self, "_leader_glow", True))
 
-        if self.lead is None:
-            return
+        lead = getattr(self, "lead", None)
+        if lead is None:
+            return  # controller not created yet; start_game_ui will re-apply
 
         try:
-            # Controller API exposes set_line_style(...)
-            self.lead.set_line_style(
+            lead.set_line_style(
                 color=self._leader_color,
                 width=self._leader_width,
                 glow_enabled=self._leader_glow,
@@ -244,7 +242,6 @@ class MainWindow(QMainWindow):
             mv = _make_map_view()
             self._map_view = mv
 
-            # optional MapTabs.logMessage
             log_sig = getattr(mv, "logMessage", None)
             connect = getattr(log_sig, "connect", None)
             if callable(connect):
@@ -267,18 +264,14 @@ class MainWindow(QMainWindow):
             central.setStretchFactor(0, 1)
             central.setStretchFactor(1, 0)
 
-            # Presenter
+            # Presenter / Actions
             self.presenter = LocationPresenter(mv, panel)
-
-            # Actions (focus/open/travel)
             self.map_actions = MapActions(mv, begin_travel_cb=lambda kind, ident: self._begin_travel(kind, ident))
 
-            # Leader line (hover; set enable_lock=True if you want click-lock)
+            # Leader line
             self.lead = LeaderLineController(mv, panel, log=self.append_log, enable_lock=False)
-
-            # Attach overlay first, then apply initial style
             self.lead.attach()
-            self._apply_leader_style()
+            self._apply_leader_style()  # now the controller exists
 
             # Wire signals
             panel.refreshRequested.connect(self.presenter.refresh)
@@ -301,7 +294,6 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
 
-        # Initial refresh
         mv_reload = getattr(self._map_view, "reload_all", None)
         if callable(mv_reload):
             try:
@@ -317,7 +309,6 @@ class MainWindow(QMainWindow):
 
         QTimer.singleShot(0, self._pin_status_dock_for_transition)
 
-        # Flush pending logs
         for m in self._pending_logs:
             self.log.appendPlainText(m)
         self._pending_logs.clear()
@@ -326,9 +317,7 @@ class MainWindow(QMainWindow):
 
     def _ensure_travel_flow(self) -> TravelFlow:
         if self.travel_flow is None:
-            # arrival callback reloads maps + UI
             self.travel_flow = TravelFlow(on_arrival=self._on_player_moved, log=self.append_log)
-            # NEW: refresh status panel on each progress tick for smooth gauges
             try:
                 self.travel_flow.progressTick.connect(self._safe_refresh_status)
             except Exception:
@@ -339,7 +328,6 @@ class MainWindow(QMainWindow):
         self._ensure_travel_flow().begin(kind, ident)
 
     def _on_player_moved(self) -> None:
-        """Refresh UI and maps after travel completes."""
         try:
             self.refresh_status_counts()
             self.status_panel.refresh()
@@ -370,7 +358,6 @@ class MainWindow(QMainWindow):
         self._save_window_state()
 
     def closeEvent(self, e):
-        # Persist per-save UI state one last time
         try:
             SaveManager.write_ui_state()
         except Exception:
@@ -412,10 +399,7 @@ class MainWindow(QMainWindow):
     # ---------- per-save UI state capture/restore ----------
 
     def _collect_ui_state(self) -> Dict[str, Any]:
-        """Snapshot everything UI-related into a JSON-serializable dict."""
         state: Dict[str, Any] = {}
-
-        # Main window geometry/state → HEX strings (Pylance-friendly)
         try:
             geo_hex = bytes(self.saveGeometry().toHex().data()).decode("ascii")
             sta_hex = bytes(self.saveState().toHex().data()).decode("ascii")
@@ -424,29 +408,25 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
-        # Splitter sizes
         try:
             if self._central_splitter:
                 state["central_splitter_sizes"] = list(self._central_splitter.sizes())
         except Exception:
             pass
 
-        # Current tab
         try:
             tabs = getattr(self._map_view, "tabs", None)
             state["map_tab_index"] = int(tabs.currentIndex()) if tabs else 0
         except Exception:
             state["map_tab_index"] = 0
 
-        # Leader line style (color + width + glow) — store as #RRGGBB
         try:
-            state["leader_color"] = self._leader_color.name()   # HexRgb
+            state["leader_color"] = self._leader_color.name()
             state["leader_width"] = int(self._leader_width)
             state["leader_glow"]  = bool(self._leader_glow)
         except Exception:
             pass
 
-        # Location panel settings + column widths
         try:
             if self.location_panel:
                 state["panel_category_index"] = int(self.location_panel.category.currentIndex())
@@ -460,18 +440,13 @@ class MainWindow(QMainWindow):
         return state
 
     def _restore_ui_state(self, state: Dict[str, Any]) -> None:
-        """Apply a previously captured UI-state dict (best-effort & safe)."""
-        # Geometry/state (support both new HEX and legacy Base64 keys)
         try:
-            from PySide6.QtCore import QByteArray
-
             geo_hex = state.get("main_geometry_hex")
             sta_hex = state.get("main_state_hex")
             if isinstance(geo_hex, str) and geo_hex:
                 self.restoreGeometry(QByteArray.fromHex(geo_hex.encode("ascii")))
             elif isinstance(state.get("main_geometry_b64"), str):
                 self.restoreGeometry(QByteArray.fromBase64(state["main_geometry_b64"].encode("ascii")))
-
             if isinstance(sta_hex, str) and sta_hex:
                 self.restoreState(QByteArray.fromHex(sta_hex.encode("ascii")))
             elif isinstance(state.get("main_state_b64"), str):
@@ -479,7 +454,6 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
-        # Splitter sizes
         try:
             sizes = state.get("central_splitter_sizes")
             if sizes and self._central_splitter:
@@ -487,7 +461,6 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
-        # Map tab
         try:
             idx = int(state.get("map_tab_index", 0))
             tabs = getattr(self._map_view, "tabs", None)
@@ -496,7 +469,6 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
-        # Leader line style
         try:
             c = state.get("leader_color")
             w = int(state.get("leader_width", self._leader_width))
@@ -511,7 +483,6 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
-        # Location panel
         try:
             if self.location_panel:
                 cat_idx = int(state.get("panel_category_index", 0))

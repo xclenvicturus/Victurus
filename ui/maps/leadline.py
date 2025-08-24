@@ -139,11 +139,8 @@ class LeadLine(QWidget):
 
 class LeaderLineController(QObject):
     """
-    Encapsulates hover/click → leader-line behavior, including:
-      - Parenting the overlay onto the active map's source widget (viewport() if present)
-      - Reattaching the line when tabs change, list scrolls/resizes, or viewports appear later
-      - Optional click-to-lock behavior (per-tab)
-      - Continuous refresh so the line smoothly follows moving targets / pan-zoom changes
+    Encapsulates hover/click → leader-line behavior, including parenting the overlay
+    onto the active map's viewport and continuously following targets.
     """
 
     def __init__(
@@ -167,14 +164,13 @@ class LeaderLineController(QObject):
         # separate locks per tab (0=galaxy, 1=system)
         self._locked_by_tab: dict[int, Optional[int]] = {0: None, 1: None}
 
-        # Smooth follow timer (~60 FPS by default)
+        # Smooth follow timer (~60 FPS)
         self._tick = QTimer(self)
         self._tick.setTimerType(Qt.TimerType.PreciseTimer)
-        self._tick.setInterval(16)  # ~60 fps
+        self._tick.setInterval(16)
         self._tick.timeout.connect(self._on_tick)
-        self._line_active: bool = False  # whether we should draw/follow now
+        self._line_active: bool = False
 
-        # watch the map widgets and their viewports so we can reparent overlay when they initialize
         self._install_view_event_filters()
 
         # wire panel signals we need
@@ -245,7 +241,6 @@ class LeaderLineController(QObject):
         self._ensure_tick_running()
 
     def on_click(self, entity_id: int) -> None:
-        """Toggle click lock (only if enabled)."""
         if not self._enable_lock:
             return
         try:
@@ -264,12 +259,10 @@ class LeaderLineController(QObject):
         self._ensure_tick_running()
 
     def on_leave(self) -> None:
-        """Hide leader when mouse leaves the list (unless locked)."""
         if not self._enable_lock or self._current_lock() is None:
             self.clear()
 
     def refresh(self) -> None:
-        """One-shot re-attach (also used when list resizes/scrolls)."""
         if self._overlay is None:
             return
         locked = self._current_lock()
@@ -281,7 +274,6 @@ class LeaderLineController(QObject):
 
         item = self._panel.current_hover_item()
         if not isinstance(item, QTreeWidgetItem):
-            # nothing hovered; only active if locked
             if self._current_lock() is None:
                 self.clear()
             return
@@ -304,7 +296,6 @@ class LeaderLineController(QObject):
     # -------- internals --------
 
     def _tab_widget(self) -> Optional[QTabWidget]:
-        """Return the inner QTabWidget from MapTabs if present and typed."""
         tw = getattr(self._tabs, "tabs", None)
         return tw if isinstance(tw, QTabWidget) else None
 
@@ -349,7 +340,6 @@ class LeaderLineController(QObject):
                         pass
 
     def eventFilter(self, obj, event):
-        # reparent/sync overlay when active map or its viewport shows/polishes/resizes
         active = self._safe_current_widget()
         if obj is active or obj is self._widget_viewport(active):
             if event.type() in (QEvent.Type.Show, QEvent.Type.Polish, QEvent.Type.Resize):
@@ -359,7 +349,6 @@ class LeaderLineController(QObject):
         return super().eventFilter(obj, event)
 
     def _widget_viewport(self, w: Optional[QWidget]) -> Optional[QWidget]:
-        """Safely get a widget's viewport() if it exists and is a QWidget; else return the widget."""
         if w is None:
             return None
         vp_attr = getattr(w, "viewport", None)
@@ -383,13 +372,12 @@ class LeaderLineController(QObject):
             self._overlay.setParent(src)
         try:
             self._overlay.setGeometry(src.rect())
-            self._overlay.show()      # make sure it's visible
-            self._overlay.raise_()    # keep it above the viewport
+            self._overlay.show()
+            self._overlay.raise_()
         except Exception:
             pass
 
     def _attach_leader(self, eid: int, locked: bool) -> None:
-        """Compute anchor/endpoint once and draw."""
         if self._overlay is None or self._overlay_src is None:
             return
 
@@ -408,7 +396,6 @@ class LeaderLineController(QObject):
     # ---- continuous follow ----
 
     def _ensure_tick_running(self) -> None:
-        """Run the refresh timer whenever a line is active and we have a view."""
         if self._line_active and (self._overlay is not None) and (self._overlay_src is not None):
             if not self._tick.isActive():
                 self._tick.start()
@@ -420,12 +407,10 @@ class LeaderLineController(QObject):
             self._tick.stop()
 
     def _on_tick(self) -> None:
-        """Recompute anchor/endpoint frequently to follow moving targets."""
         if self._overlay is None or self._overlay_src is None:
             self._maybe_stop_tick()
             return
 
-        # keep overlay geometry in sync with the source view
         try:
             if self._overlay.geometry() != self._overlay_src.rect():
                 self._overlay.setGeometry(self._overlay_src.rect())
@@ -435,7 +420,6 @@ class LeaderLineController(QObject):
         eid = self._current_lock()
         locked = True
         if eid is None:
-            # if not locked, follow the currently hovered item (if any)
             item = self._panel.current_hover_item()
             if isinstance(item, QTreeWidgetItem):
                 data_val = item.data(0, Qt.ItemDataRole.UserRole)
@@ -446,7 +430,6 @@ class LeaderLineController(QObject):
                     eid = None
 
         if eid is None:
-            # nothing to draw
             self._line_active = False
             self._maybe_stop_tick()
             if self._overlay:
@@ -466,11 +449,9 @@ class LeaderLineController(QObject):
     # ---- geometry helpers ----
 
     def _compute_anchor(self, eid: int, locked: bool) -> Optional[QPoint]:
-        """Anchor at list item's right edge projected into the overlay coords."""
         if self._overlay is None:
             return None
 
-        # Narrow from object -> QTreeWidgetItem via isinstance
         item: Optional[QTreeWidgetItem] = None
         raw: Any = None
 
@@ -490,36 +471,28 @@ class LeaderLineController(QObject):
         if isinstance(raw, QTreeWidgetItem):
             item = raw
 
-        # Preferred: ask the panel (it already maps via global→overlay)
-        if isinstance(item, QTreeWidgetItem):
-            apfi = getattr(self._panel, "anchor_point_for_item", None)
-            if callable(apfi):
-                try:
-                    a = apfi(self._overlay, item)
-                    if isinstance(a, QPoint):
-                        return a
-                except Exception:
-                    pass
+        apfi = getattr(self._panel, "anchor_point_for_item", None)
+        if isinstance(item, QTreeWidgetItem) and callable(apfi):
+            try:
+                a = apfi(self._overlay, item)
+                if isinstance(a, QPoint):
+                    return a
+            except Exception:
+                pass
 
-        # Fallback: right-center of the panel → GLOBAL → overlay (no hierarchy requirement)
         try:
             panel_rect = self._panel.rect()
             p = panel_rect.center()
             p.setX(panel_rect.right() - 8)
-
-            g = self._panel.mapToGlobal(p)      # panel → global
-            a = self._overlay.mapFromGlobal(g)  # global → overlay
-
-            # Clamp to overlay bounds
+            g = self._panel.mapToGlobal(p)
+            a = self._overlay.mapFromGlobal(g)
             ax = max(0, min(self._overlay.width() - 1, a.x()))
             ay = max(0, min(self._overlay.height() - 1, a.y()))
             return QPoint(ax, ay)
         except Exception:
-            # Last resort: near right edge of overlay
             return QPoint(max(0, self._overlay.width() - 8), self._overlay.height() // 2)
 
     def _compute_endpoint(self, eid: int, anchor: Optional[QPoint]) -> Optional[QPoint]:
-        """Trim line to the icon edge for the target entity (map coords already in overlay)."""
         if anchor is None:
             return None
         current_view = self._safe_current_widget()
