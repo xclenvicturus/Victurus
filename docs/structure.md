@@ -1,3 +1,5 @@
+# /docs/structure.md
+
 # Victurus — Project Structure (updated 2025-08-24)
 
 This document summarizes the repository layout and what each part is responsible for.
