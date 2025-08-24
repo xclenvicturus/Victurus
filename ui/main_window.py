@@ -166,7 +166,6 @@ class MainWindow(QMainWindow):
         self._apply_leader_style()
 
     def _choose_leader_width(self) -> None:
-        # getInt(parent, title, label, value=0, min=-2147483647, max=2147483647, step=1)
         w, ok = QInputDialog.getInt(
             self,
             "Set Leader Line Width",
@@ -302,6 +301,11 @@ class MainWindow(QMainWindow):
         if self.travel_flow is None:
             # arrival callback reloads maps + UI
             self.travel_flow = TravelFlow(on_arrival=self._on_player_moved, log=self.append_log)
+            # NEW: refresh status panel on each progress tick for smooth gauges
+            try:
+                self.travel_flow.progressTick.connect(self._safe_refresh_status)
+            except Exception:
+                pass
         return self.travel_flow
 
     def _begin_travel(self, kind: str, ident: int) -> None:
@@ -375,11 +379,6 @@ class MainWindow(QMainWindow):
         try:
             self.status_panel.refresh()
             self.refresh_status_counts()
-            # DO NOT reload maps here — it overrides the user's manually opened system.
-            # mv_reload = getattr(self._map_view, "reload_all", None)
-            # if callable(mv_reload):
-            #     try: mv_reload()
-            #     except Exception: pass
         except Exception:
             pass
 
@@ -431,7 +430,6 @@ class MainWindow(QMainWindow):
             pass
 
         return state
-
 
     def _restore_ui_state(self, state: Dict[str, Any]) -> None:
         """Apply a previously captured UI-state dict (best-effort & safe)."""

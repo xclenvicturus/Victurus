@@ -26,7 +26,6 @@ def _as_int(val: Any, default: int = 0) -> int:
             return val
         if isinstance(val, float):
             return int(val)
-        # str or other -> try float then int to accept "123.0"
         return int(float(str(val)))
     except Exception:
         return default
@@ -43,28 +42,66 @@ def _as_float(val: Any, default: float = 0.0) -> float:
         return default
 
 
-class _Gauge(QProgressBar):
+class _GaugeRow(QWidget):
     """
-    Minimal wrapper around QProgressBar that exposes set_values(current, max).
+    A label centered above a progress bar.
+    Supports fractional rendering by scaling the bar's range/value.
     """
-    def __init__(self, text: str, parent: Optional[WIDGET] = None) -> None:  # type: ignore[name-defined]
+    def __init__(self, title: str, decimals: int = 0, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
-        self.setTextVisible(True)
-        self.setFormat(text + ": %v / %m")
-        self.setRange(0, 1)
-        self.setValue(0)
+        self._title = title
+        self._decimals = max(0, int(decimals))
+        # scale 100 -> 0.01 precision on the bar for smoother motion
+        self._scale = 100 if self._decimals > 0 else 1
 
-    def set_values(self, current: int, maximum: int) -> None:
-        m = _as_int(maximum, 1)
-        if m < 1:
-            m = 1
-        v = _as_int(current, 0)
-        if v < 0:
-            v = 0
+        self.label = QLabel(f"{title}: —")
+        self.label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+
+        self.bar = QProgressBar(self)
+        self.bar.setTextVisible(False)  # we show text above instead
+        self.bar.setRange(0, 1)
+        self.bar.setValue(0)
+        # keep consistent heights so none look shorter
+        self.bar.setMinimumHeight(14)
+
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(4)
+        lay.addWidget(self.label, 0, Qt.AlignmentFlag.AlignHCenter)
+        lay.addWidget(self.bar)
+
+    def set_values(self, current: float, maximum: float) -> None:
+        m = float(max(0.0, maximum))
+        v = float(current)
+        if m <= 0.0:
+            # avoid zero-range bars; still show text
+            self.bar.setRange(0, 1)
+            self.bar.setValue(0)
+            self._update_label(0.0, 0.0)
+            return
+
+        if v < 0.0:
+            v = 0.0
         if v > m:
             v = m
-        self.setRange(0, m)
-        self.setValue(v)
+
+        max_scaled = int(round(m * self._scale))
+        val_scaled = int(round(v * self._scale))
+        if max_scaled < 1:
+            max_scaled = 1
+        if val_scaled > max_scaled:
+            val_scaled = max_scaled
+
+        self.bar.setRange(0, max_scaled)
+        self.bar.setValue(val_scaled)
+        self._update_label(v, m)
+
+    def _update_label(self, v: float, m: float) -> None:
+        if self._decimals > 0:
+            fmt = f"{self._title}: {v:.{self._decimals}f} / {m:.{self._decimals}f}"
+        else:
+            fmt = f"{self._title}: {int(v)} / {int(m)}"
+        self.label.setText(fmt)
 
 
 class StatusSheet(QWidget):
@@ -83,12 +120,12 @@ class StatusSheet(QWidget):
         self.lbl_ship_status = QLabel("Ship Status: —")
         self.lbl_jump = QLabel("Jump Range: 0.0 ly")
 
-        # Gauges
-        self.g_hull = _Gauge("Hull", self)
-        self.g_shield = _Gauge("Shield", self)
-        self.g_fuel = _Gauge("Fuel", self)
-        self.g_energy = _Gauge("Energy", self)
-        self.g_cargo = _Gauge("Cargo", self)
+        # Gauges (decimals: fuel/energy 2dp; others integer)
+        self.g_hull = _GaugeRow("Hull", decimals=0, parent=self)
+        self.g_shield = _GaugeRow("Shield", decimals=0, parent=self)
+        self.g_fuel = _GaugeRow("Fuel", decimals=2, parent=self)
+        self.g_energy = _GaugeRow("Energy", decimals=2, parent=self)
+        self.g_cargo = _GaugeRow("Cargo", decimals=0, parent=self)
 
         # Layout
         root = QVBoxLayout(self)
@@ -115,7 +152,7 @@ class StatusSheet(QWidget):
         sep.setFrameShadow(QFrame.Shadow.Sunken)
         root.addWidget(sep)
 
-        # Gauges block
+        # Gauges block (labels already centered in each _GaugeRow)
         root.addWidget(self.g_hull)
         root.addWidget(self.g_shield)
         root.addWidget(self.g_fuel)
@@ -144,20 +181,30 @@ class StatusSheet(QWidget):
         # Credits: format with thousands separator, but only if numeric
         val = snapshot.get('credits', None)
         if isinstance(val, (int, float)) or (isinstance(val, str) and val.replace('_', '').replace(',', '').isdigit()):
-            self.lbl_credits.setText(f"Credits: {_as_int(val):,}")
+            try:
+                self.lbl_credits.setText(f"Credits: {int(float(val)):,}")
+            except Exception:
+                self.lbl_credits.setText(f"Credits: {val}")
         else:
             self.lbl_credits.setText(f"Credits: {str(val) if val is not None else '—'}")
 
         self.lbl_ship.setText(f"Active Ship: {snapshot.get('ship_name','—')}")
         self.lbl_ship_status.setText(f"Ship Status: {snapshot.get('ship_state','—')}")
 
-        # Gauges (use helpers to coerce)
+        # Gauges (use floats for fuel/energy to keep smooth)
         self.g_hull.set_values(_as_int(snapshot.get("hull", 0)), _as_int(snapshot.get("hull_max", 1), 1))
         self.g_shield.set_values(_as_int(snapshot.get("shield", 0)), _as_int(snapshot.get("shield_max", 1), 1))
-        self.g_fuel.set_values(_as_int(snapshot.get("fuel", 0)), _as_int(snapshot.get("fuel_max", 1), 1))
-        self.g_energy.set_values(_as_int(snapshot.get("energy", 0)), _as_int(snapshot.get("energy_max", 1), 1))
+
+        fuel = _as_float(snapshot.get("fuel", 0.0))
+        fuel_max = _as_float(snapshot.get("fuel_max", 1.0), 1.0)
+        self.g_fuel.set_values(fuel, fuel_max)
+
+        energy = _as_float(snapshot.get("energy", 0.0))
+        energy_max = _as_float(snapshot.get("energy_max", 1.0), 1.0)
+        self.g_energy.set_values(energy, energy_max)
+
         self.g_cargo.set_values(_as_int(snapshot.get("cargo", 0)), _as_int(snapshot.get("cargo_max", 1), 1))
 
         # Jump distance label simplified
-        curr = _as_float(snapshot.get('current_jump_distance', 0.0))
+        curr = _as_float(snapshot.get('current_jump_distance', snapshot.get('jump_distance', 0.0)))
         self.lbl_jump.setText(f"Jump Range: {curr:.1f} ly")

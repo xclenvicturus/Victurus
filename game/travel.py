@@ -292,6 +292,49 @@ def get_travel_display_data(kind: str, ident: int) -> Dict[str, Any]:
 
 
 # ---------------------------
+# Fuel mutation helpers (used by TravelFlow)
+# ---------------------------
+
+def get_player_fuel() -> Tuple[float, float]:
+    """
+    Returns (fuel, fuel_max) as floats.
+    """
+    player = cast(Dict[str, Any], db.get_player_full() or {})
+    try:
+        fuel = float(player.get("current_player_ship_fuel") or 0.0)
+    except Exception:
+        fuel = 0.0
+    ship = cast(Dict[str, Any], db.get_player_ship() or {})
+    try:
+        fuel_max = float(ship.get("base_ship_fuel") or 1.0)
+    except Exception:
+        fuel_max = 1.0
+    return fuel, fuel_max
+
+
+def consume_fuel(amount: float) -> float:
+    """
+    Subtracts up to `amount` fuel from the player's ship. Returns the actual amount consumed.
+    Uses float precision and clamps at zero.
+    """
+    amt = float(max(0.0, amount))
+    if amt <= 0.0:
+        return 0.0
+
+    fuel, _ = get_player_fuel()
+    take = min(fuel, amt)
+
+    if take <= 0.0:
+        return 0.0
+
+    new_val = float(max(0.0, fuel - take))
+    conn = db.get_connection()
+    conn.execute("UPDATE player SET current_player_ship_fuel=? WHERE id=1", (new_val,))
+    conn.commit()
+    return take
+
+
+# ---------------------------
 # Apply travel to the DB
 # ---------------------------
 

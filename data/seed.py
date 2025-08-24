@@ -99,7 +99,7 @@ def seed(conn: sqlite3.Connection) -> None:
         INSERT INTO player(id, name, current_wallet_credits, current_player_system_id, current_player_ship_id, current_player_ship_fuel, current_player_ship_hull, current_player_ship_shield, current_player_ship_energy, current_player_ship_cargo, current_player_location_id)
         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
         """,
-        ("Captain Test", 1000, first_sid, shuttle_data[0], shuttle_data[2], shuttle_data[3], shuttle_data[4], shuttle_data[5], shuttle_data[7], first_planet_id),
+        ("Captain Test", 1000, first_sid, shuttle_data[0], shuttle_data[2], shuttle_data[3], shuttle_data[4], shuttle_data[5], 0, first_planet_id),
     )
 
     # --- Cargohold ---
