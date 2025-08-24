@@ -27,10 +27,10 @@ from .widgets.location_list import LocationList
 from .maps.tabs import MapTabs
 
 # controllers
-from .leadline_controller import LeaderLineController
-from .location_presenter import LocationPresenter
-from .map_actions import MapActions
-from .travel_flow import TravelFlow
+from .controllers.leadline_controller import LeaderLineController
+from .controllers.location_presenter import LocationPresenter
+from .controllers.map_actions import MapActions
+from game.travel_flow import TravelFlow
 
 
 def _make_map_view() -> MapTabs:

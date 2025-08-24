@@ -5,7 +5,7 @@ from typing import Callable, Optional
 
 from PySide6.QtWidgets import QWidget, QTabWidget
 
-from .maps.tabs import MapTabs
+from ..maps.tabs import MapTabs
 
 
 class MapActions:

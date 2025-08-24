@@ -6,9 +6,9 @@ from PySide6.QtCore import QObject, QPoint, QTimer, Qt, QEvent
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QWidget, QTreeWidgetItem, QTabWidget
 
-from .maps.tabs import MapTabs
-from .widgets.location_list import LocationList
-from .maps.leadline import LeadLine
+from ..maps.tabs import MapTabs
+from ..widgets.location_list import LocationList
+from ..maps.leadline import LeadLine
 from typing import Callable, Optional, Tuple, cast, Any
 
 class LeaderLineController(QObject):

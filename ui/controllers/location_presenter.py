@@ -8,9 +8,9 @@ from PySide6.QtWidgets import QTabWidget
 
 from data import db
 from game import travel
-from .maps.tabs import MapTabs
-from .widgets.location_list import LocationList
-from .constants import STAR_ID_SENTINEL
+from ..maps.tabs import MapTabs
+from ..widgets.location_list import LocationList
+from ..constants import STAR_ID_SENTINEL
 
 
 def _safe_float(v: Any, default: float = 0.0) -> float:
