@@ -1,4 +1,3 @@
-# ui/widgets/status_sheet.py
 from __future__ import annotations
 
 from typing import Any, Optional
@@ -48,7 +47,7 @@ class _Gauge(QProgressBar):
     """
     Minimal wrapper around QProgressBar that exposes set_values(current, max).
     """
-    def __init__(self, text: str, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, text: str, parent: Optional[WIDGET] = None) -> None:  # type: ignore[name-defined]
         super().__init__(parent)
         self.setTextVisible(True)
         self.setFormat(text + ": %v / %m")
@@ -82,7 +81,7 @@ class StatusSheet(QWidget):
         self.lbl_credits = QLabel("Credits: —")
         self.lbl_ship = QLabel("Active Ship: —")
         self.lbl_ship_status = QLabel("Ship Status: —")
-        self.lbl_jump = QLabel("Jump: base 0.0 ly | current 0.0 ly")
+        self.lbl_jump = QLabel("Jump Range: 0.0 ly")
 
         # Gauges
         self.g_hull = _Gauge("Hull", self)
@@ -110,7 +109,7 @@ class StatusSheet(QWidget):
 
         root.addLayout(top)
 
-        # Separator (use enum-scoped names for Pylance)
+        # Separator
         sep = QFrame(self)
         sep.setFrameShape(QFrame.Shape.HLine)
         sep.setFrameShadow(QFrame.Shadow.Sunken)
@@ -159,7 +158,6 @@ class StatusSheet(QWidget):
         self.g_energy.set_values(_as_int(snapshot.get("energy", 0)), _as_int(snapshot.get("energy_max", 1), 1))
         self.g_cargo.set_values(_as_int(snapshot.get("cargo", 0)), _as_int(snapshot.get("cargo_max", 1), 1))
 
-        # Jump distances
-        base = _as_float(snapshot.get('base_jump_distance', 0.0))
+        # Jump distance label simplified
         curr = _as_float(snapshot.get('current_jump_distance', 0.0))
-        self.lbl_jump.setText(f"Jump: base {base:.1f} ly | current {curr:.1f} ly")
+        self.lbl_jump.setText(f"Jump Range: {curr:.1f} ly")

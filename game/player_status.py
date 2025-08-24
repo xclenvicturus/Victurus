@@ -1,4 +1,3 @@
-# game/player_status.py
 from __future__ import annotations
 
 from typing import Dict, Any, Optional, cast
@@ -50,8 +49,7 @@ def get_ship_status(player: Dict[str, Any]) -> str:
 def get_status_snapshot() -> Dict[str, Any]:
     """
     Collects a UI-friendly snapshot of player + ship status.
-    All numeric fields are guaranteed to be numbers (not strings),
-    and location/system names are always filled with a friendly fallback.
+    Numeric fields are numbers; labels are friendly fallbacks.
     """
     player = cast(Dict[str, Any], db.get_player_full() or {})
     ship = cast(Dict[str, Any], db.get_player_ship() or {})
@@ -64,19 +62,23 @@ def get_status_snapshot() -> Dict[str, Any]:
     loc_row = cast(Optional[Dict[str, Any]], db.get_location(int(loc_id)) if loc_id else None)
 
     system_name = (sys_row.get("name") if sys_row else None) or "—"
+
+    # Default display location from DB
     if loc_row:
-        # db layer already aliases location_name -> name, location_type -> kind where possible
         display_location = (loc_row.get("name") or loc_row.get("location_name") or "—")
     else:
-        # Not parked at a location → treat as being at the star within the system
         display_location = f"{system_name} (Star)" if system_name != "—" else "—"
 
-    # Credits (ensure numeric) — read from DB column 'current_wallet_credits'
-    credits_raw = (
-        player.get("credits")
-        or player.get("current_wallet_credits")
-        or 0
-    )
+    # TEMPORARY STATE OVERRIDES FOR LOCATION LABEL — apply regardless of DB location presence
+    temp = ship_state.get_temporary_state() or ""
+    temp_lower = str(temp).lower()
+    if any(k in temp_lower for k in ("entering cruise", "cruising", "leaving cruise")):
+        display_location = f"{system_name}" if system_name != "—" else "Cruise"
+    elif any(k in temp_lower for k in ("warping")):
+        display_location = "The Warp"
+
+    # Credits (numeric)
+    credits_raw = player.get("credits") or player.get("current_wallet_credits") or 0
     try:
         credits = int(credits_raw)
     except Exception:
@@ -145,7 +147,7 @@ def get_status_snapshot() -> Dict[str, Any]:
         "base_jump_distance": base_jump,
         "current_jump_distance": current_jump,
 
-        # labels (now always have a friendly Location)
+        # labels
         "player_name": player.get("player_name") or player.get("name"),
         "ship_name": ship.get("ship_name") or ship.get("name"),
         "system_name": system_name,
