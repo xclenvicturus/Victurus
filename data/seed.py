@@ -40,7 +40,7 @@ def seed(conn: sqlite3.Connection) -> None:
     cur.executemany("INSERT INTO items(item_name, item_base_price, item_description, item_category) VALUES (?, ?, ?, ?);", items)
 
     # --- Ships ---
-    ships = [("Shuttle", 20, 200, 20.0, 50, 100, 100), ("Freighter", 80, 200, 3.0, 100, 200, 150)]
+    ships = [("Shuttle", 20, 200, 50.0, 50, 100, 100), ("Freighter", 80, 200, 75.0, 100, 200, 150)]
     cur.executemany(
         "INSERT INTO ships(ship_name, base_ship_cargo, base_ship_fuel, base_ship_jump_distance, base_ship_shield, base_ship_hull, base_ship_energy) VALUES (?, ?, ?, ?, ?, ?, ?);",
         ships,

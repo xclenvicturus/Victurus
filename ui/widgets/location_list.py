@@ -143,21 +143,40 @@ class LocationList(QWidget):
                 if icon:
                     it.setIcon(0, icon)
 
-            # Coloring rules
+            # --- Coloring rules (updated) ---
             is_current = bool(r.get("is_current", False))
             can_reach = r.get("can_reach", True)
+            can_reach_jump = r.get("can_reach_jump", True)
             can_reach_fuel = r.get("can_reach_fuel", True)
 
-            # Name column: ONLY current rows are green; unreachable rows turn red; others default color
+            # Name column: current rows are green; unreachable rows turn red; others default color
             if is_current:
                 it.setForeground(0, green_brush)
             elif not can_reach:
                 it.setForeground(0, red_brush)
 
-            # Fuel column (index 2) turns red only if fuel constraint fails
+            # Distance column (index 1): green if jumpable, red if too far.
+            # Same-system rows (no jump needed) are treated as jumpable (green).
             try:
-                if isinstance(fuel_val, (int, float)) and float(fuel_val) > 0 and not can_reach_fuel:
-                    it.setForeground(2, red_brush)
+                jump_val = 0.0
+                if "dist_ly" in r and r["dist_ly"] not in (None, ""):
+                    jump_val = float(r["dist_ly"])
+                elif "jump_dist" in r and r["jump_dist"] not in (None, ""):
+                    jump_val = float(r["jump_dist"])
+            except Exception:
+                jump_val = 0.0
+
+            if jump_val > 0.0:
+                it.setForeground(1, green_brush if can_reach_jump else red_brush)
+            else:
+                it.setForeground(1, green_brush)
+
+            # Fuel column (index 2): green if enough fuel for a positive cost, red if not.
+            try:
+                if isinstance(fuel_val, (int, float)):
+                    if float(fuel_val) > 0:
+                        it.setForeground(2, green_brush if can_reach_fuel else red_brush)
+                # if "—" or 0, leave default color
             except Exception:
                 pass
 
@@ -183,7 +202,19 @@ class LocationList(QWidget):
         elif sort_key == "Y":
             rows.sort(key=lambda r: r.get("y", 0.0))
         elif "Distance" in sort_key:
-            rows.sort(key=lambda r: r.get("jump_dist", float("inf")))
+            # Sort primarily by jump distance (ly) when present; fall back to AU or inf
+            def _dist_key(rr: Dict) -> float:
+                try:
+                    if rr.get("dist_ly") not in (None, ""):
+                        return float(rr["dist_ly"])
+                    if rr.get("jump_dist") not in (None, ""):
+                        return float(rr["jump_dist"])
+                    if rr.get("dist_au") not in (None, ""):
+                        return float(rr["dist_au"])
+                except Exception:
+                    pass
+                return float("inf")
+            rows.sort(key=_dist_key)
 
         return rows
 

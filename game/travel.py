@@ -64,7 +64,7 @@ def _sys_name(row: Optional[Dict[str, Any]]) -> str:
 def _sys_xy(system_row: Optional[Dict[str, Any]]) -> Tuple[float, float]:
     if not system_row:
         return (0.0, 0.0)
-    # Expect x,y in galaxy (pc) coordinates; db.py aliases expose x/y
+    # Expect x,y in galaxy (pc/ly) coordinates; db.py aliases expose x/y
     x = float(system_row.get("x") or 0.0)
     y = float(system_row.get("y") or 0.0)
     return (x, y)
@@ -106,13 +106,24 @@ def _dist(p1: Tuple[float, float], p2: Tuple[float, float]) -> float:
 
 def _intra_fuel_cost(au: float) -> int:
     """
-    Coarse fuel model: 1 fuel per 5 AU, rounded up.
+    Coarse cruise fuel model: 1 fuel per 5 AU, rounded up.
     Guarantees at least 1 fuel for any non-zero trip.
     """
     au = float(au or 0.0)
     if au <= 0.0:
         return 0
     return max(1, int(math.ceil(au / 5.0)))
+
+
+def _warp_fuel_cost_ly(ly: float) -> int:
+    """
+    Warp fuel model: 2 fuel per 1 ly, rounded up.
+    Returns 0 for zero-distance.
+    """
+    ly = float(ly or 0.0)
+    if ly <= 0.0:
+        return 0
+    return int(math.ceil(2.0 * ly))
 
 
 # ---------------------------
@@ -138,10 +149,10 @@ def get_travel_display_data(kind: str, ident: int) -> Dict[str, Any]:
       # NEW (for UI)
       distance: str           # "<ly> ly, <au> AU"
       jump_dist: float        # same as dist_ly (info column)
-      fuel_cost: int          # cruise-only fuel (warp hop itself costs no fuel)
+      fuel_cost: int          # cruise + warp fuel (warp now costs 2/ly)
       can_reach: bool
-      can_reach_jump: bool
-      can_reach_fuel: bool
+      can_reach_jump: bool    # jump-range constraint
+      can_reach_fuel: bool    # fuel constraint
     """
     player = cast(Dict[str, Any], db.get_player_full() or {})
     cur_sys_id = _safe_int(player.get("current_player_system_id") or player.get("system_id"), 0)
@@ -189,12 +200,14 @@ def get_travel_display_data(kind: str, ident: int) -> Dict[str, Any]:
         "target_location_id": _safe_int(target_loc.get("location_id") or target_loc.get("id"), 0) if target_loc else None,
     }
 
-    # Player fuel for reachability
+    # Player status for reachability
     try:
         status = player_status.get_status_snapshot()
         player_fuel = float(status.get("fuel", 0))
+        jump_range_ly = float(status.get("current_jump_distance", status.get("base_jump_distance", 0.0)) or 0.0)
     except Exception:
         player_fuel = 0.0
+        jump_range_ly = 0.0
 
     if same_system:
         # pure intra-system leg: distance in AU between current location and target
@@ -226,7 +239,7 @@ def get_travel_display_data(kind: str, ident: int) -> Dict[str, Any]:
         })
         return out
 
-    # Inter-system: need gate→gate/system→system distance in the galaxy plane plus the two in-system AU legs
+    # Inter-system: need galaxy ly distance + the two in-system AU legs
     src_sys = cast(Optional[Dict[str, Any]], db.get_system(cur_sys_id))
     src_xy_ly = _sys_xy(src_sys)
     dst_xy_ly = _sys_xy(target_sys)
@@ -250,12 +263,17 @@ def get_travel_display_data(kind: str, ident: int) -> Dict[str, Any]:
     target_xy = _loc_xy_au(target_loc) if target_loc else (0.0, 0.0)  # star center if None
     intra_target_au = float(_dist(dest_gate_xy, target_xy))
 
-    # Warp itself uses no ship fuel. We just pay both cruise legs.
-    fuel_cost = _intra_fuel_cost(intra_current_au) + _intra_fuel_cost(intra_target_au)
+    # Fuel costs: cruise + warp(2 per ly) + cruise
+    fuel_cost = (
+        _intra_fuel_cost(intra_current_au)
+        + _warp_fuel_cost_ly(dist_ly)
+        + _intra_fuel_cost(intra_target_au)
+    )
     total_au = intra_current_au + intra_target_au
 
-    can_reach_jump = True  # warp gate handles the hop
-    can_reach_fuel = (player_fuel >= fuel_cost)
+    # Reachability checks
+    can_reach_jump = (jump_range_ly >= dist_ly)  # jump range must cover ly distance
+    can_reach_fuel = (player_fuel >= float(fuel_cost))
     can_reach = can_reach_jump and can_reach_fuel
 
     out.update({
@@ -263,7 +281,7 @@ def get_travel_display_data(kind: str, ident: int) -> Dict[str, Any]:
         "dist_au": 0.0,
         "intra_current_au": intra_current_au,
         "intra_target_au": intra_target_au,
-        "fuel_cost": fuel_cost,
+        "fuel_cost": int(fuel_cost),
         "jump_dist": dist_ly,
         "distance": f"{dist_ly:.2f} ly, {total_au:.2f} AU",
         "can_reach": can_reach,
@@ -281,11 +299,16 @@ def perform_travel(kind: str, ident: int) -> str:
     """
     Actually move the player in the DB to the destination (system or location).
     Called by TravelFlow once transit is complete, before arrival wrappers.
+    Also subtracts the computed fuel cost from the player's current fuel.
     Returns a short log message.
     """
+    # Calculate the cost for this specific trip (matches display data)
+    td = get_travel_display_data(kind, ident) or {}
+    fuel_cost = int(td.get("fuel_cost", 0) or 0)
+
     player = cast(Dict[str, Any], db.get_player_full() or {})
-    # cur_sys_id retained in case you want conditional logic:
-    _ = _safe_int(player.get("current_player_system_id") or player.get("system_id"), 0)
+    cur_fuel = int(player.get("current_player_ship_fuel", 0) or 0)
+    new_fuel = max(0, cur_fuel - fuel_cost)
 
     if kind == "loc":
         dest_loc = cast(Optional[Dict[str, Any]], db.get_location(int(ident)))
@@ -294,8 +317,8 @@ def perform_travel(kind: str, ident: int) -> str:
         dest_sys_id = _safe_int(dest_loc.get("system_id"), 0)
         conn = db.get_connection()
         conn.execute(
-            "UPDATE player SET current_player_system_id=?, current_player_location_id=? WHERE id=1",
-            (dest_sys_id, _safe_int(dest_loc.get("location_id") or dest_loc.get("id"), 0)),
+            "UPDATE player SET current_player_system_id=?, current_player_location_id=?, current_player_ship_fuel=? WHERE id=1",
+            (dest_sys_id, _safe_int(dest_loc.get("location_id") or dest_loc.get("id"), 0), new_fuel),
         )
         conn.commit()
         sys_row = cast(Optional[Dict[str, Any]], db.get_system(dest_sys_id))
@@ -308,8 +331,8 @@ def perform_travel(kind: str, ident: int) -> str:
         conn = db.get_connection()
         # move to system; clear location (free-flying / at star)
         conn.execute(
-            "UPDATE player SET current_player_system_id=?, current_player_location_id=NULL WHERE id=1",
-            (dest_sys_id,),
+            "UPDATE player SET current_player_system_id=?, current_player_location_id=NULL, current_player_ship_fuel=? WHERE id=1",
+            (dest_sys_id, new_fuel),
         )
         conn.commit()
         return f"Arrived in {_sys_name(dest_sys)}."
