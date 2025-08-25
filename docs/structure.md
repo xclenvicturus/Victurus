@@ -1,16 +1,15 @@
-# /docs/structure.md
-
 # Victurus — Project Structure (updated 2025-08-25)
 
 This document summarizes the repository layout and what each part is responsible for.
 
 **Key modules:**
-- **UI (`ui/`)**: Widgets, panels, and map views (galaxy/solar) built with PySide6.
-- **Game (`game/`)**: Player snapshot, ship state, travel math, and game-flow orchestration.
-- **Data (`data/`)**: SQLite schema, seed helpers, and the runtime DB file access layer.
-- **Save (`save/`)**: Save-game models, paths, serialization, and lifecycle management.
-- **Docs (`docs/`)**: Developer-facing documentation.
-- **Assets (`assets/`)** star/planet/station GIFs are expected under an `assets/` directory parallel to the codebase (e.g., `assets/planets/p01.gif`). The UI selects deterministic GIFs per system/location so list thumbnails match the map.
+
+- **UI (`ui/`)** — Widgets, panels, and map views (galaxy/solar) built with PySide6.
+- **Game (`game/`)** — Player snapshot, ship state, travel math, and game-flow orchestration.
+- **Data (`data/`)** — SQLite schema, seed helpers, and the runtime DB file access layer.
+- **Save (`save/`)** — Save-game models, paths, serialization, and lifecycle management.
+- **Docs (`docs/`)** — Developer-facing documentation.
+- **Assets (`assets/`)** — Star, planet, station, and other art assets (GIF/PNG) organized by type (e.g., assets/planets/p01.gif); the UI selects deterministic assets per system/location so thumbnails match the map.
 
 ## Tree
 
@@ -23,6 +22,21 @@ Victurus/
 │ └─ seed.py
 └─ database/
 │ └─ game.db
+└─ assets/
+│ └─ planets/
+│ │ └─ p01.gif
+│ └─ moons/
+│ │ └─ m01.gif
+│ └─ stars/
+│ │ └─ t01.gif
+│ └─ stations/
+│ │ └─ s01.gif
+│ └─ warpgates/
+│ │ └─ w01.gif
+│ └─ galaxy_backgrounds/
+│ │ └─ default.png
+│ └─ solar_backgrounds/
+│ │ └─ system_bg_01.png
 └─ docs/
 │ └─ structure.md
 │ └─ feature_checklist.md
@@ -38,11 +52,11 @@ Victurus/
 │ └─ paths.py
 │ └─ serializers.py
 └─ ui/
-  └─ __init__.py
+  └─ `__init__.py`
   └─ main_window.py
   └─ constants.py
   └─ controllers/
-  │ └─ __init__.py
+  │ └─ `__init__.py`
   │ └─ location_presenter.py
   │ └─ map_actions.py
   └─ dialogs/
@@ -65,7 +79,6 @@ Victurus/
   └─ widgets/
     └─ location_list.py
     └─ status_sheet.py
-
 
 ## Notes
 
