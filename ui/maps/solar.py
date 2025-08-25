@@ -1,3 +1,5 @@
+# /ui/maps/solar.py
+
 """
 SolarMapWidget (display-only, GIF-only assets):
 - central star at (0,0) using a star GIF
@@ -32,7 +34,7 @@ STARS_DIR    = ASSETS_ROOT / "stars"
 PLANETS_DIR  = ASSETS_ROOT / "planets"
 STATIONS_DIR = ASSETS_ROOT / "stations"
 WARP_GATE_DIR = ASSETS_ROOT / "warp_gate"
-MOONS_DIR    = ASSETS_ROOT / "moons"   # <-- NEW
+MOONS_DIR    = ASSETS_ROOT / "moons"
 
 
 def _to_int(x) -> Optional[int]:
@@ -225,7 +227,7 @@ class SolarMapWidget(BackgroundView):
         planet_rows = sorted(planets, key=lambda x: x["id"])
         station_rows = sorted(stations, key=lambda x: x["id"])
         warp_gate_rows = sorted(warp_gates, key=lambda x: x["id"])
-        moon_rows = sorted(moons, key=lambda x: x["id"])     # <-- NEW
+        moon_rows = sorted(moons, key=lambda x: x["id"])
 
         planet_assignments   = assign_unique(planet_gifs,  len(planet_rows),   1)
         station_assignments  = assign_unique(station_gifs, len(station_rows),  2)

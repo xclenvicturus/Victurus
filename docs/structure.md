@@ -10,8 +10,7 @@ This document summarizes the repository layout and what each part is responsible
 - **Data (`data/`)**: SQLite schema, seed helpers, and the runtime DB file access layer.
 - **Save (`save/`)**: Save-game models, paths, serialization, and lifecycle management.
 - **Docs (`docs/`)**: Developer-facing documentation.
-
-**Assets** star/planet/station GIFs are expected under an `assets/` directory parallel to the codebase (e.g., `assets/planets/p01.gif`). The UI selects deterministic GIFs per system/location so list thumbnails match the map.
+- **Assets (`assets/`)** star/planet/station GIFs are expected under an `assets/` directory parallel to the codebase (e.g., `assets/planets/p01.gif`). The UI selects deterministic GIFs per system/location so list thumbnails match the map.
 
 ## Tree
 

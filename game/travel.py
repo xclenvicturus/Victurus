@@ -7,6 +7,15 @@ import math
 from data import db
 from game import player_status
 
+# ------------------------------------------------------------------
+# Shared fuel model (single source of truth for display + flow)
+# ------------------------------------------------------------------
+# Continuous cruise model: 1 fuel per 5 AU
+FUEL_PER_AU = 1.0 / 5.0
+# Base warp rate: 2 fuel per 1 ly
+WARP_FUEL_PER_LY = 2.0
+# Warp efficiency/overhead multiplier used by TravelFlow
+WARP_FUEL_WEIGHT = 1.40
 
 # ---------------------------
 # Safe helpers
@@ -111,26 +120,21 @@ def _dist(p1: Tuple[float, float], p2: Tuple[float, float]) -> float:
     return math.hypot(dx, dy)
 
 
-def _intra_fuel_cost(au: float) -> int:
+# ------------------------------------------------------------------
+# Unified fuel estimator used by both display and flow
+# ------------------------------------------------------------------
+def estimate_total_fuel(dist_ly: float, intra_current_au: float, intra_target_au: float, same_system: bool) -> float:
     """
-    Coarse cruise fuel model: 1 fuel per 5 AU, rounded up.
-    Guarantees at least 1 fuel for any non-zero trip.
-    """
-    au = float(au or 0.0)
-    if au <= 0.0:
-        return 0
-    return max(1, int(math.ceil(au / 5.0)))
+    Compute the total fuel that TravelFlow will drip for the planned route
+    using the exact same model constants.
 
-
-def _warp_fuel_cost_ly(ly: float) -> int:
+    - Cruise (AU): continuous, FUEL_PER_AU * AU
+    - Warp (LY):   WARP_FUEL_PER_LY * LY * WARP_FUEL_WEIGHT (overhead factor)
     """
-    Warp fuel model: 2 fuel per 1 ly, rounded up.
-    Returns 0 for zero-distance.
-    """
-    ly = float(ly or 0.0)
-    if ly <= 0.0:
-        return 0
-    return int(math.ceil(2.0 * ly))
+    au_total = (intra_current_au + intra_target_au) if not same_system else intra_current_au  # same_system path passes dist_au in 'intra_current_au'
+    intra_total = FUEL_PER_AU * max(0.0, float(au_total))
+    warp_total = (WARP_FUEL_PER_LY * max(0.0, float(dist_ly)) * WARP_FUEL_WEIGHT)
+    return intra_total + warp_total
 
 
 # ---------------------------
@@ -156,7 +160,7 @@ def get_travel_display_data(kind: str, ident: int) -> Dict[str, Any]:
       # UI helpers
       distance: str           # "<ly> ly, <au> AU"
       jump_dist: float        # same as dist_ly (info column)
-      fuel_cost: int          # cruise + warp fuel (warp costs 2/ly)
+      fuel_cost: int          # unified model (ceil of total drip)
       can_reach: bool
       can_reach_jump: bool    # jump-range constraint
       can_reach_fuel: bool    # fuel constraint
@@ -218,16 +222,18 @@ def get_travel_display_data(kind: str, ident: int) -> Dict[str, Any]:
         jump_range_ly = 0.0
 
     if same_system:
-        # pure intra-system leg (planet <-> moon <-> station <-> star all handled by coord diff)
+        # pure intra-system leg (planet <-> moon <-> station <-> star)
         target_xy = _loc_xy_au(target_loc) if target_loc else (0.0, 0.0)
         cur_xy = (0.0, 0.0)
         if cur_loc_id is not None:
             cur_loc = cast(Optional[Dict[str, Any]], db.get_location(cur_loc_id))
             cur_xy = _loc_xy_au(cur_loc)
-
         dist_au = float(_dist(cur_xy, target_xy))
-        fuel_cost = _intra_fuel_cost(dist_au)
         dist_ly = 0.0
+
+        # unified fuel estimate (pass AU in intra_current_au; intra_target_au=0)
+        total_fuel = estimate_total_fuel(dist_ly=0.0, intra_current_au=dist_au, intra_target_au=0.0, same_system=True)
+        fuel_cost = int(math.ceil(total_fuel))
 
         can_reach_jump = True
         can_reach_fuel = (player_fuel >= fuel_cost)
@@ -261,7 +267,6 @@ def get_travel_display_data(kind: str, ident: int) -> Dict[str, Any]:
     if cur_loc_id is not None:
         cur_loc = cast(Optional[Dict[str, Any]], db.get_location(cur_loc_id))
         cur_xy = _loc_xy_au(cur_loc)
-
     intra_current_au = float(_dist(cur_xy, gate_xy))
 
     # AU leg from destination gate to target
@@ -271,12 +276,9 @@ def get_travel_display_data(kind: str, ident: int) -> Dict[str, Any]:
     target_xy = _loc_xy_au(target_loc) if target_loc else (0.0, 0.0)  # star center if None
     intra_target_au = float(_dist(dest_gate_xy, target_xy))
 
-    # Fuel costs: cruise + warp + cruise
-    fuel_cost = (
-        _intra_fuel_cost(intra_current_au)
-        + _warp_fuel_cost_ly(dist_ly)
-        + _intra_fuel_cost(intra_target_au)
-    )
+    # Unified total fuel (exact same model as TravelFlow)
+    total_fuel = estimate_total_fuel(dist_ly, intra_current_au, intra_target_au, same_system=False)
+    fuel_cost = int(math.ceil(total_fuel))
     total_au = intra_current_au + intra_target_au
 
     # Reachability checks
@@ -289,7 +291,7 @@ def get_travel_display_data(kind: str, ident: int) -> Dict[str, Any]:
         "dist_au": 0.0,
         "intra_current_au": intra_current_au,
         "intra_target_au": intra_target_au,
-        "fuel_cost": int(fuel_cost),
+        "fuel_cost": fuel_cost,
         "jump_dist": dist_ly,
         "distance": f"{dist_ly:.2f} ly, {total_au:.2f} AU",
         "can_reach": can_reach,

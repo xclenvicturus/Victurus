@@ -1,5 +1,4 @@
 # /game/travel_flow.py
-
 from __future__ import annotations
 
 from typing import Callable, Optional, Dict, Any, List, Tuple
@@ -16,16 +15,10 @@ CRUISE_MS_PER_AU = 500    # ms per AU
 WARP_MS_PER_LY   = 500    # ms per LY
 DRIP_STEP_MS     = 10     # ms cadence for progress ticks
 
-# ---- Fuel weights (your values) ----
+# ---- Fuel weights / constants (import shared rates from travel) ----
 WRAP_FUEL_WEIGHT   = 2.00
 CRUISE_FUEL_WEIGHT = 1.00
-WARP_FUEL_WEIGHT   = 1.40
-
-# Continuous model (aligns with UI): 1 fuel per 5 AU
-FUEL_PER_AU = 1.0 / 5.0
-# Warp base rate (pre-weight): 2 fuel per 1 LY
-WARP_FUEL_PER_LY = 2.0
-
+from game.travel import FUEL_PER_AU, WARP_FUEL_PER_LY, WARP_FUEL_WEIGHT  # single source of truth
 
 def _ms_for_cruise(au: float) -> int:
     """Return a duration that is >=1 ms when AU > 0, else 0."""
@@ -177,7 +170,7 @@ class TravelFlow(QObject):
             intra_parts.append((WRAP_FUEL_WEIGHT, wrap_ms))
             # cruise to gate
             intra_parts.append((CRUISE_FUEL_WEIGHT, cruise_segments_ms[0][1]))
-            # leave cruise (at gate)
+            # leave cruise at gate
             intra_parts.append((WRAP_FUEL_WEIGHT, wrap_ms))
             # later: after warp, enter cruise from gate
             intra_parts.append((WRAP_FUEL_WEIGHT, wrap_ms))
@@ -208,7 +201,7 @@ class TravelFlow(QObject):
             pf = db.get_player_full() or {}
             src_sys_id = int(pf.get("current_player_system_id") or pf.get("system_id") or 0)
             if src_sys_id:
-                src_sys_name = _sys_name_from_id(src_sys_id)
+                src_sys_name = self._sys_name_from_id_cached(src_sys_id)
         except Exception:
             pass
 
@@ -216,7 +209,7 @@ class TravelFlow(QObject):
         try:
             tgt_id = int(route.get("target_system_id") or 0)
             if tgt_id:
-                tgt_sys_name = _sys_name_from_id(tgt_id)
+                tgt_sys_name = self._sys_name_from_id_cached(tgt_id)
         except Exception:
             pass
 
@@ -290,8 +283,19 @@ class TravelFlow(QObject):
             "commit": (kind, ident),
         })
 
-
         return seq
+
+    # Simple tiny cache for system names (avoid repeated DB hits during plan)
+    _name_cache: Dict[int, str] = {}
+
+    @classmethod
+    def _sys_name_from_id_cached(cls, sys_id: int) -> Optional[str]:
+        if sys_id in cls._name_cache:
+            return cls._name_cache[sys_id]
+        name = _sys_name_from_id(sys_id)
+        if name:
+            cls._name_cache[sys_id] = name
+        return name
 
     def _start_next_phase(self) -> None:
         if self._seq_index >= len(self._seq):

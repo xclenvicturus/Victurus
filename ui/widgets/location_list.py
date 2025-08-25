@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import Callable, Dict, List, Optional, Tuple
 import re
 
+from game import player_status
+
 from PySide6.QtCore import QPoint, QEvent, Qt, Signal, QPointF
 from PySide6.QtGui import QFont, QIcon, QColor, QBrush, QAction
 from PySide6.QtWidgets import (
@@ -242,10 +244,39 @@ class LocationList(QWidget):
         item = self.tree.itemAt(pos)
         if not item:
             return
+
         val = item.data(0, Qt.ItemDataRole.UserRole)
-        if not isinstance(val, int):
+        try:
+            entity_id = int(val)
+        except Exception:
             return
-        entity_id = val
+
+        # Identify current player position
+        snap = player_status.get_status_snapshot() or {}
+        def _to_int(x):
+            try:
+                return int(x)
+            except Exception:
+                return None
+
+        cur_loc_id = _to_int(snap.get("location_id"))
+        cur_sys_id = _to_int(snap.get("system_id"))
+
+        # Suppress menu if user right-clicked their *current* location:
+        #  - Positive IDs are locations; match current location exactly.
+        #  - Negative IDs represent a system/star (-system_id); treat as "already here"
+        #    only when the player is at the star (no current location set).
+        is_current = False
+        if entity_id >= 0:
+            is_current = (cur_loc_id is not None and entity_id == cur_loc_id)
+        else:
+            is_current = (cur_sys_id is not None and -entity_id == cur_sys_id and cur_loc_id is None)
+
+        if is_current:
+            # Already here — don't show a travel menu.
+            return
+
+        # Otherwise, show the normal travel menu
         menu = QMenu(self)
         travel_action = QAction("Travel to", self)
         travel_action.triggered.connect(lambda: self.travelHere.emit(entity_id))

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, Any, Optional, cast
+from typing import Dict, Any, Optional, cast, Iterable
 
 from data import db
 from game import ship_state
@@ -55,6 +55,36 @@ def _get_temp_state() -> Optional[str]:
     return _LOCAL_TEMP_STATE
 
 
+def _first_nonempty_str(d: Dict[str, Any], keys: Iterable[str]) -> Optional[str]:
+    """Return the first non-empty string value found in d[keys[i]]."""
+    for k in keys:
+        v = d.get(k)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+    return None
+
+
+def _first_numeric(d: Dict[str, Any], keys: Iterable[str]) -> Optional[float]:
+    """Return the first value convertible to float from d[key] (None if not found)."""
+    for k in keys:
+        if k not in d:
+            continue
+        v = d.get(k)
+        # Skip explicit None to avoid passing None to float() (fixes type-checker error)
+        if v is None:
+            continue
+        try:
+            # Accept ints, floats, numeric strings
+            return float(v)
+        except Exception:
+            try:
+                # Try str() fallback (e.g., Decimal, numpy, etc.)
+                return float(str(v))
+            except Exception:
+                continue
+    return None
+
+
 # ---------- Public setters used by travel/travel_flow ----------
 
 def set_ship_state(state: Optional[str]) -> None:
@@ -72,6 +102,14 @@ def set_ship_state(state: Optional[str]) -> None:
             _LOCAL_TEMP_STATE = state
     except Exception:
         _LOCAL_TEMP_STATE = state
+
+
+def clear_temporary_state() -> None:
+    """
+    Clear any temporary ship state override (moved here from game.ship_state).
+    Keeping this in player_status gives the UI one surface for transient phases.
+    """
+    set_ship_state(None)
 
 
 def set_transient_location(label: Optional[str]) -> None:
@@ -138,6 +176,18 @@ def get_status_snapshot() -> Dict[str, Any]:
     """
     Collect a UI-friendly snapshot of player + ship status.
     Numeric fields are numbers; labels are friendly fallbacks.
+
+    Keys provided (not exhaustive):
+      - player_name: string (derived from common player-name fields)
+      - ship_name:   string (from ships.name/ship_name)
+      - current_jump_distance: float (best available, in ly)
+      - system_id, location_id
+      - system_name, display_location
+      - status
+      - credits (int)
+      - hull/hull_max, shield/shield_max
+      - fuel/fuel_max, energy/energy_max
+      - cargo/cargo_max
     """
     player = cast(Dict[str, Any], db.get_player_full() or {})
     ship = cast(Dict[str, Any], db.get_player_ship() or {})
@@ -169,6 +219,53 @@ def get_status_snapshot() -> Dict[str, Any]:
         elif "warping" in tl or "warp" in tl:
             display_location = "The Warp"
 
+    # ---- Names ----
+    player_name = _first_nonempty_str(
+        player,
+        [
+            "player_name",
+            "commander",
+            "commander_name",
+            "name",
+            "player",
+            "current_commander_name",
+            "current_player_name",
+        ],
+    ) or "—"
+
+    # db.get_player_ship() aliases ship_name AS name; keep fallbacks too
+    ship_name = _first_nonempty_str(
+        ship,
+        [
+            "name",
+            "ship_name",
+            "current_player_ship_name",
+        ],
+    ) or "—"
+
+    # ---- Jump range (ly): populate `current_jump_distance` if any known field exists ----
+    # Try likely player fields first (runtime/current values), then ship/base fields.
+    jump_player = _first_numeric(
+        player,
+        (
+            "current_jump_distance",
+            "jump_distance",
+            "current_player_jump_distance",
+            "current_player_ship_jump_distance",
+        ),
+    )
+    jump_ship = _first_numeric(
+        ship,
+        (
+            "jump_range_ly",
+            "jump_distance_ly",
+            "base_ship_jump_distance",
+            "base_jump_distance",
+            "max_jump_ly",
+        ),
+    )
+    current_jump_distance = jump_player if jump_player is not None else (jump_ship if jump_ship is not None else 0.0)
+
     # Credits (numeric)
     credits_raw = player.get("credits") or player.get("current_wallet_credits") or 0
     try:
@@ -180,87 +277,47 @@ def get_status_snapshot() -> Dict[str, Any]:
             credits = 0
 
     # Basic ship stats (coerced)
-    try:
-        hull = int(player.get("current_player_ship_hull") or 0)
-    except Exception:
-        hull = 0
-    try:
-        hull_max = int(ship.get("base_ship_hull") or 1)
-    except Exception:
-        hull_max = 1
+    def _int(x, default=0):
+        try:
+            return int(x)
+        except Exception:
+            return default
 
-    try:
-        shield = int(player.get("current_player_ship_shield") or 0)
-    except Exception:
-        shield = 0
-    try:
-        shield_max = int(ship.get("base_ship_shield") or 1)
-    except Exception:
-        shield_max = 1
+    def _float(x, default=0.0):
+        try:
+            return float(x)
+        except Exception:
+            return default
 
-    # Fuel/energy as floats (gauges show decimals smoothly)
-    try:
-        fuel = float(player.get("current_player_ship_fuel") or 0.0)
-    except Exception:
-        fuel = 0.0
-    try:
-        fuel_max = float(ship.get("base_ship_fuel") or 1.0)
-    except Exception:
-        fuel_max = 1.0
-
-    try:
-        energy = float(player.get("current_player_ship_energy") or 0.0)
-    except Exception:
-        energy = 0.0
-    try:
-        energy_max = float(ship.get("base_ship_energy") or 1.0)
-    except Exception:
-        energy_max = 1.0
-
-    try:
-        cargo = int(player.get("current_player_ship_cargo") or 0)
-    except Exception:
-        cargo = 0
-    try:
-        cargo_max = int(ship.get("base_ship_cargo") or 1)
-    except Exception:
-        cargo_max = 1
-
-    # Jump distances (derived current based on fuel fraction)
-    try:
-        base_jump = float(ship.get("base_ship_jump_distance") or 0.0)
-    except Exception:
-        base_jump = 0.0
-    fuel_frac = (fuel / fuel_max) if fuel_max > 0 else 0.0
-    current_jump = base_jump * fuel_frac
+    hull      = _int(player.get("current_player_ship_hull"))
+    hull_max  = _int(ship.get("base_ship_hull"), 1)
+    shield    = _int(player.get("current_player_ship_shield"))
+    shield_max= _int(ship.get("base_ship_shield"), 1)
+    fuel      = _float(player.get("current_player_ship_fuel"))
+    fuel_max  = _float(ship.get("base_ship_fuel"), 1.0)
+    energy    = _float(player.get("current_player_ship_energy"))
+    energy_max= _float(ship.get("base_ship_energy"), 1.0)
+    cargo     = _int(player.get("current_player_ship_cargo"))
+    cargo_max = _int(ship.get("base_ship_cargo"), 1)
 
     return {
-        # high-level state
-        "ship_state": get_ship_status(player),
-
-        # ship resources
-        "hull": hull,
-        "hull_max": hull_max,
-        "shield": shield,
-        "shield_max": shield_max,
-        "fuel": fuel,
-        "fuel_max": fuel_max,
-        "energy": energy,
-        "energy_max": energy_max,
-        "cargo": cargo,
-        "cargo_max": cargo_max,
-
-        # economy
-        "credits": credits,
-
-        # jump distances (return both keys for UI/back-compat)
-        "base_jump_distance": base_jump,
-        "jump_distance": current_jump,
-        "current_jump_distance": current_jump,
-
-        # labels
-        "player_name": player.get("player_name") or player.get("name"),
-        "ship_name": ship.get("ship_name") or ship.get("name"),
+        # IDs & names
+        "system_id": sys_id,
+        "location_id": loc_id,
         "system_name": system_name,
-        "location_name": display_location,
+        "display_location": display_location,
+        "player_name": player_name,
+        "ship_name": ship_name,
+
+        # Status & resources
+        "status": get_ship_status(player),
+        "credits": credits,
+        "hull": hull, "hull_max": hull_max,
+        "shield": shield, "shield_max": shield_max,
+        "fuel": fuel, "fuel_max": fuel_max,
+        "energy": energy, "energy_max": energy_max,
+        "cargo": cargo, "cargo_max": cargo_max,
+
+        # Jump range (as displayed by StatusSheet)
+        "current_jump_distance": current_jump_distance,
     }

@@ -175,12 +175,19 @@ class StatusSheet(QWidget):
         snapshot = player_status.get_status_snapshot() or {}
 
         # Basic strings
+        # Name (keep old behavior; fallback if not provided)
         self.lbl_player.setText(f"Name: {snapshot.get('player_name','—')}")
-        self.lbl_location.setText(
-            f"Location: {snapshot.get('location_name') or snapshot.get('system_name') or '—'}"
-        )
 
-        # Credits: format with thousands separator, but only if numeric
+        # Location: prefer new key 'display_location', keep legacy fallbacks
+        loc = (
+            snapshot.get('display_location') or
+            snapshot.get('location_name') or
+            snapshot.get('system_name') or
+            '—'
+        )
+        self.lbl_location.setText(f"Location: {loc}")
+
+        # Credits: format with thousands separator, but only if numeric-ish
         val = snapshot.get('credits', None)
         if isinstance(val, (int, float)) or (isinstance(val, str) and val.replace('_', '').replace(',', '').isdigit()):
             try:
@@ -190,8 +197,12 @@ class StatusSheet(QWidget):
         else:
             self.lbl_credits.setText(f"Credits: {str(val) if val is not None else '—'}")
 
+        # Ship name (legacy key retained; safe if missing)
         self.lbl_ship.setText(f"Active Ship: {snapshot.get('ship_name','—')}")
-        self.lbl_ship_status.setText(f"Ship Status: {snapshot.get('ship_state','—')}")
+
+        # Ship status: prefer new 'status', then legacy 'ship_state'
+        ship_status = snapshot.get('status') or snapshot.get('ship_state') or '—'
+        self.lbl_ship_status.setText(f"Ship Status: {ship_status}")
 
         # Gauges (use floats for fuel/energy to keep smooth)
         self.g_hull.set_values(_as_int(snapshot.get("hull", 0)), _as_int(snapshot.get("hull_max", 1), 1))
@@ -207,6 +218,6 @@ class StatusSheet(QWidget):
 
         self.g_cargo.set_values(_as_int(snapshot.get("cargo", 0)), _as_int(snapshot.get("cargo_max", 1), 1))
 
-        # Jump distance label simplified
+        # Jump distance label — keep legacy keys if present
         curr = _as_float(snapshot.get('current_jump_distance', snapshot.get('jump_distance', 0.0)))
         self.lbl_jump.setText(f"Jump Range: {curr:.1f} ly")

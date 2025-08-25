@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from PySide6.QtWidgets import QMessageBox, QDialog
-
 from PySide6.QtGui import QAction
 
 from save.manager import SaveManager
@@ -41,15 +38,15 @@ def _on_new_game(win):
     dlg = NewGameDialog(win)
     if dlg.exec() == QDialog.DialogCode.Accepted:
         save_name, commander, loc_label = dlg.get_values()
-        from game.new_game import start_new_game
         try:
-            start_new_game(save_name, commander, loc_label)
+            # Use SaveManager directly; no game/new_game.py wrapper needed
+            SaveManager.create_new_save(save_name, commander, loc_label)
         except Exception as e:
             QMessageBox.critical(win, "New Game Failed", str(e))
             return
         win.start_game_ui()
         if win._map_view:
-            win._map_view.setCurrentIndex(1) # Switch to System tab
+            win._map_view.setCurrentIndex(1)  # Switch to System tab
         win.status_panel.refresh()
         win.append_log(f"New game '{save_name}' started.")
 
@@ -57,7 +54,7 @@ def _on_new_game(win):
 def _on_save(win):
     active_save = SaveManager.active_save_dir()
     if not active_save:
-        _on_save_as(win) # If no active save, treat as "Save As"
+        _on_save_as(win)  # If no active save, treat as "Save As"
         return
 
     reply = QMessageBox.question(
@@ -105,6 +102,6 @@ def _on_load(win):
                 return
             win.start_game_ui()
             if win._map_view:
-                win._map_view.setCurrentIndex(1) # Switch to System tab
+                win._map_view.setCurrentIndex(1)  # Switch to System tab
             win.status_panel.refresh()
             win.append_log(f"Loaded game: {save_path.name}")
