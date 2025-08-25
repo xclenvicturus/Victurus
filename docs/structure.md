@@ -1,17 +1,17 @@
 # /docs/structure.md
 
-# Victurus — Project Structure (updated 2025-08-24)
+# Victurus — Project Structure (updated 2025-08-25)
 
 This document summarizes the repository layout and what each part is responsible for.
 
 **Key modules:**
 - **UI (`ui/`)**: Widgets, panels, and map views (galaxy/solar) built with PySide6.
-- **Game (`game/`)**: Player snapshot, ship state, travel math, and new/load routines.
-- **Data (`data/`, `database/`)**: SQLite schema, seed helpers, and the runtime DB file.
-- **Save (`save/`)**: Save-game models, paths, and serialization.
+- **Game (`game/`)**: Player snapshot, ship state, travel math, and game-flow orchestration.
+- **Data (`data/`)**: SQLite schema, seed helpers, and the runtime DB file access layer.
+- **Save (`save/`)**: Save-game models, paths, serialization, and lifecycle management.
 - **Docs (`docs/`)**: Developer-facing documentation.
 
-**Assets (optional):** star/planet/station GIFs are expected under an `assets/` directory parallel to the codebase (e.g., `assets/planets/p01.gif`). The UI selects deterministic GIFs per system/location so list thumbnails match the map.
+**Assets** star/planet/station GIFs are expected under an `assets/` directory parallel to the codebase (e.g., `assets/planets/p01.gif`). The UI selects deterministic GIFs per system/location so list thumbnails match the map.
 
 ## Tree
 
@@ -28,8 +28,6 @@ Victurus/
 │ └─ structure.md
 │ └─ feature_checklist.md
 └─ game/
-│ └─ load_game.py
-│ └─ new_game.py
 │ └─ player_status.py
 │ └─ ship_state.py
 │ └─ starter_locations.py
@@ -75,19 +73,17 @@ Victurus/
 - **main.py** — QApplication startup + MainWindow creation
 - **requirements.txt** — Python dependencies
 - **data/** — SQLite access, schema, and initial seed helpers
-- **data/db.py** — DB access layer (connection, queries, icon assignment)
+- **data/db.py** — DB access layer (connection, queries)
 - **data/schema.sql** — Authoritative SQLite schema
 - **data/seed.py** — Initial seed logic (only on fresh DB)
 - **database/** — Generated database files (runtime)
 - **database/.gitignore** — Ensures `game.db` is not tracked
 - **docs/** — Project documentation
-- **game/** — Game logic (status, travel, new/load game)
+- **game/** — Game logic (status, travel)
 - **game/player_status.py** — Builds status snapshot; includes temporary ship state override
 - **game/ship_state.py** — Holds temporary, visual-only ship state for transitions
 - **game/travel.py** — Travel math, costs, and display data
 - **game/travel_flow.py** — Orchestrates multi-phase travel with fuel drip and status updates
-- **game/new_game.py** — New-game setup routines
-- **game/load_game.py** — Load-game routines
 - **save/** — Save/load I/O, models, and paths
 - **save/manager.py** — Save lifecycle (new/save/save-as/load hooks)
 - **save/models.py** — Dataclasses for save state
