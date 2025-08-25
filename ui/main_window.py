@@ -1,5 +1,4 @@
 # /ui/main_window.py
-
 from __future__ import annotations
 
 from typing import Optional, List, Dict, Any
@@ -15,29 +14,55 @@ from PySide6.QtWidgets import (
     QSplitter,
     QColorDialog,
     QInputDialog,
-    QMenuBar,
-    QMenu,
 )
 
 from data import db
 from game import player_status
 from save.manager import SaveManager
-from .menus.file_menu import install_file_menu
-from .state import window_state
+
+from .maps.tabs import MapTabs
+from .maps.leadline import LeaderLineController
 from .widgets.status_sheet import StatusSheet
 from .widgets.location_list import LocationList
-from .maps.tabs import MapTabs
 
-# merged controller lives here
-from .maps.leadline import LeaderLineController
+from .controllers.dual_location_presenter import DualLocationPresenter
 
-from .controllers.location_presenter import LocationPresenter
-from .controllers.map_actions import MapActions
-from game.travel_flow import TravelFlow
+# Window geometry/state (app-wide)
+from .state import window_state
+
+# View menu (needs our panel-action attributes predeclared)
+from .menus.file_menu import install_file_menu
+from .menus.view_menu import install_view_menu_extras, sync_panels_menu_state
 
 
 def _make_map_view() -> MapTabs:
     return MapTabs()
+
+
+class _LeaderPrefsAdapter:
+    """
+    Small adapter so view_menu.install_view_menu_extras can call:
+      - pick_color(win)
+      - pick_width(win)
+      - set_glow(value, win)
+      - .glow (property)
+    It simply forwards to MainWindow methods/fields.
+    """
+    def __init__(self, win: "MainWindow") -> None:
+        self._win = win
+
+    @property
+    def glow(self) -> bool:
+        return bool(self._win._leader_glow)
+
+    def pick_color(self, win: "MainWindow") -> None:
+        self._win._choose_leader_color()
+
+    def pick_width(self, win: "MainWindow") -> None:
+        self._win._choose_leader_width()
+
+    def set_glow(self, v: bool, win: "MainWindow") -> None:
+        self._win._toggle_leader_glow(bool(v))
 
 
 class MainWindow(QMainWindow):
@@ -49,23 +74,26 @@ class MainWindow(QMainWindow):
         self._map_view: Optional[MapTabs] = None
         self._pending_logs: List[str] = []
 
-        # Predeclare central/content pieces before menus use them
-        self._central_splitter: Optional[QSplitter] = None
-        self.location_panel: Optional[LocationList] = None
-
-        # Leader-line style state (defaults match LeadLine)
-        self._leader_color: QColor = QColor(0, 255, 128)
+        # --- Leader-line style state (defaults match overlay) ---
+        self._leader_color: QColor = QColor("#00FF80")
         self._leader_width: int = 2
         self._leader_glow: bool = True
-        self.act_leader_glow: Optional[QAction] = None
 
-        # controllers (declare early so methods can safely reference them)
+        # --- Controllers (declare early so methods can reference them) ---
         self.lead: Optional[LeaderLineController] = None
-        self.presenter: Optional[LocationPresenter] = None
-        self.map_actions: Optional[MapActions] = None
-        self.travel_flow: Optional[TravelFlow] = None
+        self.presenter_dual: Optional[DualLocationPresenter] = None
+        self.travel_flow = None  # created lazily by _ensure_travel_flow()
 
-        # Central placeholder (idle)
+        # --- Central splitter + right-side lists (created in start_game_ui) ---
+        self._central_splitter: Optional[QSplitter] = None
+        self._right_splitter: Optional[QSplitter] = None
+        self.location_panel_galaxy: Optional[LocationList] = None
+        self.location_panel_solar: Optional[LocationList] = None
+        # Back-compat alias some code may read:
+        self.location_panel: Optional[LocationList] = None  # points to the SOLAR panel
+
+        # --- Docks: Log + Status ---
+        # Idle placeholder (shown until a game is started/loaded)
         self._idle_label = QLabel("No game loaded.\nUse File → New Game or Load Game to begin.")
         self._idle_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setCentralWidget(self._idle_label)
@@ -73,13 +101,13 @@ class MainWindow(QMainWindow):
         # Log dock
         self.log = QPlainTextEdit(self)
         self.log.setReadOnly(True)
-        self.log_dock = QDockWidget("Log", self)  # store as attribute
+        self.log_dock = QDockWidget("Log", self)
         self.log_dock.setObjectName("dock_Log")
         self.log_dock.setWidget(self.log)
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.log_dock)
         self._register_dock(self.log_dock)
 
-        # Status Sheet dock
+        # Status dock
         self.status_panel = StatusSheet(self)
         self.status_dock = QDockWidget("Status", self)
         self.status_dock.setObjectName("dock_Status")
@@ -98,25 +126,27 @@ class MainWindow(QMainWindow):
         for w in (self.lbl_systems, self.lbl_items, self.lbl_ships, self.lbl_credits):
             sb.addPermanentWidget(w)
 
-        # Menu action handles for Panels submenu
+        # --- actions expected by view_menu._MainWindowLike (predeclare for Pylance) ---
         self.act_panel_status: Optional[QAction] = None
         self.act_panel_log: Optional[QAction] = None
-        self.act_panel_location: Optional[QAction] = None
-        self.act_panels_show_all: Optional[QAction] = None
-        self.act_panels_hide_all: Optional[QAction] = None
+        self.act_panel_location_galaxy: Optional[QAction] = None
+        self.act_panel_location_solar: Optional[QAction] = None
+        self.act_panel_location: Optional[QAction] = None   # legacy single list toggle
+        self.act_leader_glow: Optional[QAction] = None      # leader-line glow handle
 
-        # Menus (installed after attributes exist)
+        # Menus
         install_file_menu(self)
-        self._install_view_menu_extras()
+        self.leader_prefs = _LeaderPrefsAdapter(self)
+        install_view_menu_extras(self, self.leader_prefs)  # creates View + Panels actions
 
-        # Window state restore (global)
+        # Window state restore (global/app-wide)
         window_state.restore_mainwindow_state(self, self.WIN_ID)
         window_state.set_window_open(self.WIN_ID, True)
 
         # Keep status dock narrow on first layout pass
         QTimer.singleShot(0, self._pin_status_dock_for_transition)
 
-        # periodic refresh
+        # periodic status refresh
         self._status_timer = QTimer(self)
         self._status_timer.setInterval(1500)
         self._status_timer.timeout.connect(self._safe_refresh_status)
@@ -124,203 +154,7 @@ class MainWindow(QMainWindow):
         # Per-save UI-state persistence
         SaveManager.install_ui_state_provider(self._collect_ui_state)
 
-    # ---------- menus: View → Leader Line + Panels ----------
-
-    def _install_view_menu_extras(self) -> None:
-        mb = self.menuBar()
-        if not isinstance(mb, QMenuBar):
-            return  # safety: no menubar available
-
-        # Find or create the "&View" menu
-        view_menu: QMenu | None = None
-        for a in mb.actions():
-            m = a.menu()
-            if isinstance(m, QMenu) and a.text().replace("&", "").lower() == "view":
-                view_menu = m
-                break
-        if view_menu is None:
-            view_menu = mb.addMenu("&View")  # returns QMenu
-
-        # Leader Line submenu
-        ll_menu = QMenu("Leader Line", self)
-        view_menu.addMenu(ll_menu)
-
-        act_color = QAction("Set Color…", self)
-        act_color.triggered.connect(self._choose_leader_color)
-        ll_menu.addAction(act_color)
-
-        act_width_set = QAction("Set Width…", self)
-        act_width_set.triggered.connect(self._choose_leader_width)
-        ll_menu.addAction(act_width_set)
-
-        # --- Toggle glow effect ---
-        act_glow = QAction("Glow", self)
-        act_glow.setCheckable(True)
-        act_glow.setChecked(bool(self._leader_glow))
-        act_glow.toggled.connect(self._toggle_leader_glow)
-        ll_menu.addAction(act_glow)
-        self.act_leader_glow = act_glow
-
-        # Panels submenu
-        panels_menu = QMenu("Panels", self)
-        view_menu.addMenu(panels_menu)
-
-        # Status dock
-        act_p_status = QAction("Status", self)
-        act_p_status.setCheckable(True)
-        act_p_status.setChecked(self.status_dock.isVisible())
-        act_p_status.toggled.connect(self._toggle_status_panel)
-        panels_menu.addAction(act_p_status)
-        self.act_panel_status = act_p_status
-
-        # Log dock
-        act_p_log = QAction("Log", self)
-        act_p_log.setCheckable(True)
-        act_p_log.setChecked(self.log_dock.isVisible())
-        act_p_log.toggled.connect(self._toggle_log_panel)
-        panels_menu.addAction(act_p_log)
-        self.act_panel_log = act_p_log
-
-        # Location List (created later; start disabled)
-        act_p_loc = QAction("Location List", self)
-        act_p_loc.setCheckable(True)
-        act_p_loc.setEnabled(False)  # will enable once start_game_ui creates it
-        act_p_loc.toggled.connect(self._toggle_location_list_panel)
-        panels_menu.addAction(act_p_loc)
-        self.act_panel_location = act_p_loc
-
-        panels_menu.addSeparator()
-
-        # Show/Hide all
-        act_show_all = QAction("Show All", self)
-        act_show_all.triggered.connect(lambda: self._set_all_panels_visible(True))
-        panels_menu.addAction(act_show_all)
-        self.act_panels_show_all = act_show_all
-
-        act_hide_all = QAction("Hide All", self)
-        act_hide_all.triggered.connect(lambda: self._set_all_panels_visible(False))
-        panels_menu.addAction(act_hide_all)
-        self.act_panels_hide_all = act_hide_all
-
-        # Safe: these no-op until self.lead exists
-        self._apply_leader_style()
-        # Sync panel action states
-        self._sync_panels_menu_state()
-
-    # ----- Panels submenu handlers -----
-
-    def _toggle_status_panel(self, visible: bool) -> None:
-        try:
-            self.status_dock.setVisible(bool(visible))
-        finally:
-            self._sync_panels_menu_state()
-
-    def _toggle_log_panel(self, visible: bool) -> None:
-        try:
-            self.log_dock.setVisible(bool(visible))
-        finally:
-            self._sync_panels_menu_state()
-
-    def _toggle_location_list_panel(self, visible: bool) -> None:
-        # Location panel exists after start_game_ui
-        if self.location_panel is None:
-            # Keep action unchecked/disabled until available
-            if self.act_panel_location:
-                self._with_blocked(self.act_panel_location, lambda a: a.setChecked(False))
-                self.act_panel_location.setEnabled(False)
-            return
-        try:
-            self.location_panel.setVisible(bool(visible))
-        finally:
-            self._sync_panels_menu_state()
-
-    def _set_all_panels_visible(self, visible: bool) -> None:
-        # Show/hide docks
-        self.status_dock.setVisible(bool(visible))
-        self.log_dock.setVisible(bool(visible))
-        # Show/hide location list if present
-        if self.location_panel is not None:
-            self.location_panel.setVisible(bool(visible))
-        self._sync_panels_menu_state()
-
-    def _sync_panels_menu_state(self) -> None:
-        """Reflect actual widget visibility into the Panels submenu actions."""
-        # Status
-        if self.act_panel_status is not None:
-            self._with_blocked(self.act_panel_status, lambda a: a.setChecked(self.status_dock.isVisible()))
-        # Log
-        if self.act_panel_log is not None:
-            self._with_blocked(self.act_panel_log, lambda a: a.setChecked(self.log_dock.isVisible()))
-        # Location List
-        if self.act_panel_location is not None:
-            loc = getattr(self, "location_panel", None)
-            has_loc = loc is not None
-            self.act_panel_location.setEnabled(has_loc)
-            if has_loc:
-                self._with_blocked(self.act_panel_location, lambda a, loc=loc: a.setChecked(loc.isVisible()))
-            else:
-                self._with_blocked(self.act_panel_location, lambda a: a.setChecked(False))
-
-    @staticmethod
-    def _with_blocked(action: QAction, fn) -> None:
-        """Run fn(action) with the action's signals blocked to avoid recursive toggles."""
-        old = action.blockSignals(True)
-        try:
-            fn(action)
-        finally:
-            action.blockSignals(old)
-
-    # ----- Leader Line submenu -----
-
-    def _toggle_leader_glow(self, enabled: bool) -> None:
-        self._leader_glow = bool(enabled)
-        if self.act_leader_glow and self.act_leader_glow.isChecked() != self._leader_glow:
-            self.act_leader_glow.setChecked(self._leader_glow)
-        self._apply_leader_style()
-
-    def _apply_leader_style(self) -> None:
-        """Push the current leader-line style to the overlay via controller."""
-        self._leader_color = getattr(self, "_leader_color", None) or QColor("#00FF80")
-        self._leader_width = int(getattr(self, "_leader_width", 2))
-        self._leader_glow  = bool(getattr(self, "_leader_glow", True))
-
-        lead = getattr(self, "lead", None)
-        if lead is None:
-            return  # controller not created yet; start_game_ui will re-apply
-
-        try:
-            lead.set_line_style(
-                color=self._leader_color,
-                width=self._leader_width,
-                glow_enabled=self._leader_glow,
-            )
-        except Exception:
-            pass
-
-    def _choose_leader_color(self) -> None:
-        c = QColorDialog.getColor(self._leader_color, self, "Choose Leader Line Color")
-        if c.isValid():
-            self._leader_color = c
-            self._apply_leader_style()
-
-    def _nudge_leader_width(self, delta: int) -> None:
-        self._leader_width = max(1, self._leader_width + int(delta))
-        self._apply_leader_style()
-
-    def _choose_leader_width(self) -> None:
-        w, ok = QInputDialog.getInt(
-            self,
-            "Set Leader Line Width",
-            "Width (px):",
-            self._leader_width,
-            1,   # min
-            12,  # max
-        )
-        if ok:
-            self._leader_width = int(w)
-            self._apply_leader_style()
-
-    # ---------- helpers ----------
+    # ---------- helpers: docks & leader-line ----------
 
     def _register_dock(self, dock: QDockWidget) -> None:
         dock.visibilityChanged.connect(
@@ -328,11 +162,6 @@ class MainWindow(QMainWindow):
         )
         dock.visibilityChanged.connect(lambda _vis: self._sync_panels_menu_state())
         dock.installEventFilter(self)
-
-    def eventFilter(self, obj, event):
-        if isinstance(obj, QDockWidget) and event.type() in (QEvent.Type.Move, QEvent.Type.Resize):
-            self._save_window_state()
-        return super().eventFilter(obj, event)
 
     def _status_min_width(self) -> int:
         return max(220, self.status_panel.minimumSizeHint().width())
@@ -347,11 +176,49 @@ class MainWindow(QMainWindow):
         self.status_dock.setMaximumWidth(w)
         QTimer.singleShot(150, lambda: self.status_dock.setMaximumWidth(16777215))
 
+    def _toggle_leader_glow(self, enabled: bool) -> None:
+        self._leader_glow = bool(enabled)
+        if self.act_leader_glow and self.act_leader_glow.isChecked() != self._leader_glow:
+            self.act_leader_glow.setChecked(self._leader_glow)
+        self._apply_leader_style()
+
+    def _apply_leader_style(self) -> None:
+        lead = getattr(self, "lead", None)
+        if lead is None:
+            return  # controller not created yet; start_game_ui will re-apply
+        try:
+            lead.set_line_style(
+                color=self._leader_color,
+                width=int(self._leader_width),
+                glow_enabled=bool(self._leader_glow),
+            )
+        except Exception:
+            pass
+
+    def _choose_leader_color(self) -> None:
+        c = QColorDialog.getColor(self._leader_color, self, "Choose Leader Line Color")
+        if c.isValid():
+            self._leader_color = c
+            self._apply_leader_style()
+
+    def _choose_leader_width(self) -> None:
+        w, ok = QInputDialog.getInt(
+            self,
+            "Set Leader Line Width",
+            "Width (px):",
+            int(self._leader_width),
+            1,   # min
+            12,  # max
+        )
+        if ok:
+            self._leader_width = int(w)
+            self._apply_leader_style()
+
     # ---------- Idle <-> Live ----------
 
     def start_game_ui(self) -> None:
         if self._map_view is None:
-            # central splitter: [MapTabs | LocationList]
+            # central splitter: [MapTabs | (right vertical splitter)]
             central = QSplitter(Qt.Orientation.Horizontal, self)
             self._central_splitter = central
 
@@ -369,53 +236,67 @@ class MainWindow(QMainWindow):
 
             central.addWidget(mv)
 
-            # Right panel (has “Default View” in sorts)
-            panel = LocationList(
-                categories=["All", "System", "Star", "Planet", "Moon", "Station", "Warp Gate"],
+            # ---- Right side: vertical splitter with Galaxy (top) and System (bottom) ----
+            right = QSplitter(Qt.Orientation.Vertical, self)
+            self._right_splitter = right
+
+            panel_galaxy = LocationList(
+                categories=["All", "System"],
                 sorts=["Default View", "Name A–Z", "Name Z–A", "Distance ↑", "Distance ↓", "Fuel ↑", "Fuel ↓"],
-                title="Locations",
+                title="Galaxy",
             )
+            panel_system = LocationList(
+                categories=["All", "Star", "Planet", "Moon", "Station", "Warp Gate"],
+                sorts=["Default View", "Name A–Z", "Name Z–A", "Distance ↑", "Distance ↓", "Fuel ↑", "Fuel ↓"],
+                title="System",
+            )
+            # Default their sort to "Default View"
+            for panel in (panel_galaxy, panel_system):
+                try:
+                    i = panel.sort.findText("Default View")
+                    if i >= 0:
+                        panel.sort.setCurrentIndex(i)
+                except Exception:
+                    pass
 
-            # Select "Default View" at startup (UI state restore may override later)
-            try:
-                i = panel.sort.findText("Default View")
-                if i >= 0:
-                    panel.sort.setCurrentIndex(i)
-            except Exception:
-                pass
+            self.location_panel_galaxy = panel_galaxy
+            self.location_panel_solar = panel_system
+            self.location_panel = self.location_panel_solar  # legacy alias
 
-            self.location_panel = panel
-            central.addWidget(panel)
-            central.setStretchFactor(0, 1)
-            central.setStretchFactor(1, 0)
+            right.addWidget(panel_galaxy)
+            right.addWidget(panel_system)
+            right.setStretchFactor(0, 1)
+            right.setStretchFactor(1, 1)
 
-            # Presenter
-            self.presenter = LocationPresenter(mv, panel)
+            central.addWidget(right)
+            central.setStretchFactor(0, 1)  # map
+            central.setStretchFactor(1, 0)  # lists
 
-            # Actions (focus/open/travel)
-            self.map_actions = MapActions(mv, begin_travel_cb=lambda kind, ident: self._begin_travel(kind, ident))
+            # Presenter (fills both lists)
+            self.presenter_dual = DualLocationPresenter(self._map_view, panel_galaxy, panel_system)
 
-            # Leader line (hover; set enable_lock=True if you want click-lock)
-            self.lead = LeaderLineController(mv, panel, log=self.append_log, enable_lock=False)
-
-            # Apply initial style to leader line
+            # Leader line (attach to the System list by default)
+            self.lead = LeaderLineController(mv, panel_system, log=self.append_log, enable_lock=False)
             self._apply_leader_style()
 
-            # Wire signals
-            panel.refreshRequested.connect(self.presenter.refresh)
-            panel.clicked.connect(self.map_actions.focus)
-            panel.doubleClicked.connect(self.map_actions.open)
-            panel.travelHere.connect(self.map_actions.travel_here)
+            # Wire signals for both panels
+            for panel in (panel_galaxy, panel_system):
+                panel.refreshRequested.connect(self.presenter_dual.refresh)
+                panel.clicked.connect(self.presenter_dual.focus)
+                panel.doubleClicked.connect(self.presenter_dual.open)
+                panel.travelHere.connect(self.presenter_dual.travel_here)
 
+            # Tabs hook (refresh presenter & leader overlay on tab change)
             tabs = getattr(mv, "tabs", None)
             if tabs is not None:
-                tabs.currentChanged.connect(lambda _i: self.presenter and self.presenter.refresh())
+                tabs.currentChanged.connect(lambda _i: self.presenter_dual and self.presenter_dual.refresh())
                 tabs.currentChanged.connect(lambda i: self.lead and self.lead.on_tab_changed(i))
 
             self.setCentralWidget(central)
 
-            # Create leader overlay + first refresh
+            # First-time overlay attach + sync panel menu states
             self.lead.attach()
+            self._sync_panels_menu_state()
 
             # ---- Restore per-save UI state (if any) ----
             try:
@@ -433,8 +314,8 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
 
-        if self.presenter:
-            self.presenter.refresh()
+        if self.presenter_dual:
+            self.presenter_dual.refresh()
 
         self._safe_refresh_status()
         self._status_timer.start()
@@ -448,17 +329,15 @@ class MainWindow(QMainWindow):
 
     # ---------- Travel plumbing ----------
 
-    def _ensure_travel_flow(self) -> TravelFlow:
+    def _ensure_travel_flow(self):
         if self.travel_flow is None:
+            from game.travel_flow import TravelFlow  # local import avoids cycles
             self.travel_flow = TravelFlow(on_arrival=self._on_player_moved, log=self.append_log)
             try:
                 self.travel_flow.progressTick.connect(self._safe_refresh_status)
             except Exception:
                 pass
         return self.travel_flow
-
-    def _begin_travel(self, kind: str, ident: int) -> None:
-        self._ensure_travel_flow().begin(kind, ident)
 
     def _on_player_moved(self) -> None:
         try:
@@ -472,12 +351,17 @@ class MainWindow(QMainWindow):
                 mv_reload()
             except Exception:
                 pass
-        if self.presenter:
-            self.presenter.refresh()
+        if self.presenter_dual:
+            self.presenter_dual.refresh()
         if self.lead:
             self.lead.refresh()
 
     # ---------- window events & state ----------
+
+    def eventFilter(self, obj, event):
+        if isinstance(obj, QDockWidget) and event.type() in (QEvent.Type.Move, QEvent.Type.Resize):
+            self._save_window_state()
+        return super().eventFilter(obj, event)
 
     def _save_window_state(self):
         window_state.save_mainwindow_state(self.WIN_ID, self.saveGeometry(), self.saveState())
@@ -529,6 +413,14 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
+    # ---------- Panels menu sync (proxy to menu util) ----------
+
+    def _sync_panels_menu_state(self) -> None:
+        try:
+            sync_panels_menu_state(self)
+        except Exception:
+            pass
+
     # ---------- per-save UI state capture/restore ----------
 
     def _collect_ui_state(self) -> Dict[str, Any]:
@@ -548,6 +440,12 @@ class MainWindow(QMainWindow):
             pass
 
         try:
+            if self._right_splitter:
+                state["right_splitter_sizes"] = list(self._right_splitter.sizes())
+        except Exception:
+            pass
+
+        try:
             tabs = getattr(self._map_view, "tabs", None)
             state["map_tab_index"] = int(tabs.currentIndex()) if tabs else 0
         except Exception:
@@ -561,20 +459,31 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
-        # Location List visibility
+        # Location lists visibility
         try:
-            state["location_list_visible"] = bool(self.location_panel.isVisible()) if self.location_panel else True
+            state["galaxy_list_visible"] = bool(self.location_panel_galaxy.isVisible()) if self.location_panel_galaxy else True
+            state["system_list_visible"] = bool(self.location_panel_solar.isVisible()) if self.location_panel_solar else True
         except Exception:
             pass
 
-        # Location panel settings + column widths
+        # Panel settings + column widths
         try:
-            if self.location_panel:
-                state["panel_category_index"] = int(self.location_panel.category.currentIndex())
-                state["panel_sort_text"] = str(self.location_panel.sort.currentText())
-                state["panel_search"] = str(self.location_panel.search.text())
-                tree = self.location_panel.tree
-                state["panel_col_widths"] = [tree.columnWidth(i) for i in range(tree.columnCount())]
+            if self.location_panel_galaxy:
+                tree = self.location_panel_galaxy.tree
+                state["galaxy_col_widths"] = [tree.columnWidth(i) for i in range(tree.columnCount())]
+                state["galaxy_sort_text"] = str(self.location_panel_galaxy.sort.currentText())
+                state["galaxy_category_index"] = int(self.location_panel_galaxy.category.currentIndex())
+                state["galaxy_search"] = str(self.location_panel_galaxy.search.text())
+        except Exception:
+            pass
+
+        try:
+            if self.location_panel_solar:
+                tree = self.location_panel_solar.tree
+                state["system_col_widths"] = [tree.columnWidth(i) for i in range(tree.columnCount())]
+                state["system_sort_text"] = str(self.location_panel_solar.sort.currentText())
+                state["system_category_index"] = int(self.location_panel_solar.category.currentIndex())
+                state["system_search"] = str(self.location_panel_solar.search.text())
         except Exception:
             pass
 
@@ -603,6 +512,13 @@ class MainWindow(QMainWindow):
             pass
 
         try:
+            sizes = state.get("right_splitter_sizes")
+            if sizes and self._right_splitter:
+                self._right_splitter.setSizes([int(x) for x in sizes])
+        except Exception:
+            pass
+
+        try:
             idx = int(state.get("map_tab_index", 0))
             tabs = getattr(self._map_view, "tabs", None)
             if tabs:
@@ -625,32 +541,56 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
-        # Location List visibility (apply after panel exists)
+        # Lists visibility (apply after panels exist)
         try:
-            vis = state.get("location_list_visible", True)
-            if self.location_panel is not None:
-                self.location_panel.setVisible(bool(vis))
-                self._sync_panels_menu_state()
+            vis_g = state.get("galaxy_list_visible", True)
+            if self.location_panel_galaxy:
+                self.location_panel_galaxy.setVisible(bool(vis_g))
         except Exception:
             pass
 
-        # Location panel settings
         try:
-            if self.location_panel:
-                cat_idx = int(state.get("panel_category_index", 0))
-                self.location_panel.category.setCurrentIndex(cat_idx)
+            vis_s = state.get("system_list_visible", True)
+            if self.location_panel_solar:
+                self.location_panel_solar.setVisible(bool(vis_s))
+        except Exception:
+            pass
 
-                sort_text = state.get("panel_sort_text")
+        # Panel settings + widths
+        try:
+            if self.location_panel_galaxy:
+                cat_idx = int(state.get("galaxy_category_index", 0))
+                self.location_panel_galaxy.category.setCurrentIndex(cat_idx)
+                sort_text = state.get("galaxy_sort_text")
                 if isinstance(sort_text, str) and sort_text:
-                    i = self.location_panel.sort.findText(sort_text)
+                    i = self.location_panel_galaxy.sort.findText(sort_text)
                     if i >= 0:
-                        self.location_panel.sort.setCurrentIndex(i)
-
-                self.location_panel.search.setText(str(state.get("panel_search", "")))
-
-                widths = state.get("panel_col_widths")
+                        self.location_panel_galaxy.sort.setCurrentIndex(i)
+                self.location_panel_galaxy.search.setText(str(state.get("galaxy_search", "")))
+                widths = state.get("galaxy_col_widths")
                 if isinstance(widths, list):
-                    tree = self.location_panel.tree
+                    tree = self.location_panel_galaxy.tree
+                    for i, w in enumerate(widths):
+                        try:
+                            tree.setColumnWidth(i, int(w))
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+
+        try:
+            if self.location_panel_solar:
+                cat_idx = int(state.get("system_category_index", 0))
+                self.location_panel_solar.category.setCurrentIndex(cat_idx)
+                sort_text = state.get("system_sort_text")
+                if isinstance(sort_text, str) and sort_text:
+                    i = self.location_panel_solar.sort.findText(sort_text)
+                    if i >= 0:
+                        self.location_panel_solar.sort.setCurrentIndex(i)
+                self.location_panel_solar.search.setText(str(state.get("system_search", "")))
+                widths = state.get("system_col_widths")
+                if isinstance(widths, list):
+                    tree = self.location_panel_solar.tree
                     for i, w in enumerate(widths):
                         try:
                             tree.setColumnWidth(i, int(w))

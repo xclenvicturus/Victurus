@@ -73,7 +73,7 @@ class SolarMapWidget(BackgroundView):
         self._star_radius_px: float = 20.0
 
         self._spread = 12.0          # AU visual multiplier (orbit radii are in AU * spread)
-        self.set_unit_scale(8.0)     # 1 AU base ~ 12 px
+        self.set_unit_scale(6.0)     # 1 AU base ~ 12 px
         self._apply_unit_scale()
         
         # Use a starfield here too
