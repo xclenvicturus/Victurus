@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QSplitter,
     QColorDialog,
     QInputDialog,
+    QWidget,  # ← added to satisfy Protocol typing
 )
 
 from data import db
@@ -30,7 +31,7 @@ from .controllers.dual_location_presenter import DualLocationPresenter
 # Window geometry/state (app-wide)
 from .state import window_state
 
-# View menu (needs our panel-action attributes predeclared)
+# Menus
 from .menus.file_menu import install_file_menu
 from .menus.view_menu import install_view_menu_extras, sync_panels_menu_state
 
@@ -40,14 +41,7 @@ def _make_map_view() -> MapTabs:
 
 
 class _LeaderPrefsAdapter:
-    """
-    Small adapter so view_menu.install_view_menu_extras can call:
-      - pick_color(win)
-      - pick_width(win)
-      - set_glow(value, win)
-      - .glow (property)
-    It simply forwards to MainWindow methods/fields.
-    """
+    """Adapter for view_menu.install_view_menu_extras"""
     def __init__(self, win: "MainWindow") -> None:
         self._win = win
 
@@ -71,52 +65,58 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("Victurus")
+
+        # ---- Core refs ----
         self._map_view: Optional[MapTabs] = None
         self._pending_logs: List[str] = []
 
-        # --- Leader-line style state (defaults match overlay) ---
+        # ---- Leader-line style state ----
         self._leader_color: QColor = QColor("#00FF80")
         self._leader_width: int = 2
         self._leader_glow: bool = True
 
-        # --- Controllers (declare early so methods can reference them) ---
+        # ---- Controllers ----
         self.lead: Optional[LeaderLineController] = None
         self.presenter_dual: Optional[DualLocationPresenter] = None
         self.travel_flow = None  # created lazily by _ensure_travel_flow()
 
-        # --- Central splitter + right-side lists (created in start_game_ui) ---
+        # ---- Splitters ----
         self._central_splitter: Optional[QSplitter] = None
         self._right_splitter: Optional[QSplitter] = None
-        self.location_panel_galaxy: Optional[LocationList] = None
-        self.location_panel_solar: Optional[LocationList] = None
-        # Back-compat alias some code may read:
-        self.location_panel: Optional[LocationList] = None  # points to the SOLAR panel
 
-        # --- Docks: Log + Status ---
-        # Idle placeholder (shown until a game is started/loaded)
+        # ---- Location panels (typed to QWidget|None to satisfy protocol) ----
+        self.location_panel_galaxy: QWidget | None = None
+        self.location_panel_solar: QWidget | None = None
+        self.location_panel: QWidget | None = None  # legacy alias to system list
+
+        # ---- Actions expected by view_menu protocol (predeclare) ----
+        self.act_panel_status: QAction | None = None
+        self.act_panel_log: QAction | None = None
+        self.act_panel_location_galaxy: QAction | None = None
+        self.act_panel_location_solar: QAction | None = None
+        self.act_panel_location: QAction | None = None  # legacy single list
+        self.act_leader_glow: QAction | None = None
+
+        # ---- Central placeholder while idle ----
         self._idle_label = QLabel("No game loaded.\nUse File → New Game or Load Game to begin.")
         self._idle_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setCentralWidget(self._idle_label)
 
-        # Log dock
+        # ---- Log dock (exists at startup) ----
         self.log = QPlainTextEdit(self)
         self.log.setReadOnly(True)
-        self.log_dock = QDockWidget("Log", self)
-        self.log_dock.setObjectName("dock_Log")
-        self.log_dock.setWidget(self.log)
-        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.log_dock)
-        self._register_dock(self.log_dock)
+        self.log_dock: QDockWidget | None = QDockWidget("Log", self)  # Optional for protocol match
+        ldock = self.log_dock  # narrow type for calls below
+        ldock.setObjectName("dock_Log")
+        ldock.setWidget(self.log)
+        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, ldock)
+        self._register_dock(ldock)
 
-        # Status dock
-        self.status_panel = StatusSheet(self)
-        self.status_dock = QDockWidget("Status", self)
-        self.status_dock.setObjectName("dock_Status")
-        self.status_dock.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
-        self.status_dock.setWidget(self.status_panel)
-        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.status_dock)
-        self._register_dock(self.status_dock)
+        # ---- Status dock is LAZY (created after new/load) ----
+        self.status_panel: StatusSheet | None = None
+        self.status_dock: QDockWidget | None = None
 
-        # Status bar
+        # ---- Status bar counters ----
         sb = QStatusBar(self)
         self.setStatusBar(sb)
         self.lbl_systems = QLabel("Systems: —")
@@ -126,33 +126,25 @@ class MainWindow(QMainWindow):
         for w in (self.lbl_systems, self.lbl_items, self.lbl_ships, self.lbl_credits):
             sb.addPermanentWidget(w)
 
-        # --- actions expected by view_menu._MainWindowLike (predeclare for Pylance) ---
-        self.act_panel_status: Optional[QAction] = None
-        self.act_panel_log: Optional[QAction] = None
-        self.act_panel_location_galaxy: Optional[QAction] = None
-        self.act_panel_location_solar: Optional[QAction] = None
-        self.act_panel_location: Optional[QAction] = None   # legacy single list toggle
-        self.act_leader_glow: Optional[QAction] = None      # leader-line glow handle
-
-        # Menus
+        # ---- Menus ----
         install_file_menu(self)
         self.leader_prefs = _LeaderPrefsAdapter(self)
         install_view_menu_extras(self, self.leader_prefs)  # creates View + Panels actions
 
-        # Window state restore (global/app-wide)
+        # ---- Window state restore (global/app-wide) ----
         window_state.restore_mainwindow_state(self, self.WIN_ID)
         window_state.set_window_open(self.WIN_ID, True)
 
-        # Keep status dock narrow on first layout pass
-        QTimer.singleShot(0, self._pin_status_dock_for_transition)
-
-        # periodic status refresh
+        # ---- periodic status refresh (timer starts after start_game_ui) ----
         self._status_timer = QTimer(self)
         self._status_timer.setInterval(1500)
         self._status_timer.timeout.connect(self._safe_refresh_status)
 
-        # Per-save UI-state persistence
+        # ---- Per-save UI-state persistence ----
         SaveManager.install_ui_state_provider(self._collect_ui_state)
+
+        # Panels menu initial sync (Status disabled until created)
+        self._sync_panels_menu_state()
 
     # ---------- helpers: docks & leader-line ----------
 
@@ -164,9 +156,14 @@ class MainWindow(QMainWindow):
         dock.installEventFilter(self)
 
     def _status_min_width(self) -> int:
-        return max(220, self.status_panel.minimumSizeHint().width())
+        try:
+            return max(220, self.status_panel.minimumSizeHint().width()) if self.status_panel else 220
+        except Exception:
+            return 220
 
     def _pin_status_dock_for_transition(self) -> None:
+        if not self.status_dock:
+            return
         w = self._status_min_width()
         try:
             self.resizeDocks([self.status_dock], [w], Qt.Orientation.Horizontal)
@@ -174,7 +171,22 @@ class MainWindow(QMainWindow):
             pass
         self.status_dock.setMinimumWidth(w)
         self.status_dock.setMaximumWidth(w)
-        QTimer.singleShot(150, lambda: self.status_dock.setMaximumWidth(16777215))
+        QTimer.singleShot(150, lambda: self.status_dock and self.status_dock.setMaximumWidth(16777215))
+
+    def _ensure_status_dock(self) -> None:
+        """Create the Status panel lazily (first time a game is started/loaded)."""
+        if self.status_dock is not None:
+            return
+        self.status_panel = StatusSheet(self)
+        dock = QDockWidget("Status", self)
+        dock.setObjectName("dock_Status")
+        dock.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
+        dock.setWidget(self.status_panel)
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, dock)
+        self.status_dock = dock
+        self._register_dock(dock)
+        QTimer.singleShot(0, self._pin_status_dock_for_transition)
+        self._sync_panels_menu_state()
 
     def _toggle_leader_glow(self, enabled: bool) -> None:
         self._leader_glow = bool(enabled)
@@ -183,11 +195,10 @@ class MainWindow(QMainWindow):
         self._apply_leader_style()
 
     def _apply_leader_style(self) -> None:
-        lead = getattr(self, "lead", None)
-        if lead is None:
-            return  # controller not created yet; start_game_ui will re-apply
+        if not self.lead:
+            return
         try:
-            lead.set_line_style(
+            self.lead.set_line_style(
                 color=self._leader_color,
                 width=int(self._leader_width),
                 glow_enabled=bool(self._leader_glow),
@@ -207,8 +218,7 @@ class MainWindow(QMainWindow):
             "Set Leader Line Width",
             "Width (px):",
             int(self._leader_width),
-            1,   # min
-            12,  # max
+            1, 12,
         )
         if ok:
             self._leader_width = int(w)
@@ -259,9 +269,10 @@ class MainWindow(QMainWindow):
                 except Exception:
                     pass
 
+            # Assign to Optional QWidget-typed attributes (satisfies protocol)
             self.location_panel_galaxy = panel_galaxy
             self.location_panel_solar = panel_system
-            self.location_panel = self.location_panel_solar  # legacy alias
+            self.location_panel = panel_system  # legacy alias
 
             right.addWidget(panel_galaxy)
             right.addWidget(panel_system)
@@ -286,15 +297,13 @@ class MainWindow(QMainWindow):
                 panel.doubleClicked.connect(self.presenter_dual.open)
                 panel.travelHere.connect(self.presenter_dual.travel_here)
 
-            # Tabs hook (refresh presenter & leader overlay on tab change)
+            # Tabs hook
             tabs = getattr(mv, "tabs", None)
             if tabs is not None:
                 tabs.currentChanged.connect(lambda _i: self.presenter_dual and self.presenter_dual.refresh())
                 tabs.currentChanged.connect(lambda i: self.lead and self.lead.on_tab_changed(i))
 
             self.setCentralWidget(central)
-
-            # First-time overlay attach + sync panel menu states
             self.lead.attach()
             self._sync_panels_menu_state()
 
@@ -306,7 +315,10 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
 
-        # Initial refresh
+        # Create Status dock lazily (first time we enter live mode)
+        self._ensure_status_dock()
+
+        # Initial refreshes
         mv_reload = getattr(self._map_view, "reload_all", None)
         if callable(mv_reload):
             try:
@@ -319,8 +331,6 @@ class MainWindow(QMainWindow):
 
         self._safe_refresh_status()
         self._status_timer.start()
-
-        QTimer.singleShot(0, self._pin_status_dock_for_transition)
 
         # Flush pending logs
         for m in self._pending_logs:
@@ -342,7 +352,8 @@ class MainWindow(QMainWindow):
     def _on_player_moved(self) -> None:
         try:
             self.refresh_status_counts()
-            self.status_panel.refresh()
+            if self.status_panel:
+                self.status_panel.refresh()
         except Exception:
             pass
         mv_reload = getattr(self._map_view, "reload_all", None)
@@ -408,7 +419,8 @@ class MainWindow(QMainWindow):
 
     def _safe_refresh_status(self) -> None:
         try:
-            self.status_panel.refresh()
+            if self.status_panel:
+                self.status_panel.refresh()
             self.refresh_status_counts()
         except Exception:
             pass
@@ -455,7 +467,7 @@ class MainWindow(QMainWindow):
         try:
             state["leader_color"] = self._leader_color.name()
             state["leader_width"] = int(self._leader_width)
-            state["leader_glow"]  = bool(self._leader_glow)
+            state["leader_glow"] = bool(self._leader_glow)
         except Exception:
             pass
 
@@ -468,7 +480,7 @@ class MainWindow(QMainWindow):
 
         # Panel settings + column widths
         try:
-            if self.location_panel_galaxy:
+            if isinstance(self.location_panel_galaxy, LocationList):
                 tree = self.location_panel_galaxy.tree
                 state["galaxy_col_widths"] = [tree.columnWidth(i) for i in range(tree.columnCount())]
                 state["galaxy_sort_text"] = str(self.location_panel_galaxy.sort.currentText())
@@ -478,7 +490,7 @@ class MainWindow(QMainWindow):
             pass
 
         try:
-            if self.location_panel_solar:
+            if isinstance(self.location_panel_solar, LocationList):
                 tree = self.location_panel_solar.tree
                 state["system_col_widths"] = [tree.columnWidth(i) for i in range(tree.columnCount())]
                 state["system_sort_text"] = str(self.location_panel_solar.sort.currentText())
@@ -534,7 +546,7 @@ class MainWindow(QMainWindow):
             if isinstance(c, str) and c:
                 self._leader_color = QColor(c)
             self._leader_width = max(1, w)
-            self._leader_glow  = bool(g)
+            self._leader_glow = bool(g)
             if self.act_leader_glow:
                 self.act_leader_glow.setChecked(self._leader_glow)
             self._apply_leader_style()
@@ -558,7 +570,7 @@ class MainWindow(QMainWindow):
 
         # Panel settings + widths
         try:
-            if self.location_panel_galaxy:
+            if isinstance(self.location_panel_galaxy, LocationList):
                 cat_idx = int(state.get("galaxy_category_index", 0))
                 self.location_panel_galaxy.category.setCurrentIndex(cat_idx)
                 sort_text = state.get("galaxy_sort_text")
@@ -579,7 +591,7 @@ class MainWindow(QMainWindow):
             pass
 
         try:
-            if self.location_panel_solar:
+            if isinstance(self.location_panel_solar, LocationList):
                 cat_idx = int(state.get("system_category_index", 0))
                 self.location_panel_solar.category.setCurrentIndex(cat_idx)
                 sort_text = state.get("system_sort_text")

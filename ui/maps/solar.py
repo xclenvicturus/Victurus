@@ -73,7 +73,7 @@ class SolarMapWidget(BackgroundView):
         self._star_radius_px: float = 20.0
 
         self._spread = 12.0          # AU visual multiplier (orbit radii are in AU * spread)
-        self.set_unit_scale(6.0)     # 1 AU base ~ 12 px
+        self.set_unit_scale(5.0)     # 1 AU base ~ 12 px
         self._apply_unit_scale()
         
         # Use a starfield here too
@@ -150,8 +150,8 @@ class SolarMapWidget(BackgroundView):
         center = self.mapFromScene(rect.center())
         radius = max(rect.width(), rect.height()) * 0.5
         return (center, radius)
-
-    # ---------- Core ----------
+    
+        # ---------- Core ----------
     def load(self, system_id: int) -> None:
         self._system_id = system_id
 
@@ -190,8 +190,8 @@ class SolarMapWidget(BackgroundView):
 
         # Scene rect fits all rings comfortably around (0,0)
         n_rings = max(1, len(planets) + max(0, len(stations) // max(1, len(planets))) + len(warp_gates) + 2)
-        ring_gap_au = 1.2
-        base_au = 1.5
+        ring_gap_au = 2.4
+        base_au = 3.0
         max_r_au = base_au + (n_rings + 1) * ring_gap_au
         pad = 2.0
         R = (max_r_au + pad) * self._spread
