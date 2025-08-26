@@ -243,8 +243,8 @@ class GalaxySystemList(QWidget):
         self.tree.customContextMenuRequested.connect(self._show_context_menu)
 
         self.tree.viewport().installEventFilter(self)
-        self.tree.verticalScrollBar().valueChanged.connect(self.anchorMoved.emit)
-        self.tree.horizontalScrollBar().valueChanged.connect(self.anchorMoved.emit)
+        self.tree.verticalScrollBar().valueChanged.connect(lambda _v: self.anchorMoved.emit())
+        self.tree.horizontalScrollBar().valueChanged.connect(lambda _v: self.anchorMoved.emit())
 
     # ----- Context menu -----
 
