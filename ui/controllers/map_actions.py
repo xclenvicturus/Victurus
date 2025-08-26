@@ -1,5 +1,4 @@
 # /ui/controllers/map_actions.py
-
 from __future__ import annotations
 
 from typing import Callable, Optional, Tuple, cast
@@ -61,7 +60,8 @@ class MapActions:
             center_sys = getattr(self._tabs, "center_galaxy_on_system", None)
             if callable(center_sys):
                 try:
-                    center_sys(int(entity_id))
+                    # entity_id is -system_id in the lists
+                    center_sys(int(-entity_id) if entity_id < 0 else int(entity_id))
                 except Exception:
                     pass
         else:
@@ -92,7 +92,8 @@ class MapActions:
         """
         if self._using_galaxy():
             try:
-                sys_id = int(entity_id)
+                # entity_id is -system_id in the lists
+                sys_id = int(-entity_id) if entity_id < 0 else int(entity_id)
             except Exception:
                 return
 
@@ -128,7 +129,9 @@ class MapActions:
         if self._begin_travel_cb is None:
             return
         if self._using_galaxy():
-            self._begin_travel_cb("star", int(entity_id))
+            # entity_id is -system_id in the lists
+            sys_id = int(-entity_id) if entity_id < 0 else int(entity_id)
+            self._begin_travel_cb("star", sys_id)
             return
 
         # System view: support star sentinel and virtual moon ids
@@ -140,7 +143,7 @@ class MapActions:
                     self._begin_travel_cb("star", int(ident))
                 elif kind == "loc":
                     self._begin_travel_cb("loc", int(ident))
-                return
+            return
 
-        # Regular location
+        # Otherwise it's a real location id
         self._begin_travel_cb("loc", int(entity_id))

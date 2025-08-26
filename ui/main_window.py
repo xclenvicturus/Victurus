@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QSplitter,
     QColorDialog,
     QInputDialog,
-    QWidget,  # ← added to satisfy Protocol typing
+    QWidget,
 )
 
 from data import db
@@ -76,7 +76,8 @@ class MainWindow(QMainWindow):
         self._leader_glow: bool = True
 
         # ---- Controllers ----
-        self.lead: Optional[LeaderLineController] = None
+        self.lead: Optional[LeaderLineController] = None            # System list leader line
+        self.lead_galaxy: Optional[LeaderLineController] = None     # Galaxy list leader line
         self.presenter_dual: Optional[DualLocationPresenter] = None
         self.travel_flow = None  # created lazily by _ensure_travel_flow()
 
@@ -195,16 +196,17 @@ class MainWindow(QMainWindow):
         self._apply_leader_style()
 
     def _apply_leader_style(self) -> None:
-        if not self.lead:
-            return
-        try:
-            self.lead.set_line_style(
-                color=self._leader_color,
-                width=int(self._leader_width),
-                glow_enabled=bool(self._leader_glow),
-            )
-        except Exception:
-            pass
+        for controller in (self.lead, self.lead_galaxy):
+            if not controller:
+                continue
+            try:
+                controller.set_line_style(
+                    color=self._leader_color,
+                    width=int(self._leader_width),
+                    glow_enabled=bool(self._leader_glow),
+                )
+            except Exception:
+                pass
 
     def _choose_leader_color(self) -> None:
         c = QColorDialog.getColor(self._leader_color, self, "Choose Leader Line Color")
@@ -286,15 +288,16 @@ class MainWindow(QMainWindow):
             # Presenter (fills both lists)
             self.presenter_dual = DualLocationPresenter(self._map_view, panel_galaxy, panel_system)
 
-            # Leader line (attach to the System list by default)
-            self.lead = LeaderLineController(mv, panel_system, log=self.append_log, enable_lock=False)
+            # Leader lines: attach one controller to each list (hover-only, no click-lock)
+            self.lead = LeaderLineController(mv, panel_system, log=self.append_log, enable_lock=False, scope="solar")
+            self.lead_galaxy = LeaderLineController(mv, panel_galaxy, log=self.append_log, enable_lock=False, scope="galaxy")
             self._apply_leader_style()
 
             # Wire signals for both panels
             for panel in (panel_galaxy, panel_system):
                 panel.refreshRequested.connect(self.presenter_dual.refresh)
-                panel.clicked.connect(self.presenter_dual.focus)
-                panel.doubleClicked.connect(self.presenter_dual.open)
+                panel.clicked.connect(self.presenter_dual.focus)        # single-click centers corresponding map
+                panel.doubleClicked.connect(self.presenter_dual.open)   # double-click opens/loads in Solar
                 panel.travelHere.connect(self.presenter_dual.travel_here)
 
             # Tabs hook
@@ -302,9 +305,14 @@ class MainWindow(QMainWindow):
             if tabs is not None:
                 tabs.currentChanged.connect(lambda _i: self.presenter_dual and self.presenter_dual.refresh())
                 tabs.currentChanged.connect(lambda i: self.lead and self.lead.on_tab_changed(i))
+                tabs.currentChanged.connect(lambda i: self.lead_galaxy and self.lead_galaxy.on_tab_changed(i))
 
             self.setCentralWidget(central)
-            self.lead.attach()
+            # Attach overlays once central widget is set so viewports exist
+            if self.lead:
+                self.lead.attach()
+            if self.lead_galaxy:
+                self.lead_galaxy.attach()
             self._sync_panels_menu_state()
 
             # ---- Restore per-save UI state (if any) ----
@@ -366,6 +374,8 @@ class MainWindow(QMainWindow):
             self.presenter_dual.refresh()
         if self.lead:
             self.lead.refresh()
+        if self.lead_galaxy:
+            self.lead_galaxy.refresh()
 
     # ---------- window events & state ----------
 

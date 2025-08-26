@@ -1,5 +1,4 @@
 # /ui/maps/solar.py
-
 """
 SolarMapWidget (display-only, GIF-only assets):
 - central star at (0,0) using a star GIF
@@ -8,33 +7,35 @@ SolarMapWidget (display-only, GIF-only assets):
 - background drawn in SCENE space (centered), so it aligns visually with (0,0)
 - animated starfield overlay
 - get_entities() surfaces assigned icon_path so list thumbnails match the map exactly
-
 """
-
 from __future__ import annotations
 
 import time, math, random
 from math import radians, sin, cos
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple
-from collections import deque
-from typing import Deque
+from typing import Dict, List, Optional, Tuple
 
 from PySide6.QtCore import QPoint, QPointF, Signal, QTimer, Qt
-from PySide6.QtGui import QPen, QColor, QPainterPath
-from PySide6.QtWidgets import QGraphicsItem, QGraphicsScene, QGraphicsPathItem
+from PySide6.QtGui import QPen, QColor, QPainter
+from PySide6.QtWidgets import (
+    QGraphicsItem,
+    QGraphicsScene,
+    QGraphicsView,
+)
+from PySide6.QtOpenGLWidgets import QOpenGLWidget
 
 from data import db
 from .background import BackgroundView
-from .icons import make_map_symbol_item, list_gifs
+from .icons import make_map_symbol_item, list_gifs, AnimatedGifItem
+from game_controller.sim_loop import universe_sim
 
-ASSETS_ROOT  = Path(__file__).resolve().parents[2] / "assets"
-SOL_BG_DIR   = ASSETS_ROOT / "solar_backgrounds"
-STARS_DIR    = ASSETS_ROOT / "stars"
-PLANETS_DIR  = ASSETS_ROOT / "planets"
-STATIONS_DIR = ASSETS_ROOT / "stations"
+ASSETS_ROOT   = Path(__file__).resolve().parents[2] / "assets"
+SOL_BG_DIR    = ASSETS_ROOT / "solar_backgrounds"
+STARS_DIR     = ASSETS_ROOT / "stars"
+PLANETS_DIR   = ASSETS_ROOT / "planets"
+STATIONS_DIR  = ASSETS_ROOT / "stations"
 WARP_GATE_DIR = ASSETS_ROOT / "warp_gate"
-MOONS_DIR    = ASSETS_ROOT / "moons"
+MOONS_DIR     = ASSETS_ROOT / "moons"
 
 
 def _to_int(x) -> Optional[int]:
@@ -52,6 +53,31 @@ class SolarMapWidget(BackgroundView):
         self._scene = QGraphicsScene(self)
         self.setScene(self._scene)
 
+        # --- perf & quality: viewport/scene tuning ---
+        try:
+            self.setViewport(QOpenGLWidget())  # GPU path when available
+        except Exception:
+            pass
+        # Items move every frame → BoundingRect updates are fine
+        self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.BoundingRectViewportUpdate)
+
+        # We *do* want smooth subpixel pixmap movement here to avoid “stepping”
+        self.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+        # Antialiasing can stay off globally; rings will be handled via pen style & caching
+        self.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+
+        # Faster spatial indexing for large scenes
+        try:
+            self._scene.setItemIndexMethod(QGraphicsScene.ItemIndexMethod.BspTreeIndex)
+        except Exception:
+            pass
+
+        # Motion smoothing: only skip truly imperceptible moves
+        self._pos_epsilon_px: float = 0.15
+
+        # Orbit timer cadence (steady ~60 FPS for smoothness)
+        self._orbit_interval_ms: int = 16
+
         self._items: Dict[int, QGraphicsItem] = {}         # location_id -> item (not star)
         self._drawpos: Dict[int, Tuple[float, float]] = {}  # scene coords
         self._player_highlight: Optional[QGraphicsItem] = None
@@ -61,7 +87,7 @@ class SolarMapWidget(BackgroundView):
         # Track assigned GIFs so list thumbnails are in sync
         self._assigned_icons: Dict[int, Optional[Path]] = {}  # location_id -> Path|None
 
-        # Orbit animation
+        # Orbit animation (absolute-time driven)
         # Each spec: { id, parent, radius_px, theta0, omega, angle }
         self._orbit_specs: List[Dict[str, float | int | None]] = []
         self._orbit_t0 = 0.0
@@ -75,10 +101,10 @@ class SolarMapWidget(BackgroundView):
         self._spread = 12.0          # AU visual multiplier (orbit radii are in AU * spread)
         self.set_unit_scale(5.0)     # 1 AU base ~ 12 px
         self._apply_unit_scale()
-        
-        # Use a starfield here too
+
+        # Starfield overlay
         self.enable_starfield(True)
-        # Draw background in scene space so it aligns with (0,0)
+        # Draw background in viewport space for consistent parallax vibe
         self.set_background_mode("viewport")
 
     # ---------- External list helpers ----------
@@ -87,15 +113,12 @@ class SolarMapWidget(BackgroundView):
         Stars get a deterministic star GIF consistent with load()."""
         if self._system_id is None:
             return []
-        # base rows
         rows = [dict(r) for r in db.get_locations(self._system_id)]
-        # apply assigned icons
         for r in rows:
             lid = r.get("id")
             if lid in self._assigned_icons:
                 p = self._assigned_icons.get(lid)
                 r["icon_path"] = str(p) if p is not None else None
-        # inject star row at the top, with a deterministic star GIF
         star_row = db.get_system(self._system_id)
         if star_row:
             star_icon: Optional[Path] = None
@@ -112,23 +135,22 @@ class SolarMapWidget(BackgroundView):
                 "icon_path": str(star_icon) if star_icon is not None else None
             })
         return rows
-    
+
     def center_on_entity(self, entity_id: int) -> None:
-        """
-        Center on either a star (negative id => -system_id) or a location id.
-        If the target lives in a different system than what's currently loaded,
-        load that system first, then center on the target.
-        """
-        # Clicked a system/star row (galaxy view exposes star as -system_id)
+        try:
+            sid = getattr(self, "_system_id", None)
+            if sid is not None:
+                universe_sim.set_visible_system(int(sid))
+        except Exception:
+            pass
+
         if entity_id < 0:
             target_sys_id = -entity_id
             if self._system_id != target_sys_id:
                 self.load(target_sys_id)
-            # star is at (0,0) in scene space
             self.center_on_system(target_sys_id)
             return
 
-        # Normal location id: ensure the right system is loaded before centering
         loc = db.get_location(entity_id) or {}
         target_sys_id = _to_int(loc.get("system_id") or loc.get("system"))
         if target_sys_id is not None and self._system_id != target_sys_id:
@@ -150,12 +172,16 @@ class SolarMapWidget(BackgroundView):
         center = self.mapFromScene(rect.center())
         radius = max(rect.width(), rect.height()) * 0.5
         return (center, radius)
-    
-        # ---------- Core ----------
+
+    # ---------- Core ----------
     def load(self, system_id: int) -> None:
+        try:
+            universe_sim.set_visible_system(int(system_id))
+        except Exception:
+            pass
         self._system_id = system_id
 
-        # Clear everything to avoid duplicates / leftover items
+        # Clear everything
         self._scene.clear()
         self._items.clear()
         self._drawpos.clear()
@@ -168,7 +194,7 @@ class SolarMapWidget(BackgroundView):
         # Cache rows
         self._locs_cache = [dict(r) for r in db.get_locations(system_id)]
 
-        # Background per system (optional, STATIC) — drawn in scene space
+        # Background per system
         candidates = [
             SOL_BG_DIR / f"system_bg_{system_id}.png",
             SOL_BG_DIR / "default.png",
@@ -183,10 +209,10 @@ class SolarMapWidget(BackgroundView):
             self.logMessage.emit(f"Solar background (system {system_id}): gradient (no image found).")
 
         # Layout ingredients
-        planets    = [l for l in self._locs_cache if l.get("kind") == "planet"]
-        stations   = [l for l in self._locs_cache if l.get("kind") == "station"]
-        warp_gates = [l for l in self._locs_cache if l.get("kind") == "warp_gate"]
-        moons      = [l for l in self._locs_cache if l.get("kind") == "moon"]
+        planets     = [l for l in self._locs_cache if l.get("kind") == "planet"]
+        stations    = [l for l in self._locs_cache if l.get("kind") == "station"]
+        warp_gates  = [l for l in self._locs_cache if l.get("kind") == "warp_gate"]
+        moons       = [l for l in self._locs_cache if l.get("kind") == "moon"]
 
         # Scene rect fits all rings comfortably around (0,0)
         n_rings = max(1, len(planets) + max(0, len(stations) // max(1, len(planets))) + len(warp_gates) + 2)
@@ -198,11 +224,11 @@ class SolarMapWidget(BackgroundView):
         self._scene.setSceneRect(-R, -R, 2 * R, 2 * R)
 
         # ---- GIF catalogs & deterministic unique assignments ----
-        star_gifs     = list_gifs(STARS_DIR)
-        planet_gifs   = list_gifs(PLANETS_DIR)
-        station_gifs  = list_gifs(STATIONS_DIR)
+        star_gifs      = list_gifs(STARS_DIR)
+        planet_gifs    = list_gifs(PLANETS_DIR)
+        station_gifs   = list_gifs(STATIONS_DIR)
         warp_gate_gifs = list_gifs(WARP_GATE_DIR)
-        moon_gifs     = list_gifs(MOONS_DIR)
+        moon_gifs      = list_gifs(MOONS_DIR)
 
         rng = random.Random(10_000 + system_id)
 
@@ -212,7 +238,6 @@ class SolarMapWidget(BackgroundView):
             return star_gifs[rng.randrange(len(star_gifs))]
 
         def assign_unique(paths: List[Path], count: int, salt: int) -> List[Optional[Path]]:
-            """Return `count` unique paths (or None) deterministically for this system."""
             if not paths:
                 return [None] * count
             local = paths[:]
@@ -224,24 +249,30 @@ class SolarMapWidget(BackgroundView):
                 out[i] = local[i]
             return out
 
-        planet_rows = sorted(planets, key=lambda x: x["id"])
-        station_rows = sorted(stations, key=lambda x: x["id"])
-        warp_gate_rows = sorted(warp_gates, key=lambda x: x["id"])
-        moon_rows = sorted(moons, key=lambda x: x["id"])
+        planet_rows      = sorted(planets, key=lambda x: x["id"])
+        station_rows     = sorted(stations, key=lambda x: x["id"])
+        warp_gate_rows   = sorted(warp_gates, key=lambda x: x["id"])
+        moon_rows        = sorted(moons, key=lambda x: x["id"])
 
-        planet_assignments   = assign_unique(planet_gifs,  len(planet_rows),   1)
-        station_assignments  = assign_unique(station_gifs, len(station_rows),  2)
-        warp_gate_assignments = assign_unique(warp_gate_gifs, len(warp_gate_rows), 3)
-        moon_assignments     = assign_unique(moon_gifs,     len(moon_rows),    4)
+        planet_assignments    = assign_unique(planet_gifs,      len(planet_rows),    1)
+        station_assignments   = assign_unique(station_gifs,     len(station_rows),   2)
+        warp_gate_assignments = assign_unique(warp_gate_gifs,   len(warp_gate_rows), 3)
+        moon_assignments      = assign_unique(moon_gifs,        len(moon_rows),      4)
 
         # ---- Orbit rings (under everything) ----
-        pen = QPen()
-        pen.setWidthF(0.1)
-        pen.setColor(QColor(200, 210, 230, 180))
+        ring_pen = QPen(QColor(200, 210, 230, 200))
+        ring_pen.setCosmetic(True)                     # 1px regardless of zoom
+        ring_pen.setWidth(1)
+        ring_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        ring_pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
         for i in range(len(planet_rows)):
             r = (base_au + i * ring_gap_au) * self._spread
-            ring = self._scene.addEllipse(-r, -r, 2 * r, 2 * r, pen)
+            ring = self._scene.addEllipse(-r, -r, 2 * r, 2 * r, ring_pen)
             ring.setZValue(-9)
+            try:
+                ring.setCacheMode(QGraphicsItem.CacheMode.DeviceCoordinateCache)
+            except Exception:
+                pass
 
         # ---- Central star (GIF-only) ----
         min_px_star = 180
@@ -253,6 +284,10 @@ class SolarMapWidget(BackgroundView):
         star_item.setPos(0.0, 0.0)
         star_item.setZValue(-8)
         self._scene.addItem(star_item)
+        try:
+            star_item.setCacheMode(QGraphicsItem.CacheMode.DeviceCoordinateCache)
+        except Exception:
+            pass
         self._star_item = star_item
         self._star_radius_px = desired_px_star / 2.0
 
@@ -281,48 +316,42 @@ class SolarMapWidget(BackgroundView):
             item.setPos(x, y)
             item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
             self._scene.addItem(item)
+            try:
+                item.setCacheMode(QGraphicsItem.CacheMode.DeviceCoordinateCache)
+            except Exception:
+                pass
             self._items[l["id"]] = item
             self._assigned_icons[l["id"]] = pgif
 
-            # absolute-time orbit spec
             base_speed = rng.uniform(0.05, 0.12)  # rad/sec
             omega = base_speed * (1.0 / (1.0 + i * 0.25))
             self._orbit_specs.append({"id": l["id"], "parent": None, "radius_px": ring_r, "theta0": a0, "omega": omega, "angle": a0})
 
-        # ---- Stations (RESPECT DB PARENT if present) ----
+        # ---- Stations (respect DB parent if present) ----
         min_px_station = 15
         max_px_station = 18
         station_count = max(1, len(station_rows))
         planet_ids = [l["id"] for l in planet_rows]
-        planets_with_station: set[int] = set()   # <-- track for moon radii spacing
+        planets_with_station: set[int] = set()
 
         for j, l in enumerate(station_rows):
-            # Choose parent:
             parent_from_db = _to_int(l.get("parent_location_id") or l.get("parent_id"))
             chosen_parent: Optional[int] = None
-            parent_source = "RR"
             if parent_from_db is not None and parent_from_db in planet_ids:
                 chosen_parent = parent_from_db
-                parent_source = "DB"
             elif planet_ids:
-                # fallback: round-robin across planets to spread visuals
                 ring_index = min(len(planet_ids) - 1, j % len(planet_ids))
                 chosen_parent = planet_ids[ring_index]
-                parent_source = "RR"
 
             if chosen_parent is not None:
                 radius_px = 8.0
                 parent_px, parent_py = self._drawpos.get(chosen_parent, (0.0, 0.0))
                 planets_with_station.add(chosen_parent)
             else:
-                # No planets; orbit the star
                 radius_px = ((base_au + 0.5) * self._spread) * 0.5
                 parent_px, parent_py = (0.0, 0.0)
 
-            # Deterministic initial angle for the station (stable per system/id)
             a0 = radians(((l["id"] * 211.73) % 360.0))
-
-            # Place station ON ITS ORBIT relative to parent immediately
             sx = parent_px + radius_px * math.cos(a0)
             sy = parent_py + radius_px * math.sin(a0)
             self._drawpos[l["id"]] = (sx, sy)
@@ -341,10 +370,13 @@ class SolarMapWidget(BackgroundView):
             item.setPos(sx, sy)
             item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
             self._scene.addItem(item)
+            try:
+                item.setCacheMode(QGraphicsItem.CacheMode.DeviceCoordinateCache)
+            except Exception:
+                pass
             self._items[l["id"]] = item
             self._assigned_icons[l["id"]] = sgif
 
-            # Station angular speed
             omega = random.Random(10_000 + system_id * 97 + l["id"]).uniform(0.15, 0.30)  # rad/sec
             self._orbit_specs.append({
                 "id": l["id"], "parent": chosen_parent,
@@ -371,6 +403,10 @@ class SolarMapWidget(BackgroundView):
             item.setPos(x, y)
             item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
             self._scene.addItem(item)
+            try:
+                item.setCacheMode(QGraphicsItem.CacheMode.DeviceCoordinateCache)
+            except Exception:
+                pass
             self._items[l["id"]] = item
             self._assigned_icons[l["id"]] = wgif
 
@@ -378,15 +414,15 @@ class SolarMapWidget(BackgroundView):
             omega = base_speed * (1.0 / (1.0 + outer_ring_index * 0.25))
             self._orbit_specs.append({"id": l["id"], "parent": None, "radius_px": ring_r, "theta0": a0, "omega": omega, "angle": a0})
 
-        # ---- Moons (RESPECT DB PARENT; avoid station radius) ----
+        # ---- Moons ----
         ring_gap_px = ring_gap_au * self._spread
         max_sat_radius = max(3.0, min(10.0, ring_gap_px * 0.6))
         base_sat_radii = [max_sat_radius * 0.35, max_sat_radius * 0.55, max_sat_radius * 0.75]
         sat_radii_template = sorted({max(3.0, min(float(r), max_sat_radius - 0.75)) for r in base_sat_radii})
 
         next_radius_index: Dict[int, int] = {pid: 0 for pid in [p["id"] for p in planet_rows]}
+        planet_ids = [l["id"] for l in planet_rows]
 
-        moon_count = len(moon_rows)
         for m_idx, l in enumerate(moon_rows):
             if not planet_ids:
                 continue
@@ -394,10 +430,8 @@ class SolarMapWidget(BackgroundView):
             pid_from_db = _to_int(l.get("parent_location_id") or l.get("parent_id"))
             if pid_from_db in planet_ids:
                 parent_id = pid_from_db
-                parent_src = "DB"
             else:
                 parent_id = planet_ids[m_idx % len(planet_ids)]
-                parent_src = "RR"
 
             parent_key = int(parent_id) if parent_id is not None else 0
             parent_px, parent_py = self._drawpos.get(parent_key, (0.0, 0.0))
@@ -429,6 +463,10 @@ class SolarMapWidget(BackgroundView):
             item.setPos(mx, my)
             item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
             self._scene.addItem(item)
+            try:
+                item.setCacheMode(QGraphicsItem.CacheMode.DeviceCoordinateCache)
+            except Exception:
+                pass
             self._items[l["id"]] = item
             self._assigned_icons[l["id"]] = mgif
 
@@ -449,7 +487,7 @@ class SolarMapWidget(BackgroundView):
         if player and player.get("current_player_location_id"):
             self.refresh_highlight(player["current_player_location_id"])
 
-        # Center the camera on the star (safe default when loading directly)
+        # Center on star
         self.center_on_system(system_id)
 
     # ---------- Highlight / Center ----------
@@ -472,9 +510,21 @@ class SolarMapWidget(BackgroundView):
         self._player_highlight = ring
 
     def center_on_system(self, system_id: int | None) -> None:
+        try:
+            sid = system_id if system_id is not None else getattr(self, "_system_id", None)
+            if sid is not None:
+                universe_sim.set_visible_system(int(sid))
+        except Exception:
+            pass
         self.centerOn(0.0, 0.0)
 
     def center_on_location(self, location_id: int) -> None:
+        try:
+            sid = getattr(self, "_system_id", None)
+            if sid is not None:
+                universe_sim.set_visible_system(int(sid))
+        except Exception:
+            pass
         item = self._items.get(location_id)
         if not item:
             return
@@ -484,13 +534,12 @@ class SolarMapWidget(BackgroundView):
     # ---------- Animations ----------
     def set_animations_enabled(self, enabled: bool) -> None:
         super().set_animations_enabled(enabled)
-        from PySide6.QtCore import QTimer
         if enabled:
             if self._orbit_timer is None:
                 self._orbit_timer = QTimer(self)
                 self._orbit_timer.setTimerType(Qt.TimerType.PreciseTimer)
-                self._orbit_timer.setInterval(16)                # ~60 FPS
                 self._orbit_timer.timeout.connect(self._tick_orbits)
+            self._orbit_timer.setInterval(self._orbit_interval_ms)  # steady 60 FPS
             self._orbit_t0 = time.monotonic()
             self._last_orbit_t = self._orbit_t0
             if not self._orbit_timer.isActive():
@@ -503,10 +552,26 @@ class SolarMapWidget(BackgroundView):
         if not self._orbit_specs or not self._items:
             return
         now = time.monotonic()
-        # dt still tracked (can be useful for future easing), but angle is absolute-time based
         self._last_orbit_t = now
 
-        # absolute-time angle helper
+        # Visible rect (with margin)
+        vis_rect = self.mapToScene(self.viewport().rect()).boundingRect().adjusted(-120, -120, 120, 120)
+
+        def _maybe_move(item: QGraphicsItem, x: float, y: float) -> None:
+            # Pause GIFs when far offscreen; resume when visible
+            visible = vis_rect.contains(x, y)
+            try:
+                if isinstance(item, AnimatedGifItem):
+                    item.set_playing(visible)
+            except Exception:
+                pass
+            if not visible:
+                return
+            cur = item.pos()
+            if (abs(cur.x() - x) < self._pos_epsilon_px) and (abs(cur.y() - y) < self._pos_epsilon_px):
+                return
+            item.setPos(x, y)
+
         def angle_for(spec: Dict[str, float | int | None], t0: float, now_t: float) -> float:
             theta0_v = spec.get("theta0", 0.0)
             theta0 = float(theta0_v) if theta0_v is not None else 0.0
@@ -514,7 +579,7 @@ class SolarMapWidget(BackgroundView):
             omega = float(omega_v) if omega_v is not None else 0.0
             return (theta0 + omega * (now_t - t0)) % (2.0 * math.pi)
 
-        # Update parents (planets / gates around star)
+        # Parents (planets / gates around star)
         parent_pos: dict[int | None, tuple[float, float]] = {None: (0.0, 0.0)}
         for spec in self._orbit_specs:
             if spec.get("parent") is None:
@@ -528,10 +593,10 @@ class SolarMapWidget(BackgroundView):
                 ent_id = int(id_v) if id_v is not None else 0
                 item = self._items.get(ent_id)
                 if item is not None:
-                    item.setPos(x, y)
+                    _maybe_move(item, x, y)
                 parent_pos[ent_id] = (x, y)
 
-        # Update children (stations & moons around their parent)
+        # Children (stations & moons)
         for spec in self._orbit_specs:
             if spec.get("parent") is not None:
                 a = angle_for(spec, self._orbit_t0, now)
@@ -547,4 +612,4 @@ class SolarMapWidget(BackgroundView):
                 ent_id = int(id_v) if id_v is not None else 0
                 item = self._items.get(ent_id)
                 if item is not None:
-                    item.setPos(x, y)
+                    _maybe_move(item, x, y)

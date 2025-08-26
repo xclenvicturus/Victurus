@@ -1,5 +1,4 @@
-# /ui/maps/galaxy.py
-
+# ui/maps/galaxy.py
 """
 GalaxyMapWidget (display-only, GIF-only stars):
 - systems shown with a star GIF (no SVGs)
@@ -13,17 +12,24 @@ GalaxyMapWidget (display-only, GIF-only stars):
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
-from PySide6.QtCore import QPoint, Signal
-from PySide6.QtGui import QPen, QColor, Qt
-from PySide6.QtWidgets import QGraphicsItem, QGraphicsScene
+from PySide6.QtCore import QPoint, Signal, Qt
+from PySide6.QtGui import QPainter
+from PySide6.QtWidgets import (
+    QGraphicsItem,
+    QGraphicsScene,
+    QGraphicsView,
+    QGraphicsPixmapItem,
+)
+from PySide6.QtOpenGLWidgets import QOpenGLWidget
 
 from data import db
 from .background import BackgroundView
-from .icons import make_map_symbol_item, list_gifs
+from .icons import list_gifs, pm_from_path_or_kind, randomized_px
+from game_controller.sim_loop import universe_sim
 
-ASSETS_ROOT = Path(__file__).resolve().parents[2] / "assets"
+ASSETS_ROOT  = Path(__file__).resolve().parents[2] / "assets"
 GAL_BG_DIR   = ASSETS_ROOT / "galaxy_backgrounds"
 STARS_DIR    = ASSETS_ROOT / "stars"
 
@@ -37,11 +43,30 @@ def _deterministic_star_gif(system_id: int, star_gifs: List[Path]) -> Optional[P
 
 class GalaxyMapWidget(BackgroundView):
     logMessage = Signal(str)
-    
+
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._scene = QGraphicsScene(self)
         self.setScene(self._scene)
+
+        # --- perf: viewport & scene tuning ---
+        try:
+            self.setViewport(QOpenGLWidget())  # GPU-accelerated when available
+        except Exception:
+            pass
+        self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.BoundingRectViewportUpdate)
+
+        # Keep pixmaps crisp (we pre-scale to final size; this avoids blocky zoom artifacts)
+        hints = self.renderHints()
+        hints |= QPainter.RenderHint.SmoothPixmapTransform
+        # Antialiasing not needed for these icons
+        hints &= ~QPainter.RenderHint.Antialiasing
+        self.setRenderHints(hints)
+
+        try:
+            self._scene.setItemIndexMethod(QGraphicsScene.ItemIndexMethod.BspTreeIndex)
+        except Exception:
+            pass
 
         self._system_items: Dict[int, QGraphicsItem] = {}
         self._player_highlight: Optional[QGraphicsItem] = None
@@ -65,6 +90,10 @@ class GalaxyMapWidget(BackgroundView):
         if not self._star_gifs:
             self.logMessage.emit("WARNING: No star GIFs found; placeholders will be used.")
 
+        # Keep ALL systems ticking while Galaxy is visible
+        universe_sim.ensure_running()
+        universe_sim.set_visible_system(None)
+
         self.load()
 
     # ---------- Public API ----------
@@ -85,24 +114,46 @@ class GalaxyMapWidget(BackgroundView):
         pad = 5
         self._scene.setSceneRect(min_x - pad, min_y - pad, (max_x - min_x) + pad * 2, (max_y - min_y) + pad * 2)
 
-        desired_px = 28
+        # Smaller default icon; randomized_px keeps a tiny size variance per system
+        desired_px = 20
+
         for s in systems:
             star_path = _deterministic_star_gif(s["id"], self._star_gifs) or Path("missing_star.gif")
             x, y = s["x"], s["y"]
-            item = make_map_symbol_item(star_path, desired_px, self, salt=s["id"])
+            final_px = randomized_px(desired_px, salt=s["id"])
+
+            # Pre-scale to the final size; no further view scaling applied
+            pm = pm_from_path_or_kind(str(star_path), "star", final_px)
+            item = QGraphicsPixmapItem(pm)
             item.setPos(x, y)
             item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
+
+            # Keep constant on-screen size regardless of view scale
+            item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations, True)
+
+            # Cache in device coords to avoid re-raster on minor moves/hover
+            try:
+                item.setCacheMode(QGraphicsItem.CacheMode.DeviceCoordinateCache)
+            except Exception:
+                pass
+
+            # Center the pixmap at (x, y) (HiDPI-aware)
+            try:
+                dpr = pm.devicePixelRatio() if hasattr(pm, "devicePixelRatio") else 1.0
+            except Exception:
+                dpr = 1.0
+            item.setOffset(-(pm.width() / dpr) / 2.0, -(pm.height() / dpr) / 2.0)
+
             self._scene.addItem(item)
             self._system_items[s["id"]] = item
 
         player = db.get_player_full()
         if player and player.get("current_player_system_id") is not None:
-            self.refresh_highlight(player["current_player_system_id"])
-            self.center_on_system(player["current_player_system_id"])
+            sid = player["current_player_system_id"]
+            self.refresh_highlight(sid)
+            self.center_on_system(sid)
         else:
             self.centerOn((min_x + max_x) / 2.0, (min_y + max_y) / 2.0)
-        # Galaxy default zoom remains whatever unit*zoom currently is; lists can reset as needed.
-
 
     def get_entities(self) -> List[Dict]:
         rows = [dict(r) for r in db.get_systems()]
@@ -121,6 +172,7 @@ class GalaxyMapWidget(BackgroundView):
             return
         rect = it.mapToScene(it.boundingRect()).boundingRect()
         self.centerOn(rect.center())
+        universe_sim.set_visible_system(None)
 
     def get_entity_viewport_center_and_radius(self, system_id: int) -> Optional[Tuple[QPoint, float]]:
         it = self._system_items.get(system_id)
@@ -141,7 +193,7 @@ class GalaxyMapWidget(BackgroundView):
             return
         rect = it.mapToScene(it.boundingRect()).boundingRect()
         r = max(rect.width(), rect.height()) * 0.8
-
+        # (ring drawing elided here; if you add it, keep it lightweight)
 
     def center_on_system(self, system_id: int) -> None:
         it = self._system_items.get(system_id)
@@ -149,3 +201,4 @@ class GalaxyMapWidget(BackgroundView):
             return
         rect = it.mapToScene(it.boundingRect()).boundingRect()
         self.centerOn(rect.center())
+        universe_sim.set_visible_system(None)

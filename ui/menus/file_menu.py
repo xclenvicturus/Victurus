@@ -6,9 +6,12 @@ from PySide6.QtWidgets import QMessageBox, QDialog
 from PySide6.QtGui import QAction
 
 from save.manager import SaveManager
-from ui.dialogs.new_game_dialog import NewGameDialog
 from ui.dialogs.save_as_dialog import SaveAsDialog
 from ui.dialogs.load_game_dialog import LoadGameDialog
+
+# NEW: background simulator + player system lookup
+from game_controller.sim_loop import universe_sim
+from data.db import get_player_full
 
 
 def install_file_menu(main_window):
@@ -35,20 +38,40 @@ def install_file_menu(main_window):
 
 
 def _on_new_game(win):
-    dlg = NewGameDialog(win)
-    if dlg.exec() == QDialog.DialogCode.Accepted:
-        save_name, commander, loc_label = dlg.get_values()
-        try:
-            # Use SaveManager directly; no game/new_game.py wrapper needed
-            SaveManager.create_new_save(save_name, commander, loc_label)
-        except Exception as e:
-            QMessageBox.critical(win, "New Game Failed", str(e))
-            return
-        win.start_game_ui()
-        if win._map_view:
-            win._map_view.setCurrentIndex(1)  # Switch to System tab
-        win.status_panel.refresh()
-        win.append_log(f"New game '{save_name}' started.")
+    """
+    Delegate New Game creation to LoadGameDialog's integrated new-game flow.
+    That flow uses IDs (race/system/location) and avoids parsing labels.
+    """
+    dlg = LoadGameDialog(win)
+
+    # Kick off the dialog's internal New Game flow (opens NewGameDialog inside).
+    # The dialog will accept itself if creation succeeds.
+    if hasattr(dlg, "_on_new_game"):
+        dlg._on_new_game()
+
+    if dlg.result() == QDialog.DialogCode.Accepted:
+        save_path = dlg.get_selected_save_path()
+        if save_path:
+            try:
+                SaveManager.load_save(save_path)
+            except Exception as e:
+                QMessageBox.critical(win, "Load Failed", str(e))
+                return
+            win.start_game_ui()
+            if getattr(win, "_map_view", None):
+                win._map_view.setCurrentIndex(1)  # Switch to System tab
+            win.status_panel.refresh()
+
+            # NEW: start background universe sim and set visible system to player's
+            universe_sim.ensure_running()
+            player = get_player_full()
+            if player:
+                universe_sim.set_visible_system(player.get("current_player_system_id"))
+
+            win.append_log(f"New game started: {save_path.name}")
+    else:
+        # User canceled or creation failed; optionally show Load dialog normally.
+        _on_load(win)
 
 
 def _on_save(win):
@@ -101,7 +124,14 @@ def _on_load(win):
                 QMessageBox.critical(win, "Load Failed", str(e))
                 return
             win.start_game_ui()
-            if win._map_view:
+            if getattr(win, "_map_view", None):
                 win._map_view.setCurrentIndex(1)  # Switch to System tab
             win.status_panel.refresh()
+
+            # NEW: start background universe sim and set visible system to player's
+            universe_sim.ensure_running()
+            player = get_player_full()
+            if player:
+                universe_sim.set_visible_system(player.get("current_player_system_id"))
+
             win.append_log(f"Loaded game: {save_path.name}")

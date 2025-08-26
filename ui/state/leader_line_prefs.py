@@ -18,19 +18,28 @@ class LeaderLinePrefs:
             except Exception:
                 pass
 
-    # UI helpers wired in the menu
+    def apply_to_parent(self, parent) -> None:
+        # Apply to both system and galaxy leads if present
+        for attr in ("lead", "lead_galaxy"):
+            lead = getattr(parent, attr, None)
+            if lead:
+                try:
+                    lead.set_line_style(color=self.color, width=self.width, glow_enabled=self.glow)
+                except Exception:
+                    pass
+
     def pick_color(self, parent) -> None:
         c = QColorDialog.getColor(self.color, parent, "Choose Leader Line Color")
         if c.isValid():
             self.color = c
-            self.apply_to(getattr(parent, "lead", None))
+            self.apply_to_parent(parent)
 
     def pick_width(self, parent) -> None:
         w, ok = QInputDialog.getInt(parent, "Set Leader Line Width", "Width (px):", self.width, 1, 12)
         if ok:
             self.width = int(w)
-            self.apply_to(getattr(parent, "lead", None))
+            self.apply_to_parent(parent)
 
     def set_glow(self, enabled: bool, parent) -> None:
         self.glow = bool(enabled)
-        self.apply_to(getattr(parent, "lead", None))
+        self.apply_to_parent(parent)

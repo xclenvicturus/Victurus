@@ -15,20 +15,20 @@ from .paths import get_saves_dir, save_folder_for, sanitize_save_name
 from .serializers import write_meta, read_meta
 from .models import SaveMetadata
 
+# --- UI state provider is module-level to avoid Pylance binding warnings ---
+_UI_STATE_PROVIDER: Optional[Callable[[], Dict[str, Any]]] = None
+
 
 class SaveManager:
     _active_save_dir: Optional[Path] = None
 
-    # --- NEW: UI state hook ---
-    _UI_STATE_PROVIDER: Optional[Callable[[], Dict[str, Any]]] = None
-
+    # ----- UI state hook -----
     @classmethod
     def install_ui_state_provider(cls, fn: Callable[[], Dict[str, Any]]) -> None:
         """Register a callback that returns a JSON-serializable dict of the current UI/layout."""
         global _UI_STATE_PROVIDER
         _UI_STATE_PROVIDER = fn
 
-    # --- NEW: UI state helpers ---
     @classmethod
     def _ui_state_path(cls, save_dir: Path) -> Path:
         return save_dir / "ui_state.json"
@@ -36,14 +36,14 @@ class SaveManager:
     @classmethod
     def write_ui_state(cls, save_dir: Optional[Path] = None) -> None:
         """Call the provider (if any) and persist ui_state.json next to game.db."""
-        global _UI_STATE_PROVIDER
-        if _UI_STATE_PROVIDER is None:
+        provider = _UI_STATE_PROVIDER
+        if provider is None:
             return
         target = save_dir or cls._active_save_dir
         if not target:
             return
         try:
-            data = _UI_STATE_PROVIDER() or {}
+            data = provider() or {}
             p = cls._ui_state_path(target)
             p.parent.mkdir(parents=True, exist_ok=True)
             with p.open("w", encoding="utf-8") as f:
@@ -66,6 +66,7 @@ class SaveManager:
         except Exception:
             return None
 
+    # ----- active save helpers -----
     @classmethod
     def active_save_dir(cls) -> Optional[Path]:
         return cls._active_save_dir
@@ -81,16 +82,144 @@ class SaveManager:
 
     @classmethod
     def list_saves(cls) -> List[Tuple[str, Path]]:
-        saves = []
+        saves: List[Tuple[str, Path]] = []
         root = get_saves_dir()
-        if not root.exists(): return []
+        if not root.exists():
+            return []
         for child in sorted(root.iterdir()):
             if child.is_dir() and (child / "game.db").exists():
                 saves.append((child.name, child))
         return saves
 
+    # ----- start location resolution -----
     @classmethod
-    def create_new_save(cls, save_name: str, commander_name: str, starting_location_label: str) -> Path:
+    def _find_fallback_start(cls, conn: sqlite3.Connection) -> Tuple[int, int]:
+        """
+        Fallback start: pick the first race flagged as starting_world and use its homeworld.
+        Returns (system_id, location_id). Raises RuntimeError if none found.
+        """
+        row = conn.execute(
+            """
+            SELECT r.home_system_id, r.home_planet_location_id
+            FROM races r
+            WHERE COALESCE(r.starting_world, 1) = 1
+            ORDER BY r.race_id
+            LIMIT 1;
+            """
+        ).fetchone()
+        if row and row[0] is not None and row[1] is not None:
+            return int(row[0]), int(row[1])
+        # As last resort, pick any system and a planet within it
+        sys_row = conn.execute("SELECT system_id FROM systems ORDER BY system_id LIMIT 1;").fetchone()
+        if not sys_row:
+            raise RuntimeError("No systems available for fallback start.")
+        system_id = int(sys_row[0])
+        loc_row = conn.execute(
+            """
+            SELECT location_id
+            FROM locations
+            WHERE system_id=? AND location_type='planet'
+            ORDER BY location_id
+            LIMIT 1;
+            """,
+            (system_id,),
+        ).fetchone()
+        if not loc_row:
+            loc_row = conn.execute(
+                "SELECT location_id FROM locations WHERE system_id=? ORDER BY location_id LIMIT 1;",
+                (system_id,),
+            ).fetchone()
+        if not loc_row:
+            raise RuntimeError("No locations available for fallback start.")
+        return system_id, int(loc_row[0])
+
+    @classmethod
+    def _validate_and_coerce_start(
+        cls, conn: sqlite3.Connection, start_ids: Optional[Dict[str, int]]
+    ) -> Tuple[int, int]:
+        """
+        Given an optional dict {race_id?, system_id, location_id}, validate it and
+        return a safe (system_id, location_id) pair. Falls back sensibly if invalid.
+        """
+        if not start_ids:
+            return cls._find_fallback_start(conn)
+
+        sys_id = int(start_ids.get("system_id", 0) or 0)
+        loc_id = int(start_ids.get("location_id", 0) or 0)
+
+        # Validate system
+        sid_row = conn.execute("SELECT 1 FROM systems WHERE system_id=?;", (sys_id,)).fetchone()
+        if not sid_row:
+            return cls._find_fallback_start(conn)
+
+        # Validate location and ownership
+        loc_row = conn.execute(
+            "SELECT system_id, location_type FROM locations WHERE location_id=?;",
+            (loc_id,),
+        ).fetchone()
+        if not loc_row:
+            # pick a planet in the chosen system
+            repl = conn.execute(
+                """
+                SELECT location_id
+                FROM locations
+                WHERE system_id=? AND location_type='planet'
+                ORDER BY location_id
+                LIMIT 1;
+                """,
+                (sys_id,),
+            ).fetchone()
+            if repl:
+                return sys_id, int(repl[0])
+            repl = conn.execute(
+                "SELECT location_id FROM locations WHERE system_id=? ORDER BY location_id LIMIT 1;",
+                (sys_id,),
+            ).fetchone()
+            if repl:
+                return sys_id, int(repl[0])
+            return cls._find_fallback_start(conn)
+
+        loc_sys_id = int(loc_row[0])
+        if loc_sys_id != sys_id:
+            repl = conn.execute(
+                """
+                SELECT location_id
+                FROM locations
+                WHERE system_id=? AND location_type='planet'
+                ORDER BY location_id
+                LIMIT 1;
+                """,
+                (sys_id,),
+            ).fetchone()
+            if repl:
+                return sys_id, int(repl[0])
+            repl = conn.execute(
+                "SELECT location_id FROM locations WHERE system_id=? ORDER BY location_id LIMIT 1;",
+                (sys_id,),
+            ).fetchone()
+            if repl:
+                return sys_id, int(repl[0])
+            return cls._find_fallback_start(conn)
+
+        return sys_id, loc_id
+
+    # ----- creation / loading / saving -----
+    @classmethod
+    def create_new_save(
+        cls,
+        save_name: str,
+        commander_name: str,
+        starting_location_label: str,
+        start_ids: Optional[Dict[str, int]] = None,
+    ) -> Path:
+        """
+        Create a new save folder with a fresh DB.
+
+        If start_ids is provided (recommended), it should contain:
+          - system_id (int), location_id (int), and optionally race_id (int)
+        We validate and coerce these; if anything is invalid or missing, we fall back
+        to the first available starting_world race's homeworld (or another sensible default).
+        """
         # Close any existing connection to ensure we start fresh.
         db.close_active_connection()
 
@@ -102,54 +231,74 @@ class SaveManager:
         db_path = dest / "game.db"
         conn = sqlite3.connect(db_path)
         try:
+            # Create schema & seed fresh universe
             schema_path = Path(__file__).resolve().parents[1] / "data" / "schema.sql"
             with open(schema_path, "r", encoding="utf-8") as f:
                 conn.executescript(f.read())
+
             seed_module.seed(conn)
             conn.commit()
 
+            # Determine starting system/location
+            system_id, location_id = cls._validate_and_coerce_start(conn, start_ids)
+
+            # Ensure there is a player row; if not, create one
             cur = conn.cursor()
-            label = starting_location_label.replace("•", "").strip()
-            parts = label.split()
-            try:
-                planet_idx = parts.index("Planet")
-                system_name = " ".join(parts[:planet_idx])
-                planet_name = " ".join(parts[planet_idx:])
-            except ValueError:
-                system_name = parts[0]
-                planet_name = " ".join(parts[1:]) if len(parts) > 1 else "Planet 1"
-
-            cur.execute("SELECT system_id FROM systems WHERE system_name = ?;", (system_name,))
-            row = cur.fetchone()
-            if not row:
-                raise RuntimeError(f"System '{system_name}' not found for starting location.")
-            system_id = row[0]
-
-            cur.execute(
-                "SELECT location_id FROM locations WHERE system_id = ? AND location_name = ?;",
-                (system_id, f"{system_name} {planet_name}"),
-            )
-            row = cur.fetchone()
-            if not row:
+            has_player = cur.execute("SELECT 1 FROM player WHERE id=1;").fetchone()
+            if not has_player:
+                ship = cur.execute(
+                    """
+                    SELECT ship_id, base_ship_fuel, base_ship_hull,
+                           base_ship_shield, base_ship_energy, base_ship_cargo
+                    FROM ships
+                    ORDER BY (ship_name='Shuttle') DESC, base_ship_cargo ASC
+                    LIMIT 1;
+                    """
+                ).fetchone()
+                if not ship:
+                    raise RuntimeError("No ships available to initialize the player.")
                 cur.execute(
-                    "SELECT location_id FROM locations WHERE system_id = ? AND location_category='planet' ORDER BY location_id LIMIT 1;",
-                    (system_id,)
+                    """
+                    INSERT INTO player(
+                        id, name, current_wallet_credits, current_player_system_id,
+                        current_player_ship_id, current_player_ship_fuel,
+                        current_player_ship_hull, current_player_ship_shield,
+                        current_player_ship_energy, current_player_ship_cargo,
+                        current_player_location_id
+                    )
+                    VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                    """,
+                    (
+                        commander_name or "Captain",
+                        1000,
+                        system_id,
+                        int(ship[0]),
+                        int(ship[1]),
+                        int(ship[2]),
+                        int(ship[3]),
+                        int(ship[4]),
+                        0,
+                        location_id,
+                    ),
                 )
-                row = cur.fetchone()
-            
-            if not row:
-                raise RuntimeError(f"Could not find a starting planet in system '{system_name}'.")
-            location_id = row[0]
+            else:
+                cur.execute(
+                    """
+                    UPDATE player
+                       SET name=?,
+                           current_player_system_id=?,
+                           current_player_location_id=?
+                     WHERE id=1;
+                    """,
+                    (commander_name or "Captain", system_id, location_id),
+                )
 
-            cur.execute(
-                "UPDATE player SET name=?, current_player_system_id=?, current_player_location_id=? WHERE id=1;",
-                (commander_name, system_id, location_id),
-            )
             conn.commit()
 
         finally:
             conn.close()
 
+        # Write meta
         now = datetime.utcnow().isoformat()
         meta = SaveMetadata(
             save_name=dest.name,
@@ -159,27 +308,23 @@ class SaveManager:
         )
         write_meta(dest / "meta.json", meta)
 
+        # Activate this save in the app and open a connection through our db layer
         cls.set_active_save(dest)
         db.get_connection()  # opens a connection to new DB
 
-        # NEW: persist an initial (default) UI state if a provider is registered
+        # Snapshot initial UI state if a provider is registered
         cls.write_ui_state(dest)
 
         return dest
 
     @classmethod
     def load_save(cls, save_dir: Path) -> None:
-        # Close any existing connection before loading a new one.
         db.close_active_connection()
-        
         db_path = save_dir / "game.db"
         if not db_path.exists():
             raise FileNotFoundError(f"Save database not found: {db_path}")
         cls.set_active_save(save_dir)
         db.get_connection()
-
-        # NOTE: UI state is *not* auto-applied here to avoid touching UI from a non-UI caller.
-        # MainWindow should call SaveManager.read_ui_state_for_active() after it builds the UI.
 
     @classmethod
     def save_current(cls) -> None:
@@ -187,29 +332,27 @@ class SaveManager:
             return
         conn = db.get_connection()
         conn.commit()
-        
+
         meta_path = cls._active_save_dir / "meta.json"
         meta = read_meta(meta_path)
         if meta:
             meta.last_played_iso = datetime.utcnow().isoformat()
             write_meta(meta_path, meta)
 
-        # NEW: snapshot and persist current UI state
         cls.write_ui_state()
 
     @classmethod
     def save_as(cls, new_save_name: str) -> Path:
         if not cls._active_save_dir:
             raise RuntimeError("No active save to use for 'Save As'.")
-        
+
         dest = save_folder_for(new_save_name)
         if dest.exists():
             raise FileExistsError(f"Destination save folder '{dest.name}' already exists.")
-        
+
         shutil.copytree(cls._active_save_dir, dest)
-        
         cls.set_active_save(dest)
-        
+
         meta_path = dest / "meta.json"
         meta = read_meta(meta_path)
         if meta:
@@ -217,31 +360,29 @@ class SaveManager:
             meta.last_played_iso = datetime.utcnow().isoformat()
             write_meta(meta_path, meta)
 
-        # NEW: refresh UI state snapshot into the new folder (even if it was copied)
         cls.write_ui_state(dest)
-            
         return dest
 
     @classmethod
     def rename_save(cls, old_dir: Path, new_name: str) -> Path:
         if not old_dir.exists():
             raise FileNotFoundError("Original save directory not found.")
-        
+
         new_dir = old_dir.parent / sanitize_save_name(new_name)
         if new_dir.exists():
             raise FileExistsError(f"A save named '{new_dir.name}' already exists.")
-            
+
         old_dir.rename(new_dir)
-        
+
         meta_path = new_dir / "meta.json"
         meta = read_meta(meta_path)
         if meta:
             meta.save_name = new_dir.name
             write_meta(meta_path, meta)
-            
+
         if cls._active_save_dir == old_dir:
             cls.set_active_save(new_dir)
-            
+
         return new_dir
 
     @classmethod
@@ -250,8 +391,8 @@ class SaveManager:
             raise FileNotFoundError("Save directory not found.")
         if not save_dir.is_dir():
             raise NotADirectoryError("Target for deletion is not a directory.")
-        
+
         shutil.rmtree(save_dir)
-        
+
         if cls._active_save_dir == save_dir:
             cls._active_save_dir = None

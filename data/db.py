@@ -1,74 +1,102 @@
 # /data/db.py
-
-"""
-SQLite access layer: connection, schema/seed, and query helpers.
-
-"""
+# SQLite access layer: connection, schema/seed, and query helpers (v2 aware).
 
 from __future__ import annotations
 
 import sqlite3
+import threading
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 ROOT = Path(__file__).resolve().parents[1]
 DB_DIR = ROOT / "database"
 DB_PATH = DB_DIR / "game.db"
 
 _active_db_path_override: Optional[Path] = None
-_connection: Optional[sqlite3.Connection] = None
+
+# --- Thread-local connections + one-time init ---
+_tls = threading.local()
+_init_lock = threading.Lock()
+_is_initialized = False
 
 DATA_DIR = ROOT / "data"
 SCHEMA_PATH = DATA_DIR / "schema.sql"
-SEED_PY = DATA_DIR / "seed.py"
+SEED_PY = DATA_DIR / "seed.py"   # will load universe_seed.json
 
 
 def set_active_db_path(p: Path | str) -> None:
+    """Override the default database path (useful for tests or rebuilding)."""
     global _active_db_path_override
     _active_db_path_override = Path(p)
 
 
 def get_active_db_path() -> Path:
+    """Return the currently active database file path."""
     return _active_db_path_override if _active_db_path_override else DB_PATH
 
 
-def _is_connection_open(conn: Optional[sqlite3.Connection]) -> bool:
-    if conn is None:
-        return False
-    try:
-        conn.execute("SELECT 1;")
-        return True
-    except sqlite3.ProgrammingError:
-        return False
+def get_active_db_uri(read_only: bool = False) -> str:
+    """
+    Return a sqlite3 file: URI for the active DB.
+    When read_only=True, adds ?mode=ro for workers.
+    """
+    ap = get_active_db_path().as_posix()
+    return f"file:{ap}?mode=ro" if read_only else f"file:{ap}"
 
 
 def _open_new_connection() -> sqlite3.Connection:
     ap = get_active_db_path()
     ap.parent.mkdir(parents=True, exist_ok=True)
+    # Default sqlite3 connections are NOT threadsafe across threads.
+    # We keep one connection per thread via _tls below.
     conn = sqlite3.connect(str(ap))
     conn.row_factory = sqlite3.Row
+
+    # Pragmas tuned for UI + background sim concurrency
     conn.execute("PRAGMA foreign_keys = ON;")
+    conn.execute("PRAGMA journal_mode = WAL;")
+    conn.execute("PRAGMA synchronous = NORMAL;")
+    conn.execute("PRAGMA busy_timeout = 1000;")  # 1s backoff on brief writer conflicts
+    # Optional: put temp tables in memory for speed.
+    conn.execute("PRAGMA temp_store = MEMORY;")
     return conn
 
 
 def _ensure_schema_and_seed(conn: sqlite3.Connection) -> None:
-    # Always ensure schema exists; seed on first run.
-    with open(SCHEMA_PATH, "r", encoding="utf-8") as f:
-        conn.executescript(f.read())
-    conn.commit()
+    """
+    Ensure schema exists; if the DB is empty (no systems), run the seed script
+    which ingests data/universe_seed.json (or ..._v2.json).
+    Idempotent; guarded by _init_lock to avoid duplicate seeding.
+    """
+    global _is_initialized
+    with _init_lock:
+        if _is_initialized:
+            return
+        with open(SCHEMA_PATH, "r", encoding="utf-8") as f:
+            conn.executescript(f.read())
+        conn.commit()
 
-    cur = conn.execute("SELECT COUNT(system_id) FROM systems")
-    if cur.fetchone()[0] == 0:
-        import runpy
-        ns = runpy.run_path(str(SEED_PY), run_name="__seed__")
-        seed_fn = ns.get("seed")
-        if callable(seed_fn):
-            seed_fn(conn)
-            conn.commit()
+        cur = conn.execute("SELECT COUNT(system_id) FROM systems")
+        if cur.fetchone()[0] == 0:
+            import runpy
+            ns = runpy.run_path(str(SEED_PY), run_name="__seed__")
+            seed_fn = ns.get("seed")
+            if callable(seed_fn):
+                seed_fn(conn)
+                conn.commit()
+
+        # Keep compatibility columns (idempotent checks)
+        _ensure_icon_column(conn)
+        _ensure_system_star_column(conn)
+
+        _is_initialized = True
 
 
 def _ensure_icon_column(conn: sqlite3.Connection) -> None:
-    """DB column for per-location icon paths (assigned by UI layer)."""
+    """
+    Keep compatibility: a column to store per-location icon paths the UI
+    selects at runtime (no duplicates per system/type).
+    """
     cur = conn.execute("PRAGMA table_info(locations)")
     columns = [row[1] for row in cur.fetchall()]
     if "icon_path" not in columns:
@@ -77,7 +105,7 @@ def _ensure_icon_column(conn: sqlite3.Connection) -> None:
 
 
 def _ensure_system_star_column(conn: sqlite3.Connection) -> None:
-    """DB column for per-system star icon (assigned by UI layer)."""
+    """Optional per-system star icon path assigned by UI/runtime."""
     cur = conn.execute("PRAGMA table_info(systems)")
     columns = [row[1] for row in cur.fetchall()]
     if "star_icon_path" not in columns:
@@ -87,27 +115,70 @@ def _ensure_system_star_column(conn: sqlite3.Connection) -> None:
 
 def get_connection() -> sqlite3.Connection:
     """
-    Lazily open (and initialize) the global connection.
-    Note: This only ensures schema and required columns; it does NOT assign icons.
+    Lazily open (and initialize) a connection bound to the CURRENT THREAD.
+    This provides concurrency safety with sqlite3 while keeping WAL benefits.
     """
-    global _connection
-    if _connection is None or not _is_connection_open(_connection):
-        _connection = _open_new_connection()
-        _ensure_schema_and_seed(_connection)
-        _ensure_icon_column(_connection)
-        _ensure_system_star_column(_connection)
-    return _connection
+    conn: Optional[sqlite3.Connection] = getattr(_tls, "conn", None)
+    try:
+        if conn is not None:
+            conn.execute("SELECT 1;")
+    except sqlite3.ProgrammingError:
+        conn = None
+
+    if conn is None:
+        conn = _open_new_connection()
+        _tls.conn = conn
+        _ensure_schema_and_seed(conn)
+    return conn
 
 
 def close_active_connection() -> None:
-    """Closes the current global database connection, if it's open."""
-    global _connection
-    if _connection is not None and _is_connection_open(_connection):
-        _connection.close()
-    _connection = None
+    """Closes the current THREAD's database connection, if it's open."""
+    conn: Optional[sqlite3.Connection] = getattr(_tls, "conn", None)
+    if conn is not None:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    _tls.conn = None
 
 
-# ---------- Query helpers ----------
+# ---------- NEW: worker-friendly read-only connector ----------
+
+def connect_readonly(path: Optional[Union[Path, str]] = None, timeout: float = 1.0) -> sqlite3.Connection:
+    """
+    Open a read-only SQLite connection using a file: URI.
+    Intended for worker processes (e.g., ProcessPool) to avoid write locks.
+    """
+    ap = Path(path) if path is not None else get_active_db_path()
+    ap.parent.mkdir(parents=True, exist_ok=True)
+
+    conn = sqlite3.connect(f"file:{ap.as_posix()}?mode=ro", uri=True, timeout=timeout)
+    conn.row_factory = sqlite3.Row
+
+    # Read-only friendly pragmas (silently ignore if not allowed in RO)
+    try:
+        conn.execute("PRAGMA foreign_keys = ON;")
+    except Exception:
+        pass
+    try:
+        conn.execute("PRAGMA journal_mode = WAL;")  # harmless if DB already in WAL
+    except Exception:
+        pass
+    try:
+        conn.execute("PRAGMA query_only = ON;")
+    except Exception:
+        pass
+    try:
+        conn.execute("PRAGMA busy_timeout = 750;")
+        conn.execute("PRAGMA temp_store = MEMORY;")
+    except Exception:
+        pass
+
+    return conn
+
+
+# ---------- Basic query helpers ----------
 
 def get_counts() -> Dict[str, int]:
     conn = get_connection()
@@ -115,6 +186,7 @@ def get_counts() -> Dict[str, int]:
         "systems": conn.execute("SELECT COUNT(system_id) FROM systems").fetchone()[0],
         "items": conn.execute("SELECT COUNT(item_id) FROM items").fetchone()[0],
         "ships": conn.execute("SELECT COUNT(ship_id) FROM ships").fetchone()[0],
+        "locations": conn.execute("SELECT COUNT(location_id) FROM locations").fetchone()[0],
     }
 
 
@@ -124,7 +196,7 @@ def get_systems() -> List[Dict]:
         for row in get_connection().execute(
             """
             SELECT
-              *,
+              * ,
               system_id   AS id,
               system_name AS name,
               system_x    AS x,
@@ -140,7 +212,7 @@ def get_system(system_id: int) -> Optional[Dict]:
     row = get_connection().execute(
         """
         SELECT
-          *,
+          * ,
           system_id   AS id,
           system_name AS name,
           system_x    AS x,
@@ -159,7 +231,7 @@ def get_locations(system_id: int) -> List[Dict]:
         for row in get_connection().execute(
             """
             SELECT
-              *,
+              * ,
               location_id   AS id,
               location_name AS name,
               location_type AS kind,
@@ -178,7 +250,7 @@ def get_location(location_id: int) -> Optional[Dict]:
     row = get_connection().execute(
         """
         SELECT
-          *,
+          * ,
           location_id   AS id,
           location_name AS name,
           location_x    AS local_x_au,
@@ -192,10 +264,11 @@ def get_location(location_id: int) -> Optional[Dict]:
 
 
 def get_warp_gate(system_id: int) -> Optional[Dict]:
+    """Return the warp gate location in a system (type 'warp_gate')."""
     row = get_connection().execute(
         """
         SELECT
-          *,
+          * ,
           location_id   AS id,
           location_name AS name,
           location_x    AS local_x_au,
@@ -209,22 +282,128 @@ def get_warp_gate(system_id: int) -> Optional[Dict]:
     return dict(row) if row else None
 
 
+# ---------- New helpers for the v2 universe ----------
+
+def get_gate_links(system_id: int) -> List[Dict]:
+    """Neighbor systems reachable via warp from this system."""
+    conn = get_connection()
+    rows = conn.execute(
+        """
+        SELECT
+          CASE WHEN gl.system_a_id=? THEN gl.system_b_id ELSE gl.system_a_id END AS neighbor_system_id,
+          gl.distance_pc
+        FROM gate_links gl
+        WHERE gl.system_a_id=? OR gl.system_b_id=?
+        """,
+        (system_id, system_id, system_id),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_resource_nodes(system_id: int) -> List[Dict]:
+    """All resource nodes (asteroids, gas, ice, etc.) in a system."""
+    conn = get_connection()
+    rows = conn.execute(
+        """
+        SELECT rn.*, l.location_name, l.location_x, l.location_y, l.location_id
+        FROM resource_nodes rn
+        JOIN locations l ON l.location_id = rn.location_id
+        WHERE l.system_id = ?
+        ORDER BY l.location_name
+        """,
+        (system_id,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_facilities(system_id: int) -> List[Dict]:
+    """Facilities (mines, refineries, domes…) located in a system."""
+    conn = get_connection()
+    rows = conn.execute(
+        """
+        SELECT f.*, l.location_name, l.location_type, l.system_id
+        FROM facilities f
+        JOIN locations l ON l.location_id = f.location_id
+        WHERE l.system_id = ?
+        ORDER BY f.facility_type, l.location_name
+        """,
+        (system_id,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_facility_io(facility_id: int) -> Dict[str, List[Dict]]:
+    """Inputs/outputs for a facility (per-tick rates)."""
+    conn = get_connection()
+    inputs = conn.execute(
+        """
+        SELECT fi.item_id, i.item_name, fi.rate
+        FROM facility_inputs fi
+        JOIN items i ON i.item_id = fi.item_id
+        WHERE fi.facility_id=?
+        """,
+        (facility_id,),
+    ).fetchall()
+    outputs = conn.execute(
+        """
+        SELECT fo.item_id, i.item_name, fo.rate
+        FROM facility_outputs fo
+        JOIN items i ON i.item_id = fo.item_id
+        WHERE fo.facility_id=?
+        """,
+        (facility_id,),
+    ).fetchall()
+    return {"inputs": [dict(r) for r in inputs], "outputs": [dict(r) for r in outputs]}
+
+
 def get_player_full() -> Optional[Dict]:
-    row = get_connection().execute("SELECT * FROM player WHERE id=1").fetchone()
+    """Return the single player row (id=1) or None if not seeded yet."""
+    row = get_connection().execute(
+        "SELECT * FROM player WHERE id=1"
+    ).fetchone()
     return dict(row) if row else None
 
 
 def get_player_summary() -> Dict:
+    """Lightweight summary (currently just credits)."""
     player = get_player_full()
     return {"credits": player.get("current_wallet_credits", 0)} if player else {"credits": 0}
 
 
 def get_player_ship() -> Optional[Dict]:
+    """Return the player's current ship record (with id/name aliases)."""
     player = get_player_full()
     if not player or not player.get("current_player_ship_id"):
         return None
     row = get_connection().execute(
-        "SELECT *, ship_id AS id, ship_name AS name FROM ships WHERE ship_id = ?",
+        """
+        SELECT *,
+               ship_id   AS id,
+               ship_name AS name
+        FROM ships
+        WHERE ship_id = ?
+        """,
         (player["current_player_ship_id"],),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def get_player_location() -> Optional[Dict]:
+    """Return the player's current location row with friendly aliases."""
+    player = get_player_full()
+    if not player or player.get("current_player_location_id") is None:
+        return None
+    row = get_connection().execute(
+        """
+        SELECT *,
+               location_id   AS id,
+               location_name AS name,
+               location_type AS kind,
+               location_x    AS local_x_au,
+               location_y    AS local_y_au
+        FROM locations
+        WHERE location_id = ?
+        """,
+        (player["current_player_location_id"],),
     ).fetchone()
     return dict(row) if row else None

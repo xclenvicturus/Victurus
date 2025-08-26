@@ -31,7 +31,6 @@ class LeadLine(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_AlwaysStackOnTop, True)
 
         self._active = False
-        self._locked = False
         self._anchor = QPoint(0, 0)
         self._target = QPoint(0, 0)
         self._stub = 14  # px
@@ -45,15 +44,6 @@ class LeadLine(QWidget):
 
     # ---------- public API (state) ----------
     def show_temp(self, anchor: QPoint, target_endpoint: QPoint):
-        if self._locked:
-            return
-        self._active = True
-        self._anchor = QPoint(anchor)
-        self._target = QPoint(target_endpoint)
-        self.update()
-
-    def lock_to(self, anchor: QPoint, target_endpoint: QPoint):
-        self._locked = True
         self._active = True
         self._anchor = QPoint(anchor)
         self._target = QPoint(target_endpoint)
@@ -61,7 +51,6 @@ class LeadLine(QWidget):
 
     def clear(self):
         self._active = False
-        self._locked = False
         self.update()
 
     # ---------- public API (style) ----------
@@ -139,8 +128,13 @@ class LeadLine(QWidget):
 
 class LeaderLineController(QObject):
     """
-    Encapsulates hover/click → leader-line behavior, including parenting the overlay
+    Encapsulates hover → leader-line behavior, including parenting the overlay
     onto the active map's viewport and continuously following targets.
+
+    Click-to-lock behavior has been removed. A new `scope` argument gates activity:
+      - scope="galaxy": only active when the Galaxy tab is visible
+      - scope="solar" : only active when the System/Solar tab is visible
+      - scope="any"   : active on whichever tab is visible (default)
     """
 
     def __init__(
@@ -149,20 +143,18 @@ class LeaderLineController(QObject):
         list_panel: LocationList,         # type: ignore[name-defined]
         make_overlay: Callable[[QWidget], LeadLine] = LeadLine,
         log: Optional[Callable[[str], None]] = None,
-        enable_lock: bool = False,
+        enable_lock: bool = False,        # ignored; kept for call-site compatibility
+        scope: str = "any",
     ) -> None:
         super().__init__(tabs)
         self._tabs = tabs
         self._panel = list_panel
         self._make_overlay = make_overlay
         self._log = log or (lambda _m: None)
-        self._enable_lock = bool(enable_lock)
+        self._scope = (scope or "any").lower()
 
         self._overlay: Optional[LeadLine] = None
         self._overlay_src: Optional[QWidget] = None  # where map coords live
-
-        # separate locks per tab (0=galaxy, 1=system)
-        self._locked_by_tab: dict[int, Optional[int]] = {0: None, 1: None}
 
         # Smooth follow timer (~60 FPS)
         self._tick = QTimer(self)
@@ -173,12 +165,10 @@ class LeaderLineController(QObject):
 
         self._install_view_event_filters()
 
-        # wire panel signals we need
+        # wire panel signals we need (hover-only)
         self._panel.hovered.connect(self.on_hover)
         self._panel.leftView.connect(self.on_leave)
         self._panel.anchorMoved.connect(self.refresh)
-        if self._enable_lock:
-            self._panel.clicked.connect(self.on_click)
 
     # -------- public API --------
 
@@ -228,63 +218,43 @@ class LeaderLineController(QObject):
         self._ensure_tick_running()
 
     def on_hover(self, entity_id: int) -> None:
-        if self._overlay is None:
-            return
-        if self._enable_lock and self._current_lock() is not None:
-            return
-        try:
-            eid = int(entity_id)
-        except Exception:
-            return
-        self._line_active = True
-        self._attach_leader(eid, locked=False)
-        self._ensure_tick_running()
-
-    def on_click(self, entity_id: int) -> None:
-        if not self._enable_lock:
-            return
-        try:
-            eid = int(entity_id)
-        except Exception:
-            return
-        cur = self._current_lock()
-        if cur == eid:
-            self._set_current_lock(None)
-            self._log("Leader line unlocked.")
+        if not self._scope_allows_now():
             self.clear()
             return
-        self._set_current_lock(eid)
+        if self._overlay is None:
+            return
+        try:
+            eid = int(entity_id)
+        except Exception:
+            return
         self._line_active = True
-        self._attach_leader(eid, locked=True)
+        self._attach_leader(eid)
         self._ensure_tick_running()
 
     def on_leave(self) -> None:
-        if not self._enable_lock or self._current_lock() is None:
-            self.clear()
+        self.clear()
 
     def refresh(self) -> None:
-        if self._overlay is None:
+        if not self._scope_allows_now():
+            self.clear()
             return
-        locked = self._current_lock()
-        if locked is not None:
-            self._line_active = True
-            self._attach_leader(locked, locked=True)
-            self._ensure_tick_running()
+        if self._overlay is None:
             return
 
         item = self._panel.current_hover_item()
         if not isinstance(item, QTreeWidgetItem):
-            if self._current_lock() is None:
-                self.clear()
+            self.clear()
             return
+
         data_val = item.data(0, Qt.ItemDataRole.UserRole)
         try:
             eid = int(data_val)
         except Exception:
             self.clear()
             return
+
         self._line_active = True
-        self._attach_leader(eid, locked=False)
+        self._attach_leader(eid)
         self._ensure_tick_running()
 
     def clear(self) -> None:
@@ -299,15 +269,6 @@ class LeaderLineController(QObject):
         tw = getattr(self._tabs, "tabs", None)
         return tw if isinstance(tw, QTabWidget) else None
 
-    def _safe_current_index(self) -> int:
-        tw = self._tab_widget()
-        if tw is not None:
-            try:
-                return tw.currentIndex()
-            except Exception:
-                pass
-        return 0
-
     def _safe_current_widget(self) -> Optional[QWidget]:
         tw = self._tab_widget()
         if tw is not None:
@@ -318,11 +279,28 @@ class LeaderLineController(QObject):
                 pass
         return None
 
-    def _current_lock(self) -> Optional[int]:
-        return self._locked_by_tab.get(self._safe_current_index(), None)
+    def _is_galaxy_tab(self) -> bool:
+        """Return True if the active tab is the Galaxy map widget."""
+        try:
+            tw = self._tab_widget()
+            if tw is None:
+                return False
+            cw = tw.currentWidget()
+            gw = getattr(self._tabs, "galaxy", None)
+            return gw is not None and cw is gw
+        except Exception:
+            return False
 
-    def _set_current_lock(self, eid: Optional[int]) -> None:
-        self._locked_by_tab[self._safe_current_index()] = eid
+    def _scope_allows_now(self) -> bool:
+        """Check if controller should be active on the current tab per its scope."""
+        if self._scope == "any":
+            return True
+        is_gal = self._is_galaxy_tab()
+        if self._scope == "galaxy":
+            return is_gal
+        if self._scope in ("solar", "system"):
+            return not is_gal
+        return True
 
     def _install_view_event_filters(self) -> None:
         for wname in ("galaxy", "solar"):
@@ -377,36 +355,37 @@ class LeaderLineController(QObject):
         except Exception:
             pass
 
-    def _attach_leader(self, eid: int, locked: bool) -> None:
+    def _attach_leader(self, eid: int) -> None:
         if self._overlay is None or self._overlay_src is None:
             return
 
-        anchor = self._compute_anchor(eid, locked)
+        anchor = self._compute_anchor(eid)
         endpoint = self._compute_endpoint(eid, anchor)
 
         if anchor is None or endpoint is None:
             self.clear()
             return
 
-        if locked and self._enable_lock:
-            self._overlay.lock_to(anchor, endpoint)
-        else:
-            self._overlay.show_temp(anchor, endpoint)
+        self._overlay.show_temp(anchor, endpoint)
 
     # ---- continuous follow ----
 
     def _ensure_tick_running(self) -> None:
-        if self._line_active and (self._overlay is not None) and (self._overlay_src is not None):
+        if self._scope_allows_now() and self._line_active and (self._overlay is not None) and (self._overlay_src is not None):
             if not self._tick.isActive():
                 self._tick.start()
         else:
             self._maybe_stop_tick()
 
     def _maybe_stop_tick(self) -> None:
-        if self._tick.isActive() and (not self._line_active or self._overlay is None):
+        if self._tick.isActive() and (not self._line_active or self._overlay is None or not self._scope_allows_now()):
             self._tick.stop()
 
     def _on_tick(self) -> None:
+        if not self._scope_allows_now():
+            self.clear()
+            return
+
         if self._overlay is None or self._overlay_src is None:
             self._maybe_stop_tick()
             return
@@ -417,17 +396,15 @@ class LeaderLineController(QObject):
         except Exception:
             pass
 
-        eid = self._current_lock()
-        locked = True
-        if eid is None:
-            item = self._panel.current_hover_item()
-            if isinstance(item, QTreeWidgetItem):
-                data_val = item.data(0, Qt.ItemDataRole.UserRole)
-                try:
-                    eid = int(data_val)
-                    locked = False
-                except Exception:
-                    eid = None
+        # follow the currently hovered item (no click-lock)
+        eid: Optional[int] = None
+        item = self._panel.current_hover_item()
+        if isinstance(item, QTreeWidgetItem):
+            data_val = item.data(0, Qt.ItemDataRole.UserRole)
+            try:
+                eid = int(data_val)
+            except Exception:
+                eid = None
 
         if eid is None:
             self._line_active = False
@@ -436,37 +413,24 @@ class LeaderLineController(QObject):
                 self._overlay.clear()
             return
 
-        anchor = self._compute_anchor(eid, locked)
+        anchor = self._compute_anchor(eid)
         endpoint = self._compute_endpoint(eid, anchor)
         if anchor is None or endpoint is None:
             return
 
-        if locked and self._enable_lock:
-            self._overlay.lock_to(anchor, endpoint)
-        else:
-            self._overlay.show_temp(anchor, endpoint)
+        self._overlay.show_temp(anchor, endpoint)
 
     # ---- geometry helpers ----
 
-    def _compute_anchor(self, eid: int, locked: bool) -> Optional[QPoint]:
+    def _compute_anchor(self, eid: int) -> Optional[QPoint]:
         if self._overlay is None:
             return None
 
         item: Optional[QTreeWidgetItem] = None
-        raw: Any = None
-
-        if locked:
-            finder = getattr(self._panel, "find_item_by_id", None)
-            if callable(finder):
-                try:
-                    raw = finder(int(eid))
-                except Exception:
-                    raw = None
-        else:
-            try:
-                raw = self._panel.current_hover_item()
-            except Exception:
-                raw = None
+        try:
+            raw = self._panel.current_hover_item()
+        except Exception:
+            raw = None
 
         if isinstance(raw, QTreeWidgetItem):
             item = raw
@@ -480,6 +444,7 @@ class LeaderLineController(QObject):
             except Exception:
                 pass
 
+        # fallback: right edge of the panel, vertically centered
         try:
             panel_rect = self._panel.rect()
             p = panel_rect.center()
@@ -495,14 +460,29 @@ class LeaderLineController(QObject):
     def _compute_endpoint(self, eid: int, anchor: Optional[QPoint]) -> Optional[QPoint]:
         if anchor is None:
             return None
+
+        # Keep original id to detect "star" rows in System/Solar (negative id there).
+        orig_eid = eid
+
+        # Normalize ids for the Galaxy tab: systems are encoded as negative ids in the list.
+        if self._is_galaxy_tab() and isinstance(eid, int) and eid < 0:
+            eid = -eid
+
         current_view = self._safe_current_widget()
         get_info = getattr(current_view, "get_entity_viewport_center_and_radius", None)
         if not callable(get_info):
             return None
+
         info = get_info(int(eid))
         if info is None:
             return None
+
         center, radius = cast(Tuple[QPoint, float], info)
+
+        # In System/Solar view, star rows have negative ids.
+        # Draw all the way to the star center (no radius offset).
+        if not self._is_galaxy_tab() and isinstance(orig_eid, int) and orig_eid < 0:
+            radius = 0.0
 
         dx = center.x() - anchor.x()
         dy = center.y() - anchor.y()
@@ -511,4 +491,4 @@ class LeaderLineController(QObject):
             return QPoint(center.x(), center.y())
         ux, uy = dx / dist, dy / dist
         return QPoint(int(round(center.x() - ux * radius)),
-                      int(round(center.y() - uy * radius)))
+                    int(round(center.y() - uy * radius)))

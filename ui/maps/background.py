@@ -3,17 +3,17 @@
 """
 BackgroundView
 - background image; can be drawn in viewport ("screen") or scene space
-- Animated starfield layers (optional)
+- Tiled starfield layers (optional, cached & DPR-aware for performance)
 """
 
 from __future__ import annotations
 
 import math
 import random
-from typing import List, Optional, Callable
+from typing import List, Optional
 
 from PySide6.QtCore import QTimer, Qt, QPoint
-from PySide6.QtGui import QBrush, QColor, QImage, QLinearGradient, QPainter, QPixmap, QPen
+from PySide6.QtGui import QBrush, QColor, QImage, QLinearGradient, QPainter, QPixmap
 from PySide6.QtWidgets import QGraphicsScene, QGraphicsView
 
 
@@ -21,7 +21,7 @@ class BackgroundView(QGraphicsView):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
 
-        # Global animations toggle (starfield, GIFs, orbits in subclasses)
+        # Global animations toggle (GIFs, orbits in subclasses). Starfield is now cached & doesn't need a timer.
         self._animations_enabled = True
 
         # Base scene setup
@@ -30,14 +30,21 @@ class BackgroundView(QGraphicsView):
         self.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
         self.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
 
+        # Try to accelerate painting using GPU via OpenGL viewport
+        try:
+            from PySide6.QtOpenGLWidgets import QOpenGLWidget
+            self.setViewport(QOpenGLWidget())
+        except Exception:
+            pass
+
         # Keep scrollbars hidden and disable interactions (we navigate via lists)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setDragMode(QGraphicsView.DragMode.NoDrag)
         self.setInteractive(False)
 
-        # Ensure full repaints so our animated background always shows
-        self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.FullViewportUpdate)
+        # Cheaper update policy is fine now that starfield is cached (no per-frame re-draw loop).
+        self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.BoundingRectViewportUpdate)
 
         # Unit scale: logical unit -> pixels (used by children when laying out)
         self._unit_px = 10.0
@@ -47,11 +54,20 @@ class BackgroundView(QGraphicsView):
         # "viewport" (fixed to screen) or "scene" (locked to scene coordinates)
         self._bg_mode: str = "scene"
 
-        # Starfield
+        # Starfield (tiled, cached)
         self._star_enabled = False
-        self._star_timer: Optional[QTimer] = None
-        self._star_time = 0.0
-        self._star_layers: List[dict] = []
+        self._star_timer: Optional[QTimer] = None  # kept for API compatibility; unused now
+        self._star_time = 0.0  # kept for API compatibility
+
+        # Cached starfield tiles & parameters
+        self._sf_layers: List[QPixmap] = []                 # one pixmap per parallax layer
+        self._sf_tile_px: int = 512                         # logical tile size (px)
+        self._sf_parallax: List[float] = [0.20, 0.45, 0.85] # slow -> fast layer factors
+        self._sf_density: List[int] = [140, 90, 55]         # stars-per-tile per layer
+        try:
+            self._sf_dpr: float = float(self.devicePixelRatioF())
+        except Exception:
+            self._sf_dpr = 1.0
 
         # Composition modes (handle PySide runtime + type-checkers)
         self._cm_plus = self._resolve_composition_mode("CompositionMode_Plus", "Plus")
@@ -84,125 +100,73 @@ class BackgroundView(QGraphicsView):
         self.resetTransform()
         self.scale(self._unit_px, self._unit_px)
 
-    # ---------- Starfield ----------
+    # ---------- Starfield (tiled) ----------
     def enable_starfield(self, enabled: bool) -> None:
-        """Toggle the animated starfield (screen-fixed overlay)."""
+        """Toggle starfield overlay (tiled & cached). No timer required."""
         self._star_enabled = bool(enabled)
         if self._star_enabled:
-            self._regen_starfield()
-            self._ensure_star_timer()
-        else:
+            self._regen_starfield_tiles()
+            # Stop/remove any legacy timer
             if self._star_timer is not None:
-                self._star_timer.stop()
-                self._star_timer.deleteLater()
+                try:
+                    self._star_timer.stop()
+                    self._star_timer.deleteLater()
+                except Exception:
+                    pass
             self._star_timer = None
-            self._star_layers.clear()
-            self.viewport().update()
+        else:
+            self._sf_layers.clear()
+        self.viewport().update()
 
+    # Legacy method kept (unused) for compatibility with older call sites.
     def _ensure_star_timer(self) -> None:
-        if self._star_timer is None and self._animations_enabled and self._star_enabled:
-            self._star_timer = QTimer(self)
-            self._star_timer.setTimerType(Qt.TimerType.PreciseTimer)
-            self._star_timer.setInterval(16)                 # <-- ~60 FPS
-            self._star_timer.timeout.connect(self._tick_starfield)
-            self._star_timer.start()
-            self._star_time = 0.0
+        pass
 
     def _tick_starfield(self) -> None:
-        self._star_time += 0.016  # keep ≈1.0 “time units” per second at 60 FPS
+        # Kept for API compatibility; no-op since starfield is cached.
+        self._star_time += 0.016
         self.viewport().update()
 
-    def _regen_starfield(self) -> None:
-        """Generate stars anchored to the viewport size (screen coords)."""
-        if not self._star_enabled:
-            return
-        w = max(1, self.viewport().width())
-        h = max(1, self.viewport().height())
-        area = w * h
+    def _regen_starfield_tiles(self) -> None:
+        """Create small tiled pixmaps once per DPR. Each layer is a 512x512 (logical)
+        pixmap pre-filled with random stars. We then tile & parallax these quickly."""
+        self._sf_layers.clear()
+        tile_w = max(1, int(self._sf_tile_px * self._sf_dpr))
+        tile_h = max(1, int(self._sf_tile_px * self._sf_dpr))
+        fmt = QImage.Format.Format_ARGB32_Premultiplied
 
-        def clamp(n: int, mn: int, mx: int) -> int:
-            return max(mn, min(mx, n))
+        base_seed = 1234567
 
-        # Determine star counts for each layer based on viewport area.
-        # We use integer division of area by a heuristic divisor to scale count with size,
-        # then clamp to a sensible min/max so small/huge viewports still look good.
-        # The names indicate visual role: "far" are many tiny faint stars, "near" are fewer larger/brighter ones,
-        # "spark" are rarer bright twinkles, and color-named layers add accent hues.
-        cnt_far     = clamp(area // 9000,   80, 300)   # distant, tiny pale-blue stars (highest density)
-        cnt_mid     = clamp(area // 13000,  60, 240)   # mid-distance slightly larger stars (medium density)
-        cnt_near    = clamp(area // 18000,  40, 180)   # near, larger white stars (lower density)
-        cnt_spark   = clamp(area // 24000,  30, 140)   # occasional bright sparkles (animated twinkles)
-        cnt_red     = clamp(area // 22000,  20, 120)   # colored accent layer (pink/salmon)
-        cnt_green   = clamp(area // 21000,  20, 120)   # colored accent layer (mint/green)
-        cnt_amber   = clamp(area // 17000,  12, 100)   # amber / orange-yellow accents
-        cnt_cyan    = clamp(area // 25000,   8,  80)   # cyan / turquoise accents
-        cnt_magenta = clamp(area // 26000,   6,  70)   # magenta / purple-pink accents
-        cnt_orange  = clamp(area // 19500,  10,  90)   # orange accents
-        cnt_teal    = clamp(area // 23000,   8,  80)   # teal / sea green accents
-        cnt_violet  = clamp(area // 24000,   7,  70)   # violet / lavender accents
-        cnt_ice     = clamp(area // 30000,   4,  50)   # very sparse pale-cyan "ice" accents
-        cnt_gold    = clamp(area // 20000,  10,  80)   # warm gold/yellow accents
-        cnt_indigo  = clamp(area // 22000,   8,  70)   # indigo / bluish accents
-        cnt_silver  = clamp(area // 28000,   5,  60)   # sparse silver / light gray-blue accents
-        cnt_blush   = clamp(area // 24000,   6,  70)   # soft blush/pink
-        cnt_lilac   = clamp(area // 26000,   5,  60)   # lilac
-        cnt_mint    = clamp(area // 25000,   6,  60)   # mint
-        cnt_peach   = clamp(area // 23000,   6,  65)   # peach
-        cnt_azure   = clamp(area // 27000,   5,  60)   # azure
-        cnt_lemon   = clamp(area // 22000,   6,  65)   # lemon
-        cnt_rose    = clamp(area // 21000,   7,  70)   # rose
-        cnt_slate   = clamp(area // 30000,   4,  55)   # slate/steel
-        cnt_emerald = clamp(area // 20000,   6,  65)   # emerald green
-        cnt_cobalt  = clamp(area // 28000,   4,  60)   # cobalt blue
+        for li, density in enumerate(self._sf_density):
+            img = QImage(tile_w, tile_h, fmt)
+            img.fill(0)  # transparent
+            p = QPainter(img)
+            try:
+                p.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+                rnd = random.Random(base_seed + li * 10007)
 
-        rng = random.Random(1337 + w * 31 + h * 17)
+                # Batch by brightness to minimize state switches
+                for brightness, ratio in ((255, 0.55), (190, 0.30), (120, 0.15)):
+                    count = int(density * ratio)
+                    color = QColor(255, 255, 255, brightness)
+                    p.setPen(color)
+                    for _ in range(count):
+                        x = rnd.randrange(tile_w)
+                        y = rnd.randrange(tile_h)
+                        p.drawPoint(x, y)
+            finally:
+                p.end()
 
-        def make_layer(count: int, size_px: int, color: QColor, spd: float, amp: float, base_alpha: int) -> dict:
-            pos = [(rng.uniform(0, w), rng.uniform(0, h)) for _ in range(count)]
-            phase = [rng.uniform(0, math.tau) for _ in range(count)]
-            return {"pos": pos, "phase": phase, "size": size_px, "color": color, "spd": spd, "amp": amp, "base": base_alpha}
-
-        far_layer     = make_layer(cnt_far,     1, QColor(180, 200, 255), spd=0.9, amp=75.0,  base_alpha=130)
-        mid_layer     = make_layer(cnt_mid,     2, QColor(220, 235, 255), spd=1.2, amp=90.0,  base_alpha=160)
-        near_layer    = make_layer(cnt_near,    3, QColor(255, 255, 255), spd=1.6, amp=105.0, base_alpha=180)
-        spark_layer   = make_layer(cnt_spark,   2, QColor(255, 250, 225), spd=3.2, amp=140.0, base_alpha=150)
-        red_layer     = make_layer(cnt_red,     2, QColor(255, 100, 110), spd=2.0, amp=120.0, base_alpha=140)
-        green_layer   = make_layer(cnt_green,   3, QColor(100, 255, 140), spd=2.2, amp=120.0, base_alpha=140)
-        amber_layer   = make_layer(cnt_amber,   2, QColor(255, 180,  90), spd=1.8, amp=100.0, base_alpha=140)
-        cyan_layer    = make_layer(cnt_cyan,    2, QColor( 80, 220, 230), spd=2.5, amp=110.0, base_alpha=130)
-        magenta_layer = make_layer(cnt_magenta, 2, QColor(230, 100, 230), spd=2.8, amp=120.0, base_alpha=130)
-        orange_layer  = make_layer(cnt_orange,  3, QColor(255, 140,  80), spd=1.9, amp=110.0, base_alpha=140)
-        teal_layer    = make_layer(cnt_teal,    2, QColor( 80, 200, 160), spd=2.1, amp=115.0, base_alpha=135)
-        violet_layer  = make_layer(cnt_violet,  3, QColor(180, 120, 255), spd=2.4, amp=125.0, base_alpha=140)
-        ice_layer     = make_layer(cnt_ice,     1, QColor(200, 230, 255), spd=3.6, amp=150.0, base_alpha=120)
-        gold_layer    = make_layer(cnt_gold,    3, QColor(255, 220, 120), spd=1.4, amp= 95.0, base_alpha=150)
-        indigo_layer  = make_layer(cnt_indigo,  2, QColor(120, 140, 255), spd=1.7, amp=105.0, base_alpha=130)
-        silver_layer  = make_layer(cnt_silver,  1, QColor(210, 210, 220), spd=3.0, amp= 90.0, base_alpha=110)
-        blush_layer   = make_layer(cnt_blush,   2, QColor(255, 180, 190), spd=2.6, amp=110.0, base_alpha=130)
-        lilac_layer   = make_layer(cnt_lilac,   2, QColor(210, 170, 240), spd=2.7, amp=115.0, base_alpha=125)
-        mint_layer    = make_layer(cnt_mint,    2, QColor(180, 255, 220), spd=2.4, amp=105.0, base_alpha=130)
-        peach_layer   = make_layer(cnt_peach,   2, QColor(255, 200, 170), spd=2.0, amp=100.0, base_alpha=130)
-        azure_layer   = make_layer(cnt_azure,   2, QColor(140, 200, 255), spd=1.9, amp=100.0, base_alpha=140)
-        lemon_layer   = make_layer(cnt_lemon,   2, QColor(250, 245, 150), spd=2.1, amp=105.0, base_alpha=130)
-        rose_layer    = make_layer(cnt_rose,    2, QColor(240, 120, 140), spd=2.3, amp=110.0, base_alpha=130)
-        slate_layer   = make_layer(cnt_slate,   1, QColor(150, 170, 190), spd=3.1, amp= 85.0, base_alpha=110)
-        emerald_layer = make_layer(cnt_emerald, 2, QColor(80, 200, 140),  spd=2.2, amp=110.0, base_alpha=135)
-        cobalt_layer  = make_layer(cnt_cobalt,  2, QColor(100, 140, 220), spd=2.5, amp=115.0, base_alpha=125)
-
-        self._star_layers = [
-            far_layer, mid_layer, near_layer, spark_layer,
-            red_layer, green_layer,
-            amber_layer, cyan_layer, magenta_layer, orange_layer, teal_layer,
-            violet_layer, ice_layer, gold_layer, indigo_layer, silver_layer,
-            # appended extras
-            blush_layer, lilac_layer, mint_layer, peach_layer, azure_layer,
-            lemon_layer, rose_layer, slate_layer, emerald_layer, cobalt_layer
-        ]
-        self.viewport().update()
+            pm = QPixmap.fromImage(img)
+            try:
+                pm.setDevicePixelRatio(self._sf_dpr)
+            except Exception:
+                pass
+            self._sf_layers.append(pm)
 
     # ---------- Painting ----------
     def drawBackground(self, painter: QPainter, rect) -> None:
-        # Background
+        # Background image
         if self._bg_pixmap:
             if self._bg_mode == "scene":
                 # Draw in scene coordinates, centered over sceneRect
@@ -236,38 +200,39 @@ class BackgroundView(QGraphicsView):
             painter.fillRect(vp, QBrush(grad))
             painter.restore()
 
-        # Starfield overlay — always draw in device coords so it shows reliably
-        if self._star_enabled and self._star_layers:
+        # Starfield overlay — draw tiled cached layers in device coords, with parallax
+        if self._star_enabled and self._sf_layers:
             painter.save()
             painter.resetTransform()
-            if self._cm_plus is not None:
-                painter.setCompositionMode(self._cm_plus)
-            painter.setPen(Qt.PenStyle.NoPen)
-            for layer in self._star_layers:
-                size_px = layer["size"]
-                color: QColor = layer["color"]
-                spd = layer["spd"]
-                amp = layer["amp"]
-                base = layer["base"]
-                for (x, y), ph in zip(layer["pos"], layer["phase"]):
-                    a = base + math.sin(self._star_time * spd + ph) * amp if getattr(self, '_animations_enabled', True) else base
-                    a = max(0.0, min(255.0, a))
-                    c = QColor(color)
-                    c.setAlpha(int(a))
-                    painter.setBrush(c)
-                    r = size_px * 0.5
-                    painter.drawEllipse(int(x - r), int(y - r), int(size_px), int(size_px))
-            if self._cm_src_over is not None:
-                painter.setCompositionMode(self._cm_src_over)
-            painter.restore()
 
+            # Stable parallax based on scene position of the viewport's top-left
+            tl_scene = self.mapToScene(self.viewport().rect().topLeft())
+            base_x = float(tl_scene.x())
+            base_y = float(tl_scene.y())
+
+            vis = self.viewport().rect()
+            tw = self._sf_tile_px
+            th = self._sf_tile_px
+
+            for pm, factor in zip(self._sf_layers, self._sf_parallax):
+                ox = int((base_x * factor)) % tw
+                oy = int((base_y * factor)) % th
+                painter.drawTiledPixmap(vis, pm, QPoint(-ox, -oy))
+
+            painter.restore()
 
     # ---------- Events ----------
     def resizeEvent(self, ev) -> None:
         self._apply_unit_scale()
-        if self._star_enabled:
-            self._regen_starfield()
-            self._ensure_star_timer()
+        # Regenerate tiles if DPR changed (HiDPI scale factor change)
+        try:
+            new_dpr = float(self.devicePixelRatioF())
+        except Exception:
+            new_dpr = 1.0
+        if abs(new_dpr - self._sf_dpr) > 1e-3:
+            self._sf_dpr = new_dpr
+            if self._star_enabled:
+                self._regen_starfield_tiles()
         super().resizeEvent(ev)
 
     def mousePressEvent(self, ev) -> None: ev.ignore()
@@ -278,13 +243,7 @@ class BackgroundView(QGraphicsView):
     # ---------- Toggle animations ----------
     def set_animations_enabled(self, enabled: bool) -> None:
         self._animations_enabled = bool(enabled)
-        # Starfield timer
-        if self._star_enabled:
-            if self._animations_enabled:
-                self._ensure_star_timer()
-            else:
-                if self._star_timer is not None and self._star_timer.isActive():
-                    self._star_timer.stop()
+        # (No starfield timer anymore)
         # Pause/resume GIF items
         try:
             from .icons import AnimatedGifItem

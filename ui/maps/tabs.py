@@ -21,6 +21,7 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout, QTabWidget
 from data import db
 from ui.maps.galaxy import GalaxyMapWidget
 from ui.maps.solar import SolarMapWidget
+from game_controller.sim_loop import universe_sim
 
 
 class MapTabs(QWidget):
@@ -45,6 +46,27 @@ class MapTabs(QWidget):
 
         # Ensure solar is loaded for the current player's system on construction
         self._ensure_solar_loaded_from_player()
+
+        # Keep simulator in sync with which map is visible
+        try:
+            self.tabs.currentChanged.connect(self._on_tab_changed)
+            # Initialize visible-system state for the default tab
+            self._on_tab_changed(self.tabs.currentIndex())
+        except Exception:
+            pass
+
+    def _on_tab_changed(self, idx: int) -> None:
+        """Set simulator's visible system: None on Galaxy so all systems tick;
+        current solar system on System tab."""
+        try:
+            if idx == self.tabs.indexOf(self.galaxy):
+                universe_sim.set_visible_system(None)
+            elif idx == self.tabs.indexOf(self.solar):
+                sid = getattr(self.solar, "_system_id", None)
+                if sid is not None:
+                    universe_sim.set_visible_system(int(sid))
+        except Exception:
+            pass
 
     # ---- Simple helpers the main window can call ----
     def setCurrentIndex(self, idx: int) -> None:
