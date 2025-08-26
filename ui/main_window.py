@@ -1,4 +1,3 @@
-# /ui/main_window.py
 from __future__ import annotations
 
 from typing import Optional, List, Dict, Any
@@ -315,14 +314,28 @@ class MainWindow(QMainWindow):
                 sorts=["Default View", "Name A–Z", "Name Z–A", "Distance ↑", "Distance ↓", "Fuel ↑", "Fuel ↓"],
                 title="System",
             )
-            # Default their sort to "Default View"
-            for panel in (panel_galaxy, panel_system):
-                try:
-                    i = panel.sort.findText("Default View")
-                    if i >= 0:
-                        panel.sort.setCurrentIndex(i)
-                except Exception:
-                    pass
+            # Default sorts: Galaxy uses Name A–Z; System uses Default View (grouped)
+            try:
+                i_g = panel_galaxy.sort.findText("Name A–Z")
+                if i_g >= 0:
+                    panel_galaxy.sort.setCurrentIndex(i_g)
+            except Exception:
+                pass
+            try:
+                i_s = panel_system.sort.findText("Default View")
+                if i_s >= 0:
+                    panel_system.sort.setCurrentIndex(i_s)
+            except Exception:
+                pass
+            # Set initial (visual) sort indicators to match the defaults
+            try:
+                panel_galaxy.tree.header().setSortIndicator(0, Qt.SortOrder.AscendingOrder)
+            except Exception:
+                pass
+            try:
+                panel_system.tree.header().setSortIndicator(0, Qt.SortOrder.AscendingOrder)
+            except Exception:
+                pass
 
             # Assign to Optional QWidget-typed attributes (satisfies protocol)
             self.location_panel_galaxy = panel_galaxy

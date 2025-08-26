@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
     QMenu,
+    QHeaderView,
 )
 
 # -------- Helpers (duplicated for independence) --------
@@ -99,7 +100,7 @@ def _extract_au(r: Dict) -> float:
     return float("inf")
 
 def _smart_distance_key(r: Dict, descending: bool) -> Tuple[float, float, str]:
-    name = (r.get("name", "") or "").lower()
+    name = (r.get("name") or r.get("location_name") or "").lower()
     total_au = 0.0
     has_ly_numeric = False
     has_au_numeric = False
@@ -170,7 +171,7 @@ def _smart_distance_key(r: Dict, descending: bool) -> Tuple[float, float, str]:
         return key
 
 def _fuel_sort_key(r: Dict, descending: bool) -> Tuple[float, float, str]:
-    name = (r.get("name", "") or "").lower()
+    name = (r.get("name") or r.get("location_name") or "").lower()
     v = r.get("fuel_cost", None)
     try:
         if v is None or v == "—":
@@ -214,12 +215,35 @@ class SystemLocationList(QWidget):
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree.setRootIsDecorated(False)
 
+        # Header + sizing
+        header = self.tree.header()
+        try:
+            header.setStretchLastSection(False)
+            header.setDefaultSectionSize(160)
+            header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)       # Name stretches
+            header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)  # Distance autosize
+            header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)  # Fuel autosize
+        except Exception:
+            pass
+
+        # Enable click-to-sort on header; hide sort dropdown per UX request
+        try:
+            header.setSortIndicatorShown(True)
+            header.setSectionsClickable(True)
+            header.sectionClicked.connect(self._on_header_clicked)
+        except Exception:
+            pass
+        try:
+            self.sort.setVisible(False)      # remove sort dropdown
+        except Exception:
+            pass
+
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(6, 6, 6, 6)
         main_layout.setSpacing(6)
         main_layout.addWidget(QLabel(title))
         main_layout.addWidget(self.category)
-        main_layout.addWidget(self.sort)
+        # Removed: sort dropdown from UI
         main_layout.addWidget(self.search)
         main_layout.addWidget(self.tree, 1)
 
@@ -251,6 +275,7 @@ class SystemLocationList(QWidget):
 
         # Identify current player position
         snap = player_status.get_status_snapshot() or {}
+
         def _to_int_local(x):
             try:
                 return int(x)
@@ -258,26 +283,18 @@ class SystemLocationList(QWidget):
                 return None
 
         cur_loc_id = _to_int_local(snap.get("location_id"))
-        cur_sys_id = _to_int_local(snap.get("system_id"))
 
-        # Suppress "Travel to" if the user right-clicked their current spot.
-        # Positive IDs are locations; match current location exactly.
-        # Negative IDs represent (star/system) rows in some UIs; consider "already here"
-        # only when the player is at that star (no current location set).
-        is_current = False
-        if entity_id >= 0:
-            is_current = (cur_loc_id is not None and entity_id == cur_loc_id)
-        else:
-            is_current = (cur_sys_id is not None and -entity_id == cur_sys_id and cur_loc_id is None)
-
-        if is_current:
-            return
+        is_current_loc = (entity_id >= 0 and cur_loc_id is not None and entity_id == cur_loc_id)
 
         menu = QMenu(self)
-        travel_action = QAction("Travel to", self)
-        travel_action.triggered.connect(lambda: self.travelHere.emit(entity_id))
-        menu.addAction(travel_action)
-        menu.exec(self.tree.viewport().mapToGlobal(pos))
+        # Only "Travel Here" for actual locations
+        if entity_id >= 0 and not is_current_loc:
+            act_travel_loc = QAction("Travel Here", self)
+            act_travel_loc.triggered.connect(lambda: self.travelHere.emit(entity_id))
+            menu.addAction(act_travel_loc)
+
+        if menu.actions():
+            menu.exec(self.tree.viewport().mapToGlobal(pos))
 
     # ----- Event plumbing -----
 
@@ -310,21 +327,74 @@ class SystemLocationList(QWidget):
         if isinstance(val, int):
             self.doubleClicked.emit(val)
 
+    def _on_header_clicked(self, logical_index: int) -> None:
+        """
+        Header click toggles sorting:
+          Name: Default View → A–Z → Z–A → Default View ...
+          Distance: ↑ ↔ ↓
+          Fuel: ↑ ↔ ↓
+        We drive the hidden "sort" combobox so existing logic keeps working.
+        """
+        try:
+            current = (self.sort.currentText() or "").strip()
+        except Exception:
+            current = ""
+        if logical_index == 0:
+            # Cycle among Default View, Name A–Z, Name Z–A
+            order = ["Default View", "Name A–Z", "Name Z–A"]
+            try:
+                idx = order.index(current)
+            except ValueError:
+                idx = 0
+            next_key = order[(idx + 1) % len(order)]
+        elif logical_index == 1:
+            next_key = "Distance ↓" if "↑" in current else "Distance ↑"
+        elif logical_index == 2:
+            next_key = "Fuel ↓" if "↑" in current else "Fuel ↑"
+        else:
+            return
+        i = self.sort.findText(next_key)
+        if i >= 0:
+            self.sort.setCurrentIndex(i)
+        else:
+            try:
+                self.sort.setCurrentText(next_key)
+            except Exception:
+                pass
+        # Update sort indicator (Name Default View shows Ascending)
+        if logical_index == 0 and next_key == "Default View":
+            order_qt = Qt.SortOrder.AscendingOrder
+        else:
+            order_qt = Qt.SortOrder.DescendingOrder if ("↓" in next_key or "Z–A" in next_key or "Z-A" in next_key) else Qt.SortOrder.AscendingOrder
+        try:
+            self.tree.header().setSortIndicator(logical_index, order_qt)
+        except Exception:
+            pass
+        self.refreshRequested.emit()
+
     # ----- Utilities -----
 
-    def _find_item_recursive(self, parent: QTreeWidgetItem, entity_id: int) -> Optional[QTreeWidgetItem]:
-        for i in range(parent.childCount()):
-            ch = parent.child(i)
-            val = ch.data(0, Qt.ItemDataRole.UserRole)
-            if isinstance(val, int) and val == entity_id:
-                return ch
-            hit = self._find_item_recursive(ch, entity_id)
-            if hit:
-                return hit
-        return None
+    def _kind_of(self, r: Dict) -> str:
+        """Determine kind strictly from explicit fields; never infer from name."""
+        k = str(
+            r.get("location_type")
+            or r.get("kind")
+            or r.get("type")
+            or ""
+        ).lower().strip()
+        if k in ("warp gate", "warp_gate"):
+            k = "warpgate"
+        return k
+
+    def _display_name(self, r: Dict) -> str:
+        """Append ' (star)' for explicit star rows; prefer location_name if present."""
+        name = r.get("name") or r.get("location_name") or "Unknown"
+        if self._kind_of(r) == "star" and "(star)" not in name.lower():
+            name = f"{name} (star)"
+        return name
 
     def find_item_by_id(self, entity_id: int) -> Optional[QTreeWidgetItem]:
-        """Finds an item (top-level or child) by its stored entity ID."""
+        """Finds an item by its stored entity ID."""
         for i in range(self.tree.topLevelItemCount()):
             item = self.tree.topLevelItem(i)
             if item is None:
@@ -332,27 +402,18 @@ class SystemLocationList(QWidget):
             val = item.data(0, Qt.ItemDataRole.UserRole)
             if isinstance(val, int) and val == entity_id:
                 return item
-            hit = self._find_item_recursive(item, entity_id)
-            if hit:
-                return hit
         return None
-
-    # ----- Population & styling -----
 
     def _apply_row_styling(self, it: QTreeWidgetItem, r: Dict, *, red: QBrush, green: QBrush, yellow: QBrush) -> None:
         white = QBrush(QColor("white"))
 
         # ---- Name ----
-        # Yellow only for the player's current system (i.e., the star row in the viewed system),
-        # otherwise white (even for current location rows).
-        if bool(r.get("is_current_system", False)):
+        if bool(r.get("is_current", False)):
             it.setForeground(0, yellow)
         else:
             it.setForeground(0, white)
 
-        # ---- Distance (jump range) ----
-        # Green if we have enough jump range, red otherwise.
-        # For intra-system moves (no jump needed), presenter sets can_reach_jump=True.
+        # ---- Distance ----
         can_jump = bool(r.get("can_reach_jump", False))
         it.setForeground(1, green if can_jump else red)
 
@@ -364,27 +425,7 @@ class SystemLocationList(QWidget):
         else:
             it.setForeground(2, white)
 
-    def _is_default_group_view(self) -> bool:
-        """
-        Grouped (parent/child) view is **only** when:
-        - Category is All (or empty)
-        - Search is empty
-        - Sort is exactly "Default View"
-        """
-        cat_ok = (self.category.currentText() in ("", "All"))
-        no_search = (self.search.text().strip() == "")
-        sort_txt = self.sort.currentText()
-        sort_ok = (sort_txt == "Default View")
-        return bool(cat_ok and no_search and sort_ok)
-
-    def _kind_of(self, r: Dict) -> str:
-        return (r.get("kind") or r.get("location_type") or "").strip().lower()
-
-    def _parent_id_of(self, r: Dict) -> Optional[int]:
-        p = r.get("parent_location_id")
-        if p in (None, ""):
-            p = r.get("parent_id")
-        return _to_int(p)
+    # ----- Population (grouped vs flat handled by sort mode) -----
 
     def populate(
         self,
@@ -395,83 +436,96 @@ class SystemLocationList(QWidget):
         self.tree.clear()
         self.tree.setFont(list_font)
 
+        # Remove any "system" entries entirely from the System list
+        rows = [r for r in rows if self._kind_of(r) != "system"]
+
         red_brush    = QBrush(QColor("red"))
         green_brush  = QBrush(QColor("green"))
         yellow_brush = QBrush(QColor("yellow"))
 
-        grouped = self._is_default_group_view()
+        # Grouped default view?
+        sort_text = self.sort.currentText()
+        grouped = (sort_text in ("Default View",))
+
         self.tree.setRootIsDecorated(grouped)
 
         if not grouped:
-            # ---- Flat list ----
+            # Flat list — skip 'system' rows; label star with '(star)'
             for r in rows:
-                rid = _to_int(r.get("id"))
+                rid = _to_int(r.get("id") or r.get("location_id"))
                 if rid is None:
                     continue
                 dist_text = r.get("distance", "—")
                 fuel_val = r.get("fuel_cost", "—")
                 fuel_text = str(fuel_val) if fuel_val != "—" else "—"
+                disp = self._display_name(r)
 
-                it = QTreeWidgetItem(self.tree, [r.get("name", "Unknown"), dist_text, fuel_text])
+                it = QTreeWidgetItem(self.tree, [disp, dist_text, fuel_text])
                 it.setData(0, Qt.ItemDataRole.UserRole, rid)
-
                 if icon_provider:
                     icon = icon_provider(r)
                     if icon:
                         it.setIcon(0, icon)
-
                 self._apply_row_styling(it, r, red=red_brush, green=green_brush, yellow=yellow_brush)
             return
 
-        # ---- Grouped view: planets as parents; stations + moons as children ----
-        by_id: Dict[int, Dict] = {}
+        # Grouped (Default View): STAR first, planets with children, orphans, then WARP GATE(s) last
+        planets: List[Dict] = []
+        star: Optional[Dict] = None
+        warpgates: List[Dict] = []
         children_of: Dict[int, List[Dict]] = {}
-
-        for r in rows:
-            rid = _to_int(r.get("id"))
-            if rid is None:
-                continue
-            by_id[rid] = r
-            pid = self._parent_id_of(r)
-            if pid is not None:
-                children_of.setdefault(pid, []).append(r)
-
         used_child_ids: set[int] = set()
 
-        # Iterate rows to preserve the current top-level order, create planet/star/gate top-levels
+        # Pass 1: classify and collect
         for r in rows:
-            rid = _to_int(r.get("id"))
+            rid = _to_int(r.get("id") or r.get("location_id"))
             if rid is None:
                 continue
             k = self._kind_of(r)
-            is_planet = (k == "planet")
+            if k == "planet":
+                planets.append(r)
+            elif k == "star":
+                if star is None:
+                    star = r
+            elif k == "warpgate":
+                warpgates.append(r)
+            else:
+                parent_id = r.get("parent_location_id")
+                if parent_id is not None:
+                    try:
+                        parent_id = int(parent_id)
+                        children_of.setdefault(parent_id, []).append(r)
+                    except Exception:
+                        pass
 
-            # Non-planet top-levels (star / gate) remain top-level
-            if not is_planet and k in ("star", "warp_gate", "warpgate"):
-                dist_text = r.get("distance", "—")
-                fuel_val = r.get("fuel_cost", "—")
+        # 1) Star row (always first when present) — display with "(star)"
+        if star is not None:
+            rid = _to_int(star.get("id") or star.get("location_id"))
+            if rid is not None:
+                dist_text = star.get("distance", "—")
+                fuel_val = star.get("fuel_cost", "—")
                 fuel_text = str(fuel_val) if fuel_val != "—" else "—"
-
-                it = QTreeWidgetItem(self.tree, [r.get("name", "Unknown"), dist_text, fuel_text])
-                it.setData(0, Qt.ItemDataRole.UserRole, rid)
+                disp = self._display_name(star)
+                star_it = QTreeWidgetItem(self.tree, [disp, dist_text, fuel_text])
+                star_it.setData(0, Qt.ItemDataRole.UserRole, rid)
                 if icon_provider:
-                    icon = icon_provider(r)
+                    icon = icon_provider(star)
                     if icon:
-                        it.setIcon(0, icon)
-                self._apply_row_styling(it, r, red=red_brush, green=green_brush, yellow=yellow_brush)
-                it.setExpanded(True)
+                        star_it.setIcon(0, icon)
+                self._apply_row_styling(star_it, star, red=red_brush, green=green_brush, yellow=yellow_brush)
+                star_it.setExpanded(True)
+
+        # 2) Planet heads (alphabetical)
+        for r in sorted(planets, key=lambda rr: (rr.get("name") or rr.get("location_name") or "").lower()):
+            rid = _to_int(r.get("id") or r.get("location_id"))
+            if rid is None:
                 continue
 
-            if not is_planet:
-                # Non-planet items that are not heads will be added under their parent later
-                continue
-
-            # Create the planet top-level
             dist_text = r.get("distance", "—")
             fuel_val = r.get("fuel_cost", "—")
             fuel_text = str(fuel_val) if fuel_val != "—" else "—"
 
-            planet_it = QTreeWidgetItem(self.tree, [r.get("name", "Unknown"), dist_text, fuel_text])
+            planet_it = QTreeWidgetItem(self.tree, [(r.get("name") or r.get("location_name") or "Unknown"), dist_text, fuel_text])
             planet_it.setData(0, Qt.ItemDataRole.UserRole, rid)
             if icon_provider:
                 icon = icon_provider(r)
@@ -479,17 +533,17 @@ class SystemLocationList(QWidget):
                     planet_it.setIcon(0, icon)
             self._apply_row_styling(planet_it, r, red=red_brush, green=green_brush, yellow=yellow_brush)
 
-            # Order children: stations first, then moons, then others (if any)
+            # Order children: stations first, then moons, then others
             def _child_sort_key(rr: Dict) -> Tuple[int, str]:
                 kk = self._kind_of(rr)
                 rank = 0 if kk == "station" else (1 if kk == "moon" else 2)
-                return (rank, (rr.get("name", "") or "").lower())
+                return (rank, (rr.get("name") or rr.get("location_name") or "").lower())
 
-            # Attach children (stations + moons under this planet)
+            # Attach children
             kids = sorted(children_of.get(rid, []), key=_child_sort_key)
 
             for ch in kids:
-                cid = _to_int(ch.get("id"))
+                cid = _to_int(ch.get("id") or ch.get("location_id"))
                 if cid is None:
                     continue
                 used_child_ids.add(cid)
@@ -498,7 +552,7 @@ class SystemLocationList(QWidget):
                 c_fuel_val = ch.get("fuel_cost", "—")
                 c_fuel = str(c_fuel_val) if c_fuel_val != "—" else "—"
 
-                child_it = QTreeWidgetItem(planet_it, [ch.get("name", "Unknown"), c_dist, c_fuel])
+                child_it = QTreeWidgetItem(planet_it, [(ch.get("name") or ch.get("location_name") or "Unknown"), c_dist, c_fuel])
                 child_it.setData(0, Qt.ItemDataRole.UserRole, cid)
                 if icon_provider:
                     c_icon = icon_provider(ch)
@@ -508,23 +562,23 @@ class SystemLocationList(QWidget):
 
             planet_it.setExpanded(True)
 
-        # Any remaining items that didn't get placed (e.g., stations/moons orphaned)
+        # 3) Any remaining items that didn't get placed (e.g. stations/moons orphaned) — never include 'system'
         for r in rows:
-            rid = _to_int(r.get("id"))
+            rid = _to_int(r.get("id") or r.get("location_id"))
             if rid is None:
                 continue
             if rid in used_child_ids:
                 continue
             k = self._kind_of(r)
-            if k in ("planet", "star", "warp_gate", "warpgate"):
-                # already added above as top-level/group head
+            if k in ("planet", "star", "warpgate"):
+                # already added (or will be added for warpgate below)
                 continue
 
             dist_text = r.get("distance", "—")
             fuel_val = r.get("fuel_cost", "—")
             fuel_text = str(fuel_val) if fuel_val != "—" else "—"
 
-            it = QTreeWidgetItem(self.tree, [r.get("name", "Unknown"), dist_text, fuel_text])
+            it = QTreeWidgetItem(self.tree, [(r.get("name") or r.get("location_name") or "Unknown"), dist_text, fuel_text])
             it.setData(0, Qt.ItemDataRole.UserRole, rid)
             if icon_provider:
                 icon = icon_provider(r)
@@ -532,34 +586,51 @@ class SystemLocationList(QWidget):
                     it.setIcon(0, icon)
             self._apply_row_styling(it, r, red=red_brush, green=green_brush, yellow=yellow_brush)
 
+        # 4) Warpgate(s) always last (alphabetical)
+        if warpgates:
+            for wg in sorted(warpgates, key=lambda rr: (rr.get("name") or rr.get("location_name") or "").lower()):
+                wid = _to_int(wg.get("id") or wg.get("location_id"))
+                if wid is None:
+                    continue
+                w_dist = wg.get("distance", "—")
+                w_fuel_val = wg.get("fuel_cost", "—")
+                w_fuel = str(w_fuel_val) if w_fuel_val != "—" else "—"
+                wg_it = QTreeWidgetItem(self.tree, [(wg.get("name") or wg.get("location_name") or "Unknown"), w_dist, w_fuel])
+                wg_it.setData(0, Qt.ItemDataRole.UserRole, wid)
+                if icon_provider:
+                    w_icon = icon_provider(wg)
+                    if w_icon:
+                        wg_it.setIcon(0, w_icon)
+                self._apply_row_styling(wg_it, wg, red=red_brush, green=green_brush, yellow=yellow_brush)
+
     # ----- Filtering & sorting -----
 
     def filtered_sorted(self, rows_all: List[Dict], player_pos: Optional[QPointF]) -> List[Dict]:
+        # Remove any "system" entries entirely
+        rows_all = [r for r in rows_all if self._kind_of(r) != "system"]
+
         # ---- Category filter ----
         cat = self.category.currentText()
         cat_norm = _norm(cat)
-        rows = []
+        rows: List[Dict] = []
         for r in rows_all:
             if not cat or cat_norm == _norm("All") or cat == "All":
                 rows.append(r)
                 continue
-            kind_norm = _norm(r.get("kind", ""))
+            kind_norm = _norm(self._kind_of(r))
             if kind_norm.startswith(cat_norm):
                 rows.append(r)
                 continue
             if cat_norm == "warpgate" and kind_norm in ("warpgate", "gate"):
                 rows.append(r)
                 continue
-            if cat_norm == "system" and _norm(r.get("kind", "")) == "system":
-                rows.append(r)
-                continue
 
-        # ---- Search filter (name + system_name) ----
+        # ---- Search filter (name + system_name + location_name) ----
         q = self.search.text().strip().lower()
         if q:
             rows = [
                 r for r in rows
-                if q in (r.get("name", "") or "").lower()
+                if q in (r.get("name") or r.get("location_name") or "").lower()
                 or q in (r.get("system_name", "") or "").lower()
             ]
 
@@ -572,12 +643,12 @@ class SystemLocationList(QWidget):
 
         if sort_key in ("Default View",):
             # Grouping happens in populate(); just return a stable order for headings
-            rows.sort(key=lambda r: (r.get("name", "") or "").lower())
+            rows.sort(key=lambda r: ((r.get("name") or r.get("location_name") or "")).lower())
             return rows
 
         if "Name" in sort_key:
             reverse = sort_key.endswith("Z–A") or sort_key.endswith("Z-A")
-            rows.sort(key=lambda r: (r.get("name", "") or "").lower(), reverse=reverse)
+            rows.sort(key=lambda r: ((r.get("name") or r.get("location_name") or "")).lower(), reverse=reverse)
 
         elif sort_key.startswith("Distance"):
             desc = _is_desc(sort_key)
@@ -594,9 +665,9 @@ class SystemLocationList(QWidget):
     def anchor_point_for_item(self, overlay: QWidget, item: QTreeWidgetItem) -> QPoint:
         r = self.tree.visualItemRect(item)
         pt_view = r.center()
-        pt_view.setX(r.right())
-        p_global = self.tree.viewport().mapToGlobal(pt_view)
-        p_overlay = overlay.mapFromGlobal(p_global)
+        pt_view.setX(r.right() - 4)
+        p_view = self.tree.viewport().mapToGlobal(pt_view)
+        p_overlay = overlay.mapFromGlobal(p_view)
         return QPoint(
             min(max(0, p_overlay.x()), overlay.width() - 1),
             min(max(0, p_overlay.y()), overlay.height() - 1),
@@ -604,8 +675,7 @@ class SystemLocationList(QWidget):
 
     def current_hover_item(self) -> Optional[QTreeWidgetItem]:
         vp = self.tree.viewport()
-        global_pos = QCursor.pos()
-        local_pos = vp.mapFromGlobal(global_pos)
+        local_pos = vp.mapFromGlobal(QCursor.pos())
         if not vp.rect().contains(local_pos):
             return None
         return self.tree.itemAt(local_pos)

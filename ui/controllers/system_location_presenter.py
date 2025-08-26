@@ -1,4 +1,3 @@
-# /ui/controllers/system_location_presenter.py
 from __future__ import annotations
 
 from typing import Dict, List, Optional, Iterable, Any, Protocol, runtime_checkable, cast
@@ -17,7 +16,6 @@ except Exception:  # pragma: no cover
 
 from ..maps.tabs import MapTabs
 from ..widgets.system_location_list import SystemLocationList
-
 
 # ------------------------ typing helpers ------------------------
 
@@ -60,7 +58,6 @@ class SystemLocationPresenter:
     """
     Populates the SystemLocationList (star + locations).
 
-    Star row id = -system_id; locations use positive location_id.
     Distances/fuel come from travel.get_travel_display_data() when available.
     """
 
@@ -233,7 +230,18 @@ class SystemLocationPresenter:
         tail_au = _safe_float(td.get("intra_target_au", 0.0), 0.0)
         return f"{ly:.2f} ly + {tail_au:.2f} AU"
 
-    # ---------- row builders ----------
+    # ---------- helpers ----------
+
+    def _norm_kind(self, v):
+        try:
+            k = str(v or "").lower().strip()
+        except Exception:
+            return ""
+        if k in ("warp gate", "warp_gate"):
+            return "warp_gate"
+        return k
+
+# ---------- row builders ----------
 
     def _build_system_rows(self, viewed_sys_id: int, cur_loc_id: int, cur_sys_id: int) -> List[Dict[str, Any]]:
         rows: List[Dict[str, Any]] = []
@@ -250,29 +258,72 @@ class SystemLocationPresenter:
                 entities = []
 
         if not entities:
-            # synthesize star + DB locations as a fallback
-            try:
-                sysrow = db.get_system(viewed_sys_id) or {}
-            except Exception:
-                sysrow = {}
-
-            entities.append({
-                "id": -viewed_sys_id,  # negative id => star/system
-                "system_id": viewed_sys_id,
-                "name": f"{sysrow.get('name', sysrow.get('system_name', 'System'))} (Star)",
-                "kind": "star",
-                "icon_path": None,
-                "x": 0.0,
-                "y": 0.0,
-            })
+            # Load real locations from DB (including star). Map fields to expected keys.
             try:
                 for loc in db.get_locations(viewed_sys_id):
                     d = dict(loc)
-                    d.setdefault("x", 0.0)
-                    d.setdefault("y", 0.0)
-                    entities.append(d)
+                    mapped = {
+                        "id": d.get("location_id"),
+                        "system_id": d.get("system_id", viewed_sys_id),
+                        "name": d.get("location_name"),
+                        "kind": (d.get("location_type") or "").lower(),
+                        "icon_path": d.get("icon_path"),
+                        "x": d.get("local_x_au", d.get("location_x", 0.0)),
+                        "y": d.get("local_y_au", d.get("location_y", 0.0)),
+                        "parent_location_id": d.get("parent_location_id"),
+                    }
+                    entities.append(mapped)
             except Exception:
                 pass
+
+        # Normalize: keep only real locations; strip any system/sentinel rows and ensure the STAR is present
+        try:
+            db_locs = db.get_locations(viewed_sys_id) or []
+        except Exception:
+            db_locs = []
+        # Find the authoritative star location (if any)
+        star_loc = None
+        for _dl in db_locs:
+            if self._norm_kind(_dl.get("kind") or _dl.get("location_type")) == "star":
+                star_loc = _dl
+                break
+
+        normalized_entities: List[Dict[str, Any]] = []
+        has_star = False
+        for e in entities:
+            eid = int(e.get("id", e.get("location_id", 0)) or 0)
+            kind = self._norm_kind(e.get("kind") or e.get("location_type"))
+            # Drop system rows or synthetic negatives
+            if eid < 0 or kind == "system":
+                continue
+            # Track if we already have the real star
+            if kind == "star":
+                has_star = True
+            mapped = {
+                "id": eid,
+                "system_id": int(e.get("system_id", viewed_sys_id) or viewed_sys_id),
+                "name": e.get("name") or e.get("location_name"),
+                "kind": kind or "location",
+                "icon_path": e.get("icon_path"),
+                "x": e.get("x", e.get("local_x_au", e.get("location_x", 0.0))),
+                "y": e.get("y", e.get("local_y_au", e.get("location_y", 0.0))),
+                "parent_location_id": e.get("parent_location_id"),
+            }
+            normalized_entities.append(mapped)
+
+        if not has_star and star_loc is not None:
+            normalized_entities.append({
+                "id": _safe_int(star_loc.get("id", star_loc.get("location_id")), 0),
+                "system_id": _safe_int(star_loc.get("system_id", viewed_sys_id), viewed_sys_id),
+                "name": star_loc.get("name", star_loc.get("location_name")),
+                "kind": "star",
+                "icon_path": star_loc.get("icon_path"),
+                "x": star_loc.get("local_x_au", star_loc.get("location_x", 0.0)),
+                "y": star_loc.get("local_y_au", star_loc.get("location_y", 0.0)),
+                "parent_location_id": star_loc.get("parent_location_id"),
+            })
+
+        entities = normalized_entities
 
         # Current player location coord (fallback 0,0)
         cur_x = 0.0
@@ -305,8 +356,8 @@ class SystemLocationPresenter:
             eyf = _safe_float(ey, 0.0)
 
             # authoritative parent id for moons/stations
-            parent_id_val = None
-            if kind in ("moon", "station") and eid >= 0:
+            parent_id_val = e.get("parent_location_id")
+            if parent_id_val is None and kind in ("moon", "station") and eid >= 0:
                 if not locrow_cache:
                     locrow_cache = db.get_location(eid) or {}
                 parent_id_val = locrow_cache.get("parent_location_id")
@@ -314,28 +365,20 @@ class SystemLocationPresenter:
             td: Dict[str, Any] = {}
             if travel and hasattr(travel, "get_travel_display_data"):
                 try:
-                    # negative id => star (system)
-                    if eid < 0:
-                        td = travel.get_travel_display_data("star", -eid) or {}
-                    else:
-                        td = travel.get_travel_display_data("loc", eid) or {}
+                    td = travel.get_travel_display_data("loc", eid) or {}
                 except Exception:
                     td = {}
 
             # fuel fallback
             fuel_cost_val = td.get("fuel_cost", None)
             if not isinstance(fuel_cost_val, (int, float)) or fuel_cost_val <= 0:
-                # simple AU distance from current position (fallback)
                 dx = exf - cur_x
                 dy = eyf - cur_y
                 dist_au = math.hypot(dx, dy)
                 fuel_cost_val = _fallback_fuel_from_au(dist_au)
 
-            # ---- reachability flags & name highlighting ----
-            # same_system is reliable from travel; if missing, assume same system when viewing the current system
             same_system = bool(td.get("same_system", sys_id == cur_sys_id))
 
-            # If inside the same system, no jump is required: treat as reachable by jump.
             if "can_reach_jump" in td:
                 can_reach_jump = bool(td.get("can_reach_jump"))
             else:
@@ -344,7 +387,6 @@ class SystemLocationPresenter:
             can_reach_fuel = bool(td.get("can_reach_fuel", True))
             can_reach = bool(td.get("can_reach", True))
 
-            # Is this the player's current system? (only makes sense for the star row)
             is_current_system = (eid < 0 and (-eid == cur_sys_id))
 
             rows.append({
@@ -359,18 +401,11 @@ class SystemLocationPresenter:
                 "y": eyf,
                 "system_id": sys_id,
                 "icon_path": e.get("icon_path"),
-
-                # Name coloring rule wants only the current *system* highlighted:
                 "is_current_system": bool(is_current_system),
-
-                # Keep current location metadata (not used for name coloring anymore):
                 "is_current": (eid == cur_loc_id) if eid >= 0 else False,
-
-                # Flags used by the widget for column coloring:
                 "can_reach": bool(can_reach),
                 "can_reach_jump": bool(can_reach_jump),
                 "can_reach_fuel": bool(can_reach_fuel),
-
                 "parent_location_id": parent_id_val,
             })
 

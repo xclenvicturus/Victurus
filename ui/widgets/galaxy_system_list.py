@@ -224,12 +224,38 @@ class GalaxySystemList(QWidget):
             pass
             pass
 
+        # Header + sizing
+        header = self.tree.header()
+        try:
+            header.setStretchLastSection(False)
+            header.setDefaultSectionSize(160)
+            header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)       # Name stretches
+            header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)  # Distance autosize
+            header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)  # Fuel autosize
+        except Exception:
+            pass
+
+        # Enable click-to-sort on header; hide dropdowns per UX request
+        try:
+            header.setSortIndicatorShown(True)
+            header.setSectionsClickable(True)
+            header.sectionClicked.connect(self._on_header_clicked)
+        except Exception:
+            pass
+        try:
+            self.category.setVisible(False)  # remove "system select"
+        except Exception:
+            pass
+        try:
+            self.sort.setVisible(False)      # remove sort dropdown
+        except Exception:
+            pass
+
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(6, 6, 6, 6)
         main_layout.setSpacing(6)
         main_layout.addWidget(QLabel(title))
-        main_layout.addWidget(self.category)
-        main_layout.addWidget(self.sort)
+        # Removed: system select & sort dropdown from UI
         main_layout.addWidget(self.search)
         main_layout.addWidget(self.tree, 1)
 
@@ -310,6 +336,52 @@ class GalaxySystemList(QWidget):
         val = item.data(0, Qt.ItemDataRole.UserRole)
         if isinstance(val, int):
             self.doubleClicked.emit(val)
+
+    def _on_header_clicked(self, logical_index: int) -> None:
+        """
+        Header click toggles sorting:
+          Name: A–Z ↔ Z–A (robust: no substring ambiguity)
+          Distance: ↑ ↔ ↓
+          Fuel: ↑ ↔ ↓
+        We drive the hidden "sort" combobox so existing sorting/filtering code keeps working.
+        """
+        try:
+            current = (self.sort.currentText() or "").strip()
+        except Exception:
+            current = ""
+
+        if logical_index == 0:  # Name
+            # Avoid substring checks: decide based on exact current value.
+            if current in ("Name A–Z", "Name A-Z"):
+                next_key = "Name Z–A"
+            else:
+                # From any other state (incl. Distance/Fuel), go to A–Z first.
+                next_key = "Name A–Z"
+        elif logical_index == 1:  # Distance
+            next_key = "Distance ↓" if "↑" in current else "Distance ↑"
+        elif logical_index == 2:  # Fuel
+            next_key = "Fuel ↓" if "↑" in current else "Fuel ↑"
+        else:
+            return
+
+        i = self.sort.findText(next_key)
+        if i >= 0:
+            self.sort.setCurrentIndex(i)
+        else:
+            # Fallback in case list variants differ; set text and continue.
+            try:
+                self.sort.setCurrentText(next_key)
+            except Exception:
+                pass
+
+        # Update sort indicator
+        order = Qt.SortOrder.DescendingOrder if (next_key in ("Name Z–A", "Name Z-A") or "↓" in next_key) else Qt.SortOrder.AscendingOrder
+        try:
+            self.tree.header().setSortIndicator(logical_index, order)
+        except Exception:
+            pass
+
+        self.refreshRequested.emit()
 
     # ----- Utilities -----
 
@@ -444,9 +516,11 @@ class GalaxySystemList(QWidget):
     def anchor_point_for_item(self, overlay: QWidget, item: QTreeWidgetItem) -> QPoint:
         r = self.tree.visualItemRect(item)
         pt_view = r.center()
-        pt_view.setX(r.right())
-        p_global = self.tree.viewport().mapToGlobal(pt_view)
-        p_overlay = overlay.mapFromGlobal(p_global)
+        pt_view.setX(r.right() - 4)  # near the right edge
+        # translate to overlay coords
+        overlay = overlay
+        p_view = self.tree.viewport().mapToGlobal(pt_view)
+        p_overlay = overlay.mapFromGlobal(p_view)
         return QPoint(
             min(max(0, p_overlay.x()), overlay.width() - 1),
             min(max(0, p_overlay.y()), overlay.height() - 1),
