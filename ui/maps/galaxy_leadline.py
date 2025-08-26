@@ -1,5 +1,4 @@
-# /ui/maps/leadline.py
-
+# /ui/maps/galaxy_leadline.py
 from __future__ import annotations
 
 from typing import Optional, Union, Callable, Tuple, cast, Any, TYPE_CHECKING
@@ -10,7 +9,6 @@ from PySide6.QtWidgets import QWidget, QTreeWidgetItem, QTabWidget
 
 if TYPE_CHECKING:
     from .tabs import MapTabs
-    from ..widgets.location_list import LocationList
 
 ColorLike = Union[QColor, str]
 
@@ -126,15 +124,12 @@ class LeadLine(QWidget):
         p.drawLine(mid, self._target)
 
 
-class LeaderLineController(QObject):
+class GalaxyLeaderLineController(QObject):
     """
-    Encapsulates hover → leader-line behavior, including parenting the overlay
-    onto the active map's viewport and continuously following targets.
-
-    Click-to-lock behavior has been removed. A new `scope` argument gates activity:
-      - scope="galaxy": only active when the Galaxy tab is visible
-      - scope="solar" : only active when the System/Solar tab is visible
-      - scope="any"   : active on whichever tab is visible (default)
+    Hover → leader-line controller for the **Galaxy** map.
+    - Active ONLY when the Galaxy tab is selected.
+    - No click-lock; hover-only.
+    - Systems in the list use negative ids; convert to positive system ids for map queries.
     """
 
     def __init__(
@@ -143,15 +138,12 @@ class LeaderLineController(QObject):
         list_panel: LocationList,         # type: ignore[name-defined]
         make_overlay: Callable[[QWidget], LeadLine] = LeadLine,
         log: Optional[Callable[[str], None]] = None,
-        enable_lock: bool = False,        # ignored; kept for call-site compatibility
-        scope: str = "any",
     ) -> None:
         super().__init__(tabs)
         self._tabs = tabs
         self._panel = list_panel
         self._make_overlay = make_overlay
         self._log = log or (lambda _m: None)
-        self._scope = (scope or "any").lower()
 
         self._overlay: Optional[LeadLine] = None
         self._overlay_src: Optional[QWidget] = None  # where map coords live
@@ -175,6 +167,12 @@ class LeaderLineController(QObject):
     def attach(self) -> None:
         """Create/parent overlay to the active map's source widget and do an initial refresh."""
         self._reparent_overlay_to_current_view()
+        if self._overlay:
+            if self._is_galaxy_tab():
+                self._overlay.show()
+                self._overlay.raise_()
+            else:
+                self._overlay.hide()
         self._ensure_tick_running()
         QTimer.singleShot(0, self.refresh)
 
@@ -213,14 +211,67 @@ class LeaderLineController(QObject):
             pass
 
     def on_tab_changed(self, _idx: int) -> None:
+        """When tabs change, reparent the overlay and enforce scope immediately."""
         self._reparent_overlay_to_current_view()
+        if not self._is_galaxy_tab():
+            self._line_active = False
+            if self._overlay:
+                try:
+                    self._overlay.clear()
+                    self._overlay.hide()
+                except Exception:
+                    pass
+            self._maybe_stop_tick()
+            return
+
+        if self._overlay:
+            try:
+                self._overlay.show()
+                self._overlay.raise_()
+            except Exception:
+                pass
         self.refresh()
         self._ensure_tick_running()
+
+    def _scope_allows_now(self) -> bool:
+        """
+        Active only when:
+        1) The Galaxy tab is the currently selected tab, AND
+        2) Our overlay is parented to the Galaxy viewport.
+        """
+        try:
+            tw = getattr(self._tabs, "tabs", None)
+            gal = getattr(self._tabs, "galaxy", None)
+            if tw is None or gal is None or self._overlay_src is None:
+                return False
+
+            # Must be on the Galaxy tab
+            try:
+                if tw.currentWidget() is not gal:
+                    return False
+            except Exception:
+                return False
+
+            # And our overlay must be attached to the Galaxy viewport
+            gal_vp = self._widget_viewport(gal)
+            return self._overlay_src is gal_vp
+        except Exception:
+            return False
 
     def on_hover(self, entity_id: int) -> None:
         if not self._scope_allows_now():
             self.clear()
+            if self._overlay:
+                self._overlay.hide()
             return
+
+        inside = getattr(self._panel, "cursor_inside_viewport", None)
+        if callable(inside) and not inside():
+            self.clear()
+            if self._overlay:
+                self._overlay.hide()
+            return
+
         if self._overlay is None:
             return
         try:
@@ -229,6 +280,9 @@ class LeaderLineController(QObject):
             return
         self._line_active = True
         self._attach_leader(eid)
+        if self._overlay:
+            self._overlay.show()
+            self._overlay.raise_()
         self._ensure_tick_running()
 
     def on_leave(self) -> None:
@@ -237,13 +291,25 @@ class LeaderLineController(QObject):
     def refresh(self) -> None:
         if not self._scope_allows_now():
             self.clear()
+            if self._overlay:
+                self._overlay.hide()
             return
+
+        inside = getattr(self._panel, "cursor_inside_viewport", None)
+        if callable(inside) and not inside():
+            self.clear()
+            if self._overlay:
+                self._overlay.hide()
+            return
+
         if self._overlay is None:
             return
 
         item = self._panel.current_hover_item()
         if not isinstance(item, QTreeWidgetItem):
             self.clear()
+            if self._overlay:
+                self._overlay.hide()
             return
 
         data_val = item.data(0, Qt.ItemDataRole.UserRole)
@@ -251,10 +317,15 @@ class LeaderLineController(QObject):
             eid = int(data_val)
         except Exception:
             self.clear()
+            if self._overlay:
+                self._overlay.hide()
             return
 
         self._line_active = True
         self._attach_leader(eid)
+        if self._overlay:
+            self._overlay.show()
+            self._overlay.raise_()
         self._ensure_tick_running()
 
     def clear(self) -> None:
@@ -280,27 +351,19 @@ class LeaderLineController(QObject):
         return None
 
     def _is_galaxy_tab(self) -> bool:
-        """Return True if the active tab is the Galaxy map widget."""
+        """True when the active tab is the Galaxy map widget."""
         try:
             tw = self._tab_widget()
             if tw is None:
                 return False
-            cw = tw.currentWidget()
             gw = getattr(self._tabs, "galaxy", None)
-            return gw is not None and cw is gw
+            if gw is None:
+                return False
+            idx_current = tw.currentIndex()
+            idx_galaxy = tw.indexOf(gw)
+            return idx_galaxy >= 0 and idx_current == idx_galaxy
         except Exception:
             return False
-
-    def _scope_allows_now(self) -> bool:
-        """Check if controller should be active on the current tab per its scope."""
-        if self._scope == "any":
-            return True
-        is_gal = self._is_galaxy_tab()
-        if self._scope == "galaxy":
-            return is_gal
-        if self._scope in ("solar", "system"):
-            return not is_gal
-        return True
 
     def _install_view_event_filters(self) -> None:
         for wname in ("galaxy", "solar"):
@@ -340,6 +403,7 @@ class LeaderLineController(QObject):
         return w
 
     def _reparent_overlay_to_current_view(self) -> None:
+        """Parent the overlay to the current map viewport; hide it if out of scope."""
         src = self._widget_viewport(self._safe_current_widget())
         if not isinstance(src, QWidget):
             return
@@ -348,10 +412,14 @@ class LeaderLineController(QObject):
             self._overlay = self._make_overlay(src)
         else:
             self._overlay.setParent(src)
+
         try:
             self._overlay.setGeometry(src.rect())
-            self._overlay.show()
-            self._overlay.raise_()
+            if self._is_galaxy_tab():
+                self._overlay.show()
+                self._overlay.raise_()
+            else:
+                self._overlay.hide()
         except Exception:
             pass
 
@@ -371,22 +439,32 @@ class LeaderLineController(QObject):
     # ---- continuous follow ----
 
     def _ensure_tick_running(self) -> None:
-        if self._scope_allows_now() and self._line_active and (self._overlay is not None) and (self._overlay_src is not None):
+        if self._is_galaxy_tab() and self._line_active and (self._overlay is not None) and (self._overlay_src is not None):
             if not self._tick.isActive():
                 self._tick.start()
         else:
             self._maybe_stop_tick()
 
     def _maybe_stop_tick(self) -> None:
-        if self._tick.isActive() and (not self._line_active or self._overlay is None or not self._scope_allows_now()):
+        if self._tick.isActive() and (not self._line_active or self._overlay is None or not self._is_galaxy_tab()):
             self._tick.stop()
 
     def _on_tick(self) -> None:
         if not self._scope_allows_now():
             self.clear()
+            if self._overlay:
+                self._overlay.hide()
             return
 
         if self._overlay is None or self._overlay_src is None:
+            self._maybe_stop_tick()
+            return
+
+        inside = getattr(self._panel, "cursor_inside_viewport", None)
+        if callable(inside) and not inside():
+            self._line_active = False
+            if self._overlay:
+                self._overlay.clear()
             self._maybe_stop_tick()
             return
 
@@ -396,7 +474,6 @@ class LeaderLineController(QObject):
         except Exception:
             pass
 
-        # follow the currently hovered item (no click-lock)
         eid: Optional[int] = None
         item = self._panel.current_hover_item()
         if isinstance(item, QTreeWidgetItem):
@@ -419,6 +496,8 @@ class LeaderLineController(QObject):
             return
 
         self._overlay.show_temp(anchor, endpoint)
+        self._overlay.show()
+        self._overlay.raise_()
 
     # ---- geometry helpers ----
 
@@ -461,11 +540,8 @@ class LeaderLineController(QObject):
         if anchor is None:
             return None
 
-        # Keep original id to detect "star" rows in System/Solar (negative id there).
-        orig_eid = eid
-
-        # Normalize ids for the Galaxy tab: systems are encoded as negative ids in the list.
-        if self._is_galaxy_tab() and isinstance(eid, int) and eid < 0:
+        # Galaxy list encodes systems as negative ids; normalize to positive for map lookups.
+        if isinstance(eid, int) and eid < 0:
             eid = -eid
 
         current_view = self._safe_current_widget()
@@ -479,11 +555,6 @@ class LeaderLineController(QObject):
 
         center, radius = cast(Tuple[QPoint, float], info)
 
-        # In System/Solar view, star rows have negative ids.
-        # Draw all the way to the star center (no radius offset).
-        if not self._is_galaxy_tab() and isinstance(orig_eid, int) and orig_eid < 0:
-            radius = 0.0
-
         dx = center.x() - anchor.x()
         dy = center.y() - anchor.y()
         dist = (dx * dx + dy * dy) ** 0.5
@@ -491,4 +562,4 @@ class LeaderLineController(QObject):
             return QPoint(center.x(), center.y())
         ux, uy = dx / dist, dy / dist
         return QPoint(int(round(center.x() - ux * radius)),
-                    int(round(center.y() - uy * radius)))
+                      int(round(center.y() - uy * radius)))

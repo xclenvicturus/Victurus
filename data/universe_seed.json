@@ -20429,8 +20429,8 @@
       "ship_id": 1,
       "ship_name": "Shuttle",
       "base_ship_cargo": 20,
-      "base_ship_fuel": 50,
-      "base_ship_jump_distance": 2.5,
+      "base_ship_fuel": 200,
+      "base_ship_jump_distance": 50,
       "base_ship_shield": 40,
       "base_ship_hull": 100,
       "base_ship_energy": 80
@@ -20439,8 +20439,8 @@
       "ship_id": 2,
       "ship_name": "Courier",
       "base_ship_cargo": 30,
-      "base_ship_fuel": 60,
-      "base_ship_jump_distance": 3.5,
+      "base_ship_fuel": 210,
+      "base_ship_jump_distance": 50,
       "base_ship_shield": 60,
       "base_ship_hull": 110,
       "base_ship_energy": 100
@@ -20449,8 +20449,8 @@
       "ship_id": 3,
       "ship_name": "Gas Miner",
       "base_ship_cargo": 50,
-      "base_ship_fuel": 90,
-      "base_ship_jump_distance": 2.6,
+      "base_ship_fuel": 220,
+      "base_ship_jump_distance": 50,
       "base_ship_shield": 60,
       "base_ship_hull": 140,
       "base_ship_energy": 140
@@ -20459,8 +20459,8 @@
       "ship_id": 4,
       "ship_name": "Metal Miner",
       "base_ship_cargo": 60,
-      "base_ship_fuel": 90,
-      "base_ship_jump_distance": 2.6,
+      "base_ship_fuel": 230,
+      "base_ship_jump_distance": 50,
       "base_ship_shield": 70,
       "base_ship_hull": 160,
       "base_ship_energy": 140
@@ -20469,8 +20469,8 @@
       "ship_id": 5,
       "ship_name": "Ice Hauler",
       "base_ship_cargo": 140,
-      "base_ship_fuel": 120,
-      "base_ship_jump_distance": 2.2,
+      "base_ship_fuel": 240,
+      "base_ship_jump_distance": 50,
       "base_ship_shield": 80,
       "base_ship_hull": 240,
       "base_ship_energy": 140
@@ -20479,8 +20479,8 @@
       "ship_id": 6,
       "ship_name": "Refueler",
       "base_ship_cargo": 80,
-      "base_ship_fuel": 240,
-      "base_ship_jump_distance": 2.8,
+      "base_ship_fuel": 260,
+      "base_ship_jump_distance": 50,
       "base_ship_shield": 70,
       "base_ship_hull": 180,
       "base_ship_energy": 220
@@ -20490,7 +20490,7 @@
       "ship_name": "Survey Cutter",
       "base_ship_cargo": 40,
       "base_ship_fuel": 80,
-      "base_ship_jump_distance": 4.2,
+      "base_ship_jump_distance": 50,
       "base_ship_shield": 60,
       "base_ship_hull": 120,
       "base_ship_energy": 200
@@ -20500,7 +20500,7 @@
       "ship_name": "Salvager",
       "base_ship_cargo": 90,
       "base_ship_fuel": 100,
-      "base_ship_jump_distance": 2.8,
+      "base_ship_jump_distance": 50,
       "base_ship_shield": 100,
       "base_ship_hull": 260,
       "base_ship_energy": 200
@@ -20510,7 +20510,7 @@
       "ship_name": "Fighter",
       "base_ship_cargo": 10,
       "base_ship_fuel": 40,
-      "base_ship_jump_distance": 3.8,
+      "base_ship_jump_distance": 50,
       "base_ship_shield": 140,
       "base_ship_hull": 120,
       "base_ship_energy": 200
@@ -20520,7 +20520,7 @@
       "ship_name": "Interceptor",
       "base_ship_cargo": 12,
       "base_ship_fuel": 50,
-      "base_ship_jump_distance": 4.4,
+      "base_ship_jump_distance": 50,
       "base_ship_shield": 120,
       "base_ship_hull": 110,
       "base_ship_energy": 220
@@ -20530,7 +20530,7 @@
       "ship_name": "Gunship",
       "base_ship_cargo": 24,
       "base_ship_fuel": 80,
-      "base_ship_jump_distance": 3.4,
+      "base_ship_jump_distance": 50,
       "base_ship_shield": 180,
       "base_ship_hull": 240,
       "base_ship_energy": 260
@@ -20540,7 +20540,7 @@
       "ship_name": "Patrol Corvette",
       "base_ship_cargo": 36,
       "base_ship_fuel": 90,
-      "base_ship_jump_distance": 3.2,
+      "base_ship_jump_distance": 50,
       "base_ship_shield": 160,
       "base_ship_hull": 260,
       "base_ship_energy": 260
@@ -20550,7 +20550,7 @@
       "ship_name": "Bomber",
       "base_ship_cargo": 14,
       "base_ship_fuel": 50,
-      "base_ship_jump_distance": 3.0,
+      "base_ship_jump_distance": 50,
       "base_ship_shield": 120,
       "base_ship_hull": 140,
       "base_ship_energy": 220
@@ -20560,7 +20560,7 @@
       "ship_name": "Tanker",
       "base_ship_cargo": 220,
       "base_ship_fuel": 320,
-      "base_ship_jump_distance": 2.2,
+      "base_ship_jump_distance": 50,
       "base_ship_shield": 90,
       "base_ship_hull": 360,
       "base_ship_energy": 220
@@ -20570,7 +20570,7 @@
       "ship_name": "Repair Tender",
       "base_ship_cargo": 80,
       "base_ship_fuel": 120,
-      "base_ship_jump_distance": 2.6,
+      "base_ship_jump_distance": 50,
       "base_ship_shield": 120,
       "base_ship_hull": 320,
       "base_ship_energy": 280
@@ -20580,7 +20580,7 @@
       "ship_name": "Hospital Ship",
       "base_ship_cargo": 60,
       "base_ship_fuel": 100,
-      "base_ship_jump_distance": 2.6,
+      "base_ship_jump_distance": 50,
       "base_ship_shield": 120,
       "base_ship_hull": 280,
       "base_ship_energy": 260
@@ -20590,7 +20590,7 @@
       "ship_name": "Science Vessel",
       "base_ship_cargo": 50,
       "base_ship_fuel": 100,
-      "base_ship_jump_distance": 3.0,
+      "base_ship_jump_distance": 50,
       "base_ship_shield": 120,
       "base_ship_hull": 220,
       "base_ship_energy": 320
@@ -20600,7 +20600,7 @@
       "ship_name": "Colony Ship",
       "base_ship_cargo": 260,
       "base_ship_fuel": 200,
-      "base_ship_jump_distance": 2.0,
+      "base_ship_jump_distance": 50,
       "base_ship_shield": 160,
       "base_ship_hull": 800,
       "base_ship_energy": 400
@@ -20610,7 +20610,7 @@
       "ship_name": "Tow Tug",
       "base_ship_cargo": 40,
       "base_ship_fuel": 90,
-      "base_ship_jump_distance": 2.4,
+      "base_ship_jump_distance": 50,
       "base_ship_shield": 180,
       "base_ship_hull": 600,
       "base_ship_energy": 200
@@ -20620,7 +20620,7 @@
       "ship_name": "Escort Frigate",
       "base_ship_cargo": 60,
       "base_ship_fuel": 120,
-      "base_ship_jump_distance": 3.2,
+      "base_ship_jump_distance": 50,
       "base_ship_shield": 200,
       "base_ship_hull": 320,
       "base_ship_energy": 260
@@ -20630,7 +20630,7 @@
       "ship_name": "Battlecruiser",
       "base_ship_cargo": 160,
       "base_ship_fuel": 200,
-      "base_ship_jump_distance": 2.6,
+      "base_ship_jump_distance": 50,
       "base_ship_shield": 420,
       "base_ship_hull": 1100,
       "base_ship_energy": 520
@@ -20640,7 +20640,7 @@
       "ship_name": "Dreadnought",
       "base_ship_cargo": 220,
       "base_ship_fuel": 240,
-      "base_ship_jump_distance": 2.4,
+      "base_ship_jump_distance": 50,
       "base_ship_shield": 600,
       "base_ship_hull": 1600,
       "base_ship_energy": 700

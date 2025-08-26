@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QColorDialog,
     QInputDialog,
     QWidget,
+    QMenu,
 )
 
 from data import db
@@ -22,14 +23,20 @@ from game import player_status
 from save.manager import SaveManager
 
 from .maps.tabs import MapTabs
-from .maps.leadline import LeaderLineController
+from .maps.system_leadline import SystemLeaderLineController
+from .maps.galaxy_leadline import GalaxyLeaderLineController
 from .widgets.status_sheet import StatusSheet
-from .widgets.location_list import LocationList
+from .widgets.galaxy_system_list import GalaxySystemList
+from .widgets.system_location_list import SystemLocationList
 
-from .controllers.dual_location_presenter import DualLocationPresenter
+from .controllers.galaxy_location_presenter import GalaxyLocationPresenter
+from .controllers.system_location_presenter import SystemLocationPresenter
 
 # Window geometry/state (app-wide)
 from .state import window_state
+
+# Separate prefs for each leader line
+from .state.leader_line_prefs import GalaxyLeaderLinePrefs, SystemLeaderLinePrefs
 
 # Menus
 from .menus.file_menu import install_file_menu
@@ -41,22 +48,27 @@ def _make_map_view() -> MapTabs:
 
 
 class _LeaderPrefsAdapter:
-    """Adapter for view_menu.install_view_menu_extras"""
+    """
+    Adapter for view_menu.install_view_menu_extras.
+    Legacy hooks are mapped to our per-line prefs so existing menu items still work.
+    """
     def __init__(self, win: "MainWindow") -> None:
         self._win = win
 
     @property
     def glow(self) -> bool:
-        return bool(self._win._leader_glow)
+        # Report "system" glow by default for the legacy checkbox.
+        return bool(self._win._system_ll_prefs.glow)
 
     def pick_color(self, win: "MainWindow") -> None:
-        self._win._choose_leader_color()
+        win._prompt_pick_leader_and_color()
 
     def pick_width(self, win: "MainWindow") -> None:
-        self._win._choose_leader_width()
+        win._prompt_pick_leader_and_width()
 
     def set_glow(self, v: bool, win: "MainWindow") -> None:
-        self._win._toggle_leader_glow(bool(v))
+        # Legacy global glow toggle -> apply to both
+        win._toggle_leader_glow(bool(v))
 
 
 class MainWindow(QMainWindow):
@@ -70,15 +82,15 @@ class MainWindow(QMainWindow):
         self._map_view: Optional[MapTabs] = None
         self._pending_logs: List[str] = []
 
-        # ---- Leader-line style state ----
-        self._leader_color: QColor = QColor("#00FF80")
-        self._leader_width: int = 2
-        self._leader_glow: bool = True
+        # ---- Per-leader-line prefs ----
+        self._galaxy_ll_prefs = GalaxyLeaderLinePrefs("#00FF80", 2, True)
+        self._system_ll_prefs = SystemLeaderLinePrefs("#00FF80", 2, True)
 
         # ---- Controllers ----
-        self.lead: Optional[LeaderLineController] = None            # System list leader line
-        self.lead_galaxy: Optional[LeaderLineController] = None     # Galaxy list leader line
-        self.presenter_dual: Optional[DualLocationPresenter] = None
+        self.lead: Optional[SystemLeaderLineController] = None          # System list → System map
+        self.lead_galaxy: Optional[GalaxyLeaderLineController] = None   # Galaxy list → Galaxy map
+        self.presenter_galaxy: Optional[GalaxyLocationPresenter] = None
+        self.presenter_system: Optional[SystemLocationPresenter] = None
         self.travel_flow = None  # created lazily by _ensure_travel_flow()
 
         # ---- Splitters ----
@@ -96,7 +108,13 @@ class MainWindow(QMainWindow):
         self.act_panel_location_galaxy: QAction | None = None
         self.act_panel_location_solar: QAction | None = None
         self.act_panel_location: QAction | None = None  # legacy single list
+
+        # Legacy leader-line glow action (needed for protocol compatibility)
         self.act_leader_glow: QAction | None = None
+
+        # Separate leader-line actions
+        self.act_system_leader_glow: QAction | None = None
+        self.act_galaxy_leader_glow: QAction | None = None
 
         # ---- Central placeholder while idle ----
         self._idle_label = QLabel("No game loaded.\nUse File → New Game or Load Game to begin.")
@@ -129,9 +147,11 @@ class MainWindow(QMainWindow):
 
         # ---- Menus ----
         install_file_menu(self)
+        # Keep existing View/Panel wiring
         self.leader_prefs = _LeaderPrefsAdapter(self)
-        install_view_menu_extras(self, self.leader_prefs)  # creates View + Panels actions
-
+        install_view_menu_extras(self, self.leader_prefs)
+        # Add our separate per-line menus
+    
         # ---- Window state restore (global/app-wide) ----
         window_state.restore_mainwindow_state(self, self.WIN_ID)
         window_state.set_window_open(self.WIN_ID, True)
@@ -189,42 +209,75 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(0, self._pin_status_dock_for_transition)
         self._sync_panels_menu_state()
 
+    # ---------- Legacy/global glow toggle (applies to both leaders) ----------
+
     def _toggle_leader_glow(self, enabled: bool) -> None:
-        self._leader_glow = bool(enabled)
-        if self.act_leader_glow and self.act_leader_glow.isChecked() != self._leader_glow:
-            self.act_leader_glow.setChecked(self._leader_glow)
-        self._apply_leader_style()
+        self._system_ll_prefs.set_glow(bool(enabled), self)
+        self._galaxy_ll_prefs.set_glow(bool(enabled), self)
+        if self.act_leader_glow and self.act_leader_glow.isChecked() != bool(enabled):
+            self.act_leader_glow.setChecked(bool(enabled))
 
-    def _apply_leader_style(self) -> None:
-        for controller in (self.lead, self.lead_galaxy):
-            if not controller:
-                continue
-            try:
-                controller.set_line_style(
-                    color=self._leader_color,
-                    width=int(self._leader_width),
-                    glow_enabled=bool(self._leader_glow),
-                )
-            except Exception:
-                pass
+    # ---------- Per-leader-line style application ----------
 
-    def _choose_leader_color(self) -> None:
-        c = QColorDialog.getColor(self._leader_color, self, "Choose Leader Line Color")
+    def _apply_leader_styles(self) -> None:
+        if self.lead:
+            self._system_ll_prefs.apply_to(self.lead)
+        if self.lead_galaxy:
+            self._galaxy_ll_prefs.apply_to(self.lead_galaxy)
+
+    def _prompt_pick_leader_and_color(self) -> None:
+        # Legacy helper: ask both, system then galaxy
+        c = QColorDialog.getColor(self._system_ll_prefs.color, self, "Choose System Leader Line Color")
         if c.isValid():
-            self._leader_color = c
-            self._apply_leader_style()
+            self._system_ll_prefs.color = c
+            self._system_ll_prefs.apply_to_parent(self)
+        c2 = QColorDialog.getColor(self._galaxy_ll_prefs.color, self, "Choose Galaxy Leader Line Color")
+        if c2.isValid():
+            self._galaxy_ll_prefs.color = c2
+            self._galaxy_ll_prefs.apply_to_parent(self)
 
-    def _choose_leader_width(self) -> None:
-        w, ok = QInputDialog.getInt(
-            self,
-            "Set Leader Line Width",
-            "Width (px):",
-            int(self._leader_width),
-            1, 12,
-        )
+    def _prompt_pick_leader_and_width(self) -> None:
+        w, ok = QInputDialog.getInt(self, "Set System Leader Line Width", "Width (px):", self._system_ll_prefs.width, 1, 12)
         if ok:
-            self._leader_width = int(w)
-            self._apply_leader_style()
+            self._system_ll_prefs.width = int(w)
+            self._system_ll_prefs.apply_to_parent(self)
+        w2, ok2 = QInputDialog.getInt(self, "Set Galaxy Leader Line Width", "Width (px):", self._galaxy_ll_prefs.width, 1, 12)
+        if ok2:
+            self._galaxy_ll_prefs.width = int(w2)
+            self._galaxy_ll_prefs.apply_to_parent(self)
+
+
+    # ---- individual menu handlers ----
+
+    def _pick_galaxy_leader_color(self) -> None:
+        c = QColorDialog.getColor(self._galaxy_ll_prefs.color, self, "Choose Galaxy Leader Line Color")
+        if c.isValid():
+            self._galaxy_ll_prefs.color = c
+            self._galaxy_ll_prefs.apply_to_parent(self)
+
+    def _pick_galaxy_leader_width(self) -> None:
+        w, ok = QInputDialog.getInt(self, "Set Galaxy Leader Line Width", "Width (px):", self._galaxy_ll_prefs.width, 1, 12)
+        if ok:
+            self._galaxy_ll_prefs.width = int(w)
+            self._galaxy_ll_prefs.apply_to_parent(self)
+
+    def _set_galaxy_leader_glow(self, enabled: bool) -> None:
+        self._galaxy_ll_prefs.set_glow(bool(enabled), self)
+
+    def _pick_system_leader_color(self) -> None:
+        c = QColorDialog.getColor(self._system_ll_prefs.color, self, "Choose System Leader Line Color")
+        if c.isValid():
+            self._system_ll_prefs.color = c
+            self._system_ll_prefs.apply_to_parent(self)
+
+    def _pick_system_leader_width(self) -> None:
+        w, ok = QInputDialog.getInt(self, "Set System Leader Line Width", "Width (px):", self._system_ll_prefs.width, 1, 12)
+        if ok:
+            self._system_ll_prefs.width = int(w)
+            self._system_ll_prefs.apply_to_parent(self)
+
+    def _set_system_leader_glow(self, enabled: bool) -> None:
+        self._system_ll_prefs.set_glow(bool(enabled), self)
 
     # ---------- Idle <-> Live ----------
 
@@ -252,12 +305,12 @@ class MainWindow(QMainWindow):
             right = QSplitter(Qt.Orientation.Vertical, self)
             self._right_splitter = right
 
-            panel_galaxy = LocationList(
+            panel_galaxy = GalaxySystemList(
                 categories=["All", "System"],
-                sorts=["Default View", "Name A–Z", "Name Z–A", "Distance ↑", "Distance ↓", "Fuel ↑", "Fuel ↓"],
+                sorts=["Name A–Z", "Name Z–A", "Distance ↑", "Distance ↓", "Fuel ↑", "Fuel ↓"],
                 title="Galaxy",
             )
-            panel_system = LocationList(
+            panel_system = SystemLocationList(
                 categories=["All", "Star", "Planet", "Moon", "Station", "Warp Gate"],
                 sorts=["Default View", "Name A–Z", "Name Z–A", "Distance ↑", "Distance ↓", "Fuel ↑", "Fuel ↓"],
                 title="System",
@@ -285,25 +338,31 @@ class MainWindow(QMainWindow):
             central.setStretchFactor(0, 1)  # map
             central.setStretchFactor(1, 0)  # lists
 
-            # Presenter (fills both lists)
-            self.presenter_dual = DualLocationPresenter(self._map_view, panel_galaxy, panel_system)
+            # Presenters (one per list)
+            self.presenter_galaxy = GalaxyLocationPresenter(self._map_view, panel_galaxy)
+            self.presenter_system = SystemLocationPresenter(self._map_view, panel_system)
 
-            # Leader lines: attach one controller to each list (hover-only, no click-lock)
-            self.lead = LeaderLineController(mv, panel_system, log=self.append_log, enable_lock=False, scope="solar")
-            self.lead_galaxy = LeaderLineController(mv, panel_galaxy, log=self.append_log, enable_lock=False, scope="galaxy")
-            self._apply_leader_style()
+            # Leader lines: attach dedicated controllers (hover-only, no click-lock)
+            self.lead = SystemLeaderLineController(mv, panel_system, log=self.append_log)
+            self.lead_galaxy = GalaxyLeaderLineController(mv, panel_galaxy, log=self.append_log)
+            self._apply_leader_styles()
 
-            # Wire signals for both panels
-            for panel in (panel_galaxy, panel_system):
-                panel.refreshRequested.connect(self.presenter_dual.refresh)
-                panel.clicked.connect(self.presenter_dual.focus)        # single-click centers corresponding map
-                panel.doubleClicked.connect(self.presenter_dual.open)   # double-click opens/loads in Solar
-                panel.travelHere.connect(self.presenter_dual.travel_here)
+            # Wire signals
+            panel_galaxy.refreshRequested.connect(lambda: self.presenter_galaxy and self.presenter_galaxy.refresh())
+            panel_galaxy.clicked.connect(lambda eid: self.presenter_galaxy and self.presenter_galaxy.focus(eid))
+            panel_galaxy.doubleClicked.connect(lambda eid: self.presenter_galaxy and self.presenter_galaxy.open(eid))
+            panel_galaxy.travelHere.connect(lambda eid: self.presenter_galaxy and self.presenter_galaxy.travel_here(eid))
+
+            panel_system.refreshRequested.connect(lambda: self.presenter_system and self.presenter_system.refresh())
+            panel_system.clicked.connect(lambda eid: self.presenter_system and self.presenter_system.focus(eid))
+            panel_system.doubleClicked.connect(lambda eid: self.presenter_system and self.presenter_system.open(eid))
+            panel_system.travelHere.connect(lambda eid: self.presenter_system and self.presenter_system.travel_here(eid))
 
             # Tabs hook
             tabs = getattr(mv, "tabs", None)
             if tabs is not None:
-                tabs.currentChanged.connect(lambda _i: self.presenter_dual and self.presenter_dual.refresh())
+                tabs.currentChanged.connect(lambda _i: self.presenter_galaxy and self.presenter_galaxy.refresh())
+                tabs.currentChanged.connect(lambda _i: self.presenter_system and self.presenter_system.refresh())
                 tabs.currentChanged.connect(lambda i: self.lead and self.lead.on_tab_changed(i))
                 tabs.currentChanged.connect(lambda i: self.lead_galaxy and self.lead_galaxy.on_tab_changed(i))
 
@@ -334,8 +393,10 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
 
-        if self.presenter_dual:
-            self.presenter_dual.refresh()
+        if self.presenter_galaxy:
+            self.presenter_galaxy.refresh()
+        if self.presenter_system:
+            self.presenter_system.refresh()
 
         self._safe_refresh_status()
         self._status_timer.start()
@@ -370,8 +431,10 @@ class MainWindow(QMainWindow):
                 mv_reload()
             except Exception:
                 pass
-        if self.presenter_dual:
-            self.presenter_dual.refresh()
+        if self.presenter_galaxy:
+            self.presenter_galaxy.refresh()
+        if self.presenter_system:
+            self.presenter_system.refresh()
         if self.lead:
             self.lead.refresh()
         if self.lead_galaxy:
@@ -473,11 +536,14 @@ class MainWindow(QMainWindow):
         except Exception:
             state["map_tab_index"] = 0
 
-        # Leader line style
+        # Save separate leader line styles (with fallback compatibility handled on restore)
         try:
-            state["leader_color"] = self._leader_color.name()
-            state["leader_width"] = int(self._leader_width)
-            state["leader_glow"] = bool(self._leader_glow)
+            state["galaxy_leader_color"] = self._galaxy_ll_prefs.color.name()
+            state["galaxy_leader_width"] = int(self._galaxy_ll_prefs.width)
+            state["galaxy_leader_glow"] = bool(self._galaxy_ll_prefs.glow)
+            state["system_leader_color"] = self._system_ll_prefs.color.name()
+            state["system_leader_width"] = int(self._system_ll_prefs.width)
+            state["system_leader_glow"] = bool(self._system_ll_prefs.glow)
         except Exception:
             pass
 
@@ -490,7 +556,7 @@ class MainWindow(QMainWindow):
 
         # Panel settings + column widths
         try:
-            if isinstance(self.location_panel_galaxy, LocationList):
+            if isinstance(self.location_panel_galaxy, GalaxySystemList):
                 tree = self.location_panel_galaxy.tree
                 state["galaxy_col_widths"] = [tree.columnWidth(i) for i in range(tree.columnCount())]
                 state["galaxy_sort_text"] = str(self.location_panel_galaxy.sort.currentText())
@@ -500,7 +566,7 @@ class MainWindow(QMainWindow):
             pass
 
         try:
-            if isinstance(self.location_panel_solar, LocationList):
+            if isinstance(self.location_panel_solar, SystemLocationList):
                 tree = self.location_panel_solar.tree
                 state["system_col_widths"] = [tree.columnWidth(i) for i in range(tree.columnCount())]
                 state["system_sort_text"] = str(self.location_panel_solar.sort.currentText())
@@ -548,18 +614,31 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
-        # Leader line style
+        # Restore separate leader line styles (fallback to legacy combined keys if present)
         try:
-            c = state.get("leader_color")
-            w = int(state.get("leader_width", self._leader_width))
-            g = state.get("leader_glow", self._leader_glow)
-            if isinstance(c, str) and c:
-                self._leader_color = QColor(c)
-            self._leader_width = max(1, w)
-            self._leader_glow = bool(g)
-            if self.act_leader_glow:
-                self.act_leader_glow.setChecked(self._leader_glow)
-            self._apply_leader_style()
+            gal_color = state.get("galaxy_leader_color") or state.get("leader_color")
+            gal_width = int(state.get("galaxy_leader_width", state.get("leader_width", self._galaxy_ll_prefs.width)))
+            gal_glow = state.get("galaxy_leader_glow", state.get("leader_glow", self._galaxy_ll_prefs.glow))
+            if isinstance(gal_color, str) and gal_color:
+                self._galaxy_ll_prefs.color = QColor(gal_color)
+            self._galaxy_ll_prefs.width = max(1, gal_width)
+            self._galaxy_ll_prefs.glow = bool(gal_glow)
+
+            sys_color = state.get("system_leader_color") or state.get("leader_color")
+            sys_width = int(state.get("system_leader_width", state.get("leader_width", self._system_ll_prefs.width)))
+            sys_glow = state.get("system_leader_glow", state.get("leader_glow", self._system_ll_prefs.glow))
+            if isinstance(sys_color, str) and sys_color:
+                self._system_ll_prefs.color = QColor(sys_color)
+            self._system_ll_prefs.width = max(1, sys_width)
+            self._system_ll_prefs.glow = bool(sys_glow)
+
+            # Reflect in our checkboxes if they exist
+            if self.act_galaxy_leader_glow:
+                self.act_galaxy_leader_glow.setChecked(self._galaxy_ll_prefs.glow)
+            if self.act_system_leader_glow:
+                self.act_system_leader_glow.setChecked(self._system_ll_prefs.glow)
+
+            self._apply_leader_styles()
         except Exception:
             pass
 
@@ -580,7 +659,7 @@ class MainWindow(QMainWindow):
 
         # Panel settings + widths
         try:
-            if isinstance(self.location_panel_galaxy, LocationList):
+            if isinstance(self.location_panel_galaxy, GalaxySystemList):
                 cat_idx = int(state.get("galaxy_category_index", 0))
                 self.location_panel_galaxy.category.setCurrentIndex(cat_idx)
                 sort_text = state.get("galaxy_sort_text")
@@ -601,7 +680,7 @@ class MainWindow(QMainWindow):
             pass
 
         try:
-            if isinstance(self.location_panel_solar, LocationList):
+            if isinstance(self.location_panel_solar, SystemLocationList):
                 cat_idx = int(state.get("system_category_index", 0))
                 self.location_panel_solar.category.setCurrentIndex(cat_idx)
                 sort_text = state.get("system_sort_text")

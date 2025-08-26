@@ -1,3 +1,4 @@
+# /ui/widgets/galaxy_system_list.py
 from __future__ import annotations
 
 from typing import Callable, Dict, List, Optional, Tuple
@@ -6,7 +7,7 @@ import re
 from game import player_status
 
 from PySide6.QtCore import QPoint, QEvent, Qt, Signal, QPointF
-from PySide6.QtGui import QFont, QIcon, QColor, QBrush, QAction
+from PySide6.QtGui import QFont, QIcon, QColor, QBrush, QAction, QCursor
 from PySide6.QtWidgets import (
     QComboBox,
     QLabel,
@@ -16,9 +17,10 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
     QMenu,
+    QHeaderView,
 )
 
-# -------- Helpers --------
+# -------- Helpers (duplicated for independence) --------
 _LY_TO_AU = 63241.0  # Approximate astronomical units in one light-year
 
 def _norm(s: Optional[str]) -> str:
@@ -179,15 +181,12 @@ def _fuel_sort_key(r: Dict, descending: bool) -> Tuple[float, float, str]:
         return (1.0, 0.0, name)
     return (0.0, -fv, name) if descending else (0.0, fv, name)
 
-# -------- Widget --------
+# -------- Widget (GALAXY) --------
 
-class LocationList(QWidget):
+class GalaxySystemList(QWidget):
     """
-    Default view (no search, All category, **Default View** sort only):
-    - Planets shown as top-level
-    - Their stations and moons shown as indented children
-
-    All other sorts/filters/searches (including “Name A–Z”) render a flat list like before.
+    Galaxy list (systems). Always a flat list (no grouped Default View).
+    Signals mirror SystemLocationList for drop-in compatibility.
     """
     hovered = Signal(int)
     clicked = Signal(int)
@@ -211,10 +210,19 @@ class LocationList(QWidget):
         self.tree = QTreeWidget()
         self.tree.setColumnCount(3)  # Name, Distance, Fuel
         self.tree.setHeaderLabels(["Name", "Distance", "Fuel"])
-        self.tree.setMouseTracking(True)
+        self.tree.setMouseTracking(True)                    # for itemEntered
+        self.tree.viewport().setMouseTracking(True)         # ensure viewport tracks too
         self.tree.setUniformRowHeights(True)
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree.setRootIsDecorated(False)
+        try:
+            self.tree.header().setStretchLastSection(False)
+            self.tree.header().setDefaultSectionSize(160)
+            # Use QHeaderView.ResizeMode.Stretch to satisfy static type checkers
+            self.tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        except Exception:
+            pass
+            pass
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(6, 6, 6, 6)
@@ -251,34 +259,23 @@ class LocationList(QWidget):
         except Exception:
             return
 
-        # Identify current player position
+        # Identify current player system
         snap = player_status.get_status_snapshot() or {}
-        def _to_int(x):
+        def _to_int_local(x):
             try:
                 return int(x)
             except Exception:
                 return None
 
-        cur_loc_id = _to_int(snap.get("location_id"))
-        cur_sys_id = _to_int(snap.get("system_id"))
+        cur_sys_id = _to_int_local(snap.get("system_id"))
 
-        # Suppress menu if user right-clicked their *current* location:
-        #  - Positive IDs are locations; match current location exactly.
-        #  - Negative IDs represent a system/star (-system_id); treat as "already here"
-        #    only when the player is at the star (no current location set).
-        is_current = False
-        if entity_id >= 0:
-            is_current = (cur_loc_id is not None and entity_id == cur_loc_id)
-        else:
-            is_current = (cur_sys_id is not None and -entity_id == cur_sys_id and cur_loc_id is None)
+        # In galaxy list, entity_id is NEGATIVE system_id
+        is_current_system = (entity_id < 0 and cur_sys_id is not None and -entity_id == cur_sys_id)
+        if is_current_system:
+            return  # Already here — no travel menu
 
-        if is_current:
-            # Already here — don't show a travel menu.
-            return
-
-        # Otherwise, show the normal travel menu
         menu = QMenu(self)
-        travel_action = QAction("Travel to", self)
+        travel_action = QAction("Travel to System", self)
         travel_action.triggered.connect(lambda: self.travelHere.emit(entity_id))
         menu.addAction(travel_action)
         menu.exec(self.tree.viewport().mapToGlobal(pos))
@@ -316,19 +313,8 @@ class LocationList(QWidget):
 
     # ----- Utilities -----
 
-    def _find_item_recursive(self, parent: QTreeWidgetItem, entity_id: int) -> Optional[QTreeWidgetItem]:
-        for i in range(parent.childCount()):
-            ch = parent.child(i)
-            val = ch.data(0, Qt.ItemDataRole.UserRole)
-            if isinstance(val, int) and val == entity_id:
-                return ch
-            hit = self._find_item_recursive(ch, entity_id)
-            if hit:
-                return hit
-        return None
-
     def find_item_by_id(self, entity_id: int) -> Optional[QTreeWidgetItem]:
-        """Finds an item (top-level or child) by its stored entity ID."""
+        """Finds a top-level item by its stored entity ID."""
         for i in range(self.tree.topLevelItemCount()):
             item = self.tree.topLevelItem(i)
             if item is None:
@@ -336,66 +322,34 @@ class LocationList(QWidget):
             val = item.data(0, Qt.ItemDataRole.UserRole)
             if isinstance(val, int) and val == entity_id:
                 return item
-            hit = self._find_item_recursive(item, entity_id)
-            if hit:
-                return hit
         return None
 
-    # ----- Population & styling -----
-
     def _apply_row_styling(self, it: QTreeWidgetItem, r: Dict, *, red: QBrush, green: QBrush, yellow: QBrush) -> None:
-        is_current = bool(r.get("is_current", False))
-        can_reach = r.get("can_reach", True)
-        can_reach_jump = r.get("can_reach_jump", True)
-        can_reach_fuel = r.get("can_reach_fuel", True)
+        # Brushes
+        white = QBrush(QColor("white"))
 
-        if is_current:
+        # ---- Name (system) ----
+        # Yellow only for the player's current system; otherwise white.
+        if bool(r.get("is_current", False)):
             it.setForeground(0, yellow)
-        elif not can_reach:
-            it.setForeground(0, red)
-
-        try:
-            jump_val = 0.0
-            if "dist_ly" in r and r["dist_ly"] not in (None, ""):
-                jump_val = float(r["dist_ly"])
-            elif "jump_dist" in r and r["jump_dist"] not in (None, ""):
-                jump_val = float(r["jump_dist"])
-        except Exception:
-            jump_val = 0.0
-
-        if jump_val > 0.0:
-            it.setForeground(1, green if can_reach_jump else red)
         else:
-            it.setForeground(1, green)
+            it.setForeground(0, white)
 
-        try:
-            fuel_val = r.get("fuel_cost", "—")
-            if isinstance(fuel_val, (int, float)) and float(fuel_val) > 0:
-                it.setForeground(2, green if can_reach_fuel else red)
-        except Exception:
-            pass
+        # ---- Distance (jump range) ----
+        # Green if we have enough jump range, red otherwise.
+        can_jump = bool(r.get("can_reach_jump", False))
+        it.setForeground(1, green if can_jump else red)
 
-    def _is_default_group_view(self) -> bool:
-        """
-        Grouped (parent/child) view is **only** when:
-        - Category is All (or empty)
-        - Search is empty
-        - Sort is exactly "Default View"
-        """
-        cat_ok = (self.category.currentText() in ("", "All"))
-        no_search = (self.search.text().strip() == "")
-        sort_txt = self.sort.currentText()
-        sort_ok = (sort_txt == "Default View")
-        return bool(cat_ok and no_search and sort_ok)
+        # ---- Fuel ----
+        # Green if enough fuel, red if not; if unknown/“—”, leave white.
+        fuel_val = r.get("fuel_cost", "—")
+        if isinstance(fuel_val, (int, float)) and float(fuel_val) > 0:
+            can_fuel = bool(r.get("can_reach_fuel", False))
+            it.setForeground(2, green if can_fuel else red)
+        else:
+            it.setForeground(2, white)
 
-    def _kind_of(self, r: Dict) -> str:
-        return (r.get("kind") or r.get("location_type") or "").strip().lower()
-
-    def _parent_id_of(self, r: Dict) -> Optional[int]:
-        p = r.get("parent_location_id")
-        if p in (None, ""):
-            p = r.get("parent_id")
-        return _to_int(p)
+    # ----- Population & sorting/filtering -----
 
     def populate(
         self,
@@ -403,165 +357,45 @@ class LocationList(QWidget):
         list_font: QFont,
         icon_provider: Optional[Callable[[Dict], Optional[QIcon]]] = None,
     ):
+        """Always populate as a flat list."""
         self.tree.clear()
         self.tree.setFont(list_font)
+        self.tree.setRootIsDecorated(False)
 
         red_brush    = QBrush(QColor("red"))
         green_brush  = QBrush(QColor("green"))
         yellow_brush = QBrush(QColor("yellow"))
 
-        grouped = self._is_default_group_view()
-        self.tree.setRootIsDecorated(grouped)
-
-        if not grouped:
-            # ---- Flat list as before ----
-            for r in rows:
-                rid = _to_int(r.get("id"))
-                if rid is None:
-                    continue
-                dist_text = r.get("distance", "—")
-                fuel_val = r.get("fuel_cost", "—")
-                fuel_text = str(fuel_val) if fuel_val != "—" else "—"
-
-                it = QTreeWidgetItem(self.tree, [r.get("name", "Unknown"), dist_text, fuel_text])
-                it.setData(0, Qt.ItemDataRole.UserRole, rid)
-
-                if icon_provider:
-                    icon = icon_provider(r)
-                    if icon:
-                        it.setIcon(0, icon)
-
-                self._apply_row_styling(it, r, red=red_brush, green=green_brush, yellow=yellow_brush)
-            return
-
-        # ---- Grouped view: planets as parents; stations + moons as children ----
-        by_id: Dict[int, Dict] = {}
-        children_of: Dict[int, List[Dict]] = {}
-
         for r in rows:
             rid = _to_int(r.get("id"))
             if rid is None:
                 continue
-            by_id[rid] = r
-            pid = self._parent_id_of(r)
-            if pid is not None:
-                children_of.setdefault(pid, []).append(r)
-
-        used_child_ids: set[int] = set()
-
-        # Iterate rows to preserve the current top-level order, create planet/star/gate top-levels
-        for r in rows:
-            rid = _to_int(r.get("id"))
-            if rid is None:
-                continue
-            k = self._kind_of(r)
-            is_planet = (k == "planet")
-
-            # Non-planet top-levels (star / gate) remain top-level
-            if not is_planet and k in ("star", "warp_gate", "warpgate"):
-                dist_text = r.get("distance", "—")
-                fuel_val = r.get("fuel_cost", "—")
-                fuel_text = str(fuel_val) if fuel_val != "—" else "—"
-
-                it = QTreeWidgetItem(self.tree, [r.get("name", "Unknown"), dist_text, fuel_text])
-                it.setData(0, Qt.ItemDataRole.UserRole, rid)
-                if icon_provider:
-                    icon = icon_provider(r)
-                    if icon:
-                        it.setIcon(0, icon)
-                self._apply_row_styling(it, r, red=red_brush, green=green_brush, yellow=yellow_brush)
-                it.setExpanded(True)
-                continue
-
-            if not is_planet:
-                # Non-planet items that are not heads will be added under their parent later
-                continue
-
-            # Create the planet top-level
-            dist_text = r.get("distance", "—")
-            fuel_val = r.get("fuel_cost", "—")
-            fuel_text = str(fuel_val) if fuel_val != "—" else "—"
-
-            planet_it = QTreeWidgetItem(self.tree, [r.get("name", "Unknown"), dist_text, fuel_text])
-            planet_it.setData(0, Qt.ItemDataRole.UserRole, rid)
-            if icon_provider:
-                icon = icon_provider(r)
-                if icon:
-                    planet_it.setIcon(0, icon)
-            self._apply_row_styling(planet_it, r, red=red_brush, green=green_brush, yellow=yellow_brush)
-
-            # Order children: stations first, then moons, then others (if any)
-            def _child_sort_key(rr: Dict) -> Tuple[int, str]:
-                kk = self._kind_of(rr)
-                rank = 0 if kk == "station" else (1 if kk == "moon" else 2)
-                return (rank, (rr.get("name", "") or "").lower())
-
-            # Attach children (stations + moons under this planet)
-            kids = sorted(children_of.get(rid, []), key=_child_sort_key)
-
-            for ch in kids:
-                cid = _to_int(ch.get("id"))
-                if cid is None:
-                    continue
-                used_child_ids.add(cid)
-
-                c_dist = ch.get("distance", "—")
-                c_fuel_val = ch.get("fuel_cost", "—")
-                c_fuel = str(c_fuel_val) if c_fuel_val != "—" else "—"
-
-                child_it = QTreeWidgetItem(planet_it, [ch.get("name", "Unknown"), c_dist, c_fuel])
-                child_it.setData(0, Qt.ItemDataRole.UserRole, cid)
-                if icon_provider:
-                    c_icon = icon_provider(ch)
-                    if c_icon:
-                        child_it.setIcon(0, c_icon)
-                self._apply_row_styling(child_it, ch, red=red_brush, green=green_brush, yellow=yellow_brush)
-
-            planet_it.setExpanded(True)
-
-        # Any remaining items that didn't get placed (e.g., stations/moons orphaned)
-        for r in rows:
-            rid = _to_int(r.get("id"))
-            if rid is None:
-                continue
-            if rid in used_child_ids:
-                continue
-            k = self._kind_of(r)
-            if k in ("planet", "star", "warp_gate", "warpgate"):
-                # already added above as top-level/group head
-                continue
-
             dist_text = r.get("distance", "—")
             fuel_val = r.get("fuel_cost", "—")
             fuel_text = str(fuel_val) if fuel_val != "—" else "—"
 
             it = QTreeWidgetItem(self.tree, [r.get("name", "Unknown"), dist_text, fuel_text])
             it.setData(0, Qt.ItemDataRole.UserRole, rid)
+
             if icon_provider:
                 icon = icon_provider(r)
                 if icon:
                     it.setIcon(0, icon)
+
             self._apply_row_styling(it, r, red=red_brush, green=green_brush, yellow=yellow_brush)
 
-    # ----- Filtering & sorting -----
-
-    def filtered_sorted(self, rows_all: List[Dict], player_pos: Optional[QPointF]) -> List[Dict]:
+    def filtered_sorted(self, rows_all: List[Dict], _player_pos: Optional[QPointF]) -> List[Dict]:
         # ---- Category filter ----
-        cat = self.category.currentText()
+        cat = (self.category.currentText() or "").strip()
         cat_norm = _norm(cat)
         rows = []
         for r in rows_all:
-            if not cat or cat_norm == _norm("All") or cat == "All":
+            if not cat or cat_norm == "all":
                 rows.append(r)
                 continue
-            kind_norm = _norm(r.get("kind", ""))
-            if kind_norm.startswith(cat_norm):
-                rows.append(r)
-                continue
-            if cat_norm == "warpgate" and kind_norm in ("warpgate", "gate"):
-                rows.append(r)
-                continue
-            if cat_norm == "system" and _norm(r.get("kind", "")) == "system":
+            # Accept "system" / "systems" (and tolerate legacy "star")
+            kind_norm = _norm(r.get("kind", "system"))
+            if cat_norm in ("system", "systems") and kind_norm in ("system", "star"):
                 rows.append(r)
                 continue
 
@@ -575,29 +409,34 @@ class LocationList(QWidget):
             ]
 
         # ---- Sort ----
-        sort_key = self.sort.currentText()
+        sort_key = (self.sort.currentText() or "").strip()
 
         def _is_desc(k: str) -> bool:
             ks = k.lower()
             return ("↓" in k) or ("down" in ks) or ("desc" in ks)
 
-        if sort_key in ("Default View",):
-            # Grouping happens in populate(); just return a stable order for headings
+        # Default View -> stable by name
+        if sort_key == "Default View":
             rows.sort(key=lambda r: (r.get("name", "") or "").lower())
             return rows
 
         if "Name" in sort_key:
             reverse = sort_key.endswith("Z–A") or sort_key.endswith("Z-A")
             rows.sort(key=lambda r: (r.get("name", "") or "").lower(), reverse=reverse)
+            return rows
 
-        elif sort_key.startswith("Distance"):
+        if sort_key.startswith("Distance"):
             desc = _is_desc(sort_key)
             rows.sort(key=lambda rr: _smart_distance_key(rr, descending=desc))
+            return rows
 
-        elif sort_key.startswith("Fuel"):
+        if sort_key.startswith("Fuel"):
             desc = _is_desc(sort_key)
             rows.sort(key=lambda rr: _fuel_sort_key(rr, descending=desc))
+            return rows
 
+        # Fallback: sort by name if an unknown sort shows up
+        rows.sort(key=lambda r: (r.get("name", "") or "").lower())
         return rows
 
     # ----- Anchor utilities for leader line -----
@@ -614,5 +453,13 @@ class LocationList(QWidget):
         )
 
     def current_hover_item(self) -> Optional[QTreeWidgetItem]:
-        pos = self.tree.viewport().mapFromGlobal(self.cursor().pos())
-        return self.tree.itemAt(pos)
+        vp = self.tree.viewport()
+        local_pos = vp.mapFromGlobal(QCursor.pos())
+        if not vp.rect().contains(local_pos):
+            return None
+        return self.tree.itemAt(local_pos)
+
+    def cursor_inside_viewport(self) -> bool:
+        vp = self.tree.viewport()
+        local_pos = vp.mapFromGlobal(QCursor.pos())
+        return vp.rect().contains(local_pos)

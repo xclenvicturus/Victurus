@@ -1,7 +1,7 @@
 # /ui/menus/view_menu.py
 from __future__ import annotations
 
-from typing import Protocol, Optional, cast
+from typing import Protocol, Optional, cast, Any, Callable
 
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QMenu, QMenuBar, QWidget, QDockWidget
@@ -24,7 +24,11 @@ class _MainWindowLike(Protocol):
     act_panel_location_galaxy: Optional[QAction]
     act_panel_location_solar: Optional[QAction]
     act_panel_location: Optional[QAction]
+    # legacy global leader-line toggle
     act_leader_glow: Optional[QAction]
+    # new per-line toggles (if present)
+    act_system_leader_glow: Optional[QAction]
+    act_galaxy_leader_glow: Optional[QAction]
 
 
 # ---------- helpers ----------
@@ -109,34 +113,72 @@ def sync_panels_menu_state(win: _MainWindowLike) -> None:
             act.blockSignals(False)
 
 
-def install_view_menu_extras(win: _MainWindowLike, prefs) -> None:
-    """Create View → Leader Line and Panels submenus, wiring to the window."""
+def install_view_menu_extras(win: _MainWindowLike, prefs: Any) -> None:
+    """
+    Create View → Panels submenu, and leader-line controls.
+
+    Backwards compatible:
+      • Always installs legacy "Leader Line" submenu using `prefs` (single set).
+      • If the MainWindow exposes per-line handlers, also installs separate
+        "Galaxy Leader Line" and "System Leader Line" submenus with independent
+        color/width/glow controls.
+    """
     view_menu = _ensure_view_menu(win)
 
-    # Leader Line submenu
-    ll_menu = QMenu("Leader Line", view_menu)
-    view_menu.addMenu(ll_menu)
+    # ---------- Optional: separate per-line submenus ----------
+    def _maybe_bool(obj: Any, default: bool = True) -> bool:
+        try:
+            return bool(obj)
+        except Exception:
+            return default
 
-    act_color = QAction("Set Color…", ll_menu)
-    act_color.triggered.connect(lambda: prefs.pick_color(win))
-    ll_menu.addAction(act_color)
+    # Helpers: discover handlers and state on the window
+    has_gal_handlers = all(
+        hasattr(win, name) for name in (
+            "_pick_galaxy_leader_color", "_pick_galaxy_leader_width", "_set_galaxy_leader_glow"
+        )
+    )
+    has_sys_handlers = all(
+        hasattr(win, name) for name in (
+            "_pick_system_leader_color", "_pick_system_leader_width", "_set_system_leader_glow"
+        )
+    )
 
-    act_width = QAction("Set Width…", ll_menu)
-    act_width.triggered.connect(lambda: prefs.pick_width(win))
-    ll_menu.addAction(act_width)
+    # Try to read current glow state from window prefs if available
+    gal_glow_now = _maybe_bool(getattr(getattr(win, "_galaxy_ll_prefs", None), "glow", True), True)
+    sys_glow_now = _maybe_bool(getattr(getattr(win, "_system_ll_prefs", None), "glow", True), True)
 
-    act_glow = QAction("Glow", ll_menu)
-    act_glow.setCheckable(True)
-    act_glow.setChecked(bool(prefs.glow))
-    act_glow.toggled.connect(lambda v: prefs.set_glow(v, win))
-    ll_menu.addAction(act_glow)
-    win.act_leader_glow = act_glow  # state handle for restore
+    if has_gal_handlers:
+        gal_menu = view_menu.addMenu("Galaxy Leader Line")
+        act_gal_color = gal_menu.addAction("Pick Color…")
+        act_gal_color.triggered.connect(getattr(win, "_pick_galaxy_leader_color"))
+        act_gal_width = gal_menu.addAction("Set Width…")
+        act_gal_width.triggered.connect(getattr(win, "_pick_galaxy_leader_width"))
+        act_gal_glow = gal_menu.addAction("Glow")
+        act_gal_glow.setCheckable(True)
+        act_gal_glow.setChecked(gal_glow_now)
+        act_gal_glow.toggled.connect(getattr(win, "_set_galaxy_leader_glow"))
+        # expose handle for state restore
+        win.act_galaxy_leader_glow = act_gal_glow  # type: ignore[attr-defined]
 
-    # Panels submenu
+    if has_sys_handlers:
+        sys_menu = view_menu.addMenu("System Leader Line")
+        act_sys_color = sys_menu.addAction("Pick Color…")
+        act_sys_color.triggered.connect(getattr(win, "_pick_system_leader_color"))
+        act_sys_width = sys_menu.addAction("Set Width…")
+        act_sys_width.triggered.connect(getattr(win, "_pick_system_leader_width"))
+        act_sys_glow = sys_menu.addAction("Glow")
+        act_sys_glow.setCheckable(True)
+        act_sys_glow.setChecked(sys_glow_now)
+        act_sys_glow.toggled.connect(getattr(win, "_set_system_leader_glow"))
+        # expose handle for state restore
+        win.act_system_leader_glow = act_sys_glow  # type: ignore[attr-defined]
+
+    # ---------- Panels submenu ----------
     panels = QMenu("Panels", view_menu)
     view_menu.addMenu(panels)
 
-    def _toggle(getter):
+    def _toggle(getter: Callable[[], Optional[QWidget]]):
         def _fn(visible: bool):
             w = getter()
             if isinstance(w, QWidget):

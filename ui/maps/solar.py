@@ -1,4 +1,5 @@
 # /ui/maps/solar.py
+
 """
 SolarMapWidget (display-only, GIF-only assets):
 - central star at (0,0) using a star GIF
@@ -505,7 +506,7 @@ class SolarMapWidget(BackgroundView):
         r = max(rect.width(), rect.height()) * 0.9
         ring = self._scene.addEllipse(center.x() - r, center.y() - r, 2 * r, 2 * r)
         pen = ring.pen()
-        pen.setWidthF(0.1)
+        pen.setWidthF(0.1)        # thin stroke; default pen color is black
         ring.setPen(pen)
         self._player_highlight = ring
 
