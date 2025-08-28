@@ -70,7 +70,7 @@ class SystemLocationPresenter:
     """
     Populates the SystemLocationList (star + locations).
 
-    - Uses icon_path provided by SolarMapWidget.get_entities() when available so
+    - Uses icon_path provided by SystemMapWidget.get_entities() when available so
       the list thumbnails match the map exactly (including DB-only behavior).
     - Falls back to DB (locations + system.icon_path).
     - Travel/fuel display: uses game.travel when available; otherwise coarse fallback.
@@ -86,7 +86,7 @@ class SystemLocationPresenter:
 
     def refresh(self) -> None:
         """
-        Always refresh the System list using whatever system the Solar widget
+    Always refresh the System list using whatever system the System widget
         currently has loaded (or the player's system as a fallback).
 
         We deliberately do NOT gate on the active tab so the System list updates
@@ -101,8 +101,8 @@ class SystemLocationPresenter:
         cur_sys_id = _safe_int(player.get("current_player_system_id") or player.get("system_id"), 0)
         cur_loc_id = _safe_int(player.get("current_player_location_id") or player.get("location_id"), 0)
 
-        solar_widget = getattr(self._tabs, "solar", None)
-        viewed_sys_id = getattr(solar_widget, "_system_id", None) or cur_sys_id
+        system_widget = getattr(self._tabs, "system", None)
+        viewed_sys_id = getattr(system_widget, "_system_id", None) or cur_sys_id
 
         system_rows = self._build_system_rows(int(viewed_sys_id), cur_loc_id, cur_sys_id)
         rows_s = self._sol.filtered_sorted(system_rows, player_pos=None)
@@ -111,44 +111,43 @@ class SystemLocationPresenter:
     def focus(self, entity_id: int) -> None:
         """
         Single-click in System tab:
-          • Negative => star/system sentinel: center star in Solar.
+          • Negative => star/system sentinel: center star in the System view.
           • Positive => concrete location id: center on that location.
         """
-        solar_widget = getattr(self._tabs, "solar", None)
-
+        system_widget = getattr(self._tabs, "system", None)
         try:
             if int(entity_id) < 0:
                 sys_id = -int(entity_id)
-                center_sys = getattr(self._tabs, "center_solar_on_system", None)
+                center_sys = getattr(self._tabs, "center_system_on_system", None)
                 if callable(center_sys):
                     try:
                         center_sys(sys_id)
                     except Exception:
                         pass
                     return
-                if solar_widget is not None:
+                if system_widget is not None:
                     try:
-                        if hasattr(solar_widget, "center_on_system"):
-                            solar_widget.center_on_system(sys_id)
+                        if hasattr(system_widget, "center_on_system"):
+                            system_widget.center_on_system(sys_id)
                             return
-                        if hasattr(solar_widget, "center_on_entity"):
-                            solar_widget.center_on_entity(-sys_id)
+                        if hasattr(system_widget, "center_on_entity"):
+                            system_widget.center_on_entity(-sys_id)
                             return
                     except Exception:
                         pass
                 return
             else:
                 loc_id = int(entity_id)
-                center_loc = getattr(self._tabs, "center_solar_on_location", None)
+                center_loc = getattr(self._tabs, "center_system_on_location", None)
                 if callable(center_loc):
                     try:
                         center_loc(loc_id)
                     except Exception:
                         pass
                     return
-                if solar_widget is not None and hasattr(solar_widget, "center_on_entity"):
+                if system_widget is not None and hasattr(system_widget, "center_on_entity"):
                     try:
-                        solar_widget.center_on_entity(loc_id)
+                        system_widget.center_on_entity(loc_id)
                     except Exception:
                         pass
         except Exception:
@@ -157,36 +156,36 @@ class SystemLocationPresenter:
     def open(self, entity_id: int) -> None:
         """
         Double-click in System tab:
-          - System row (entity_id < 0): ensure that system is loaded in Solar and centered.
+          - System row (entity_id < 0): ensure that system is loaded in the System view and centered.
           - Location row (entity_id >= 0): center on that location.
         """
         try:
             tabs = getattr(self._tabs, "tabs", None)
-            solar = getattr(self._tabs, "solar", None)
+            system_widget = getattr(self._tabs, "system", None)
 
             if entity_id < 0:
                 system_id = -int(entity_id)
-                if solar and hasattr(solar, "load") and hasattr(solar, "center_on_system"):
+                if system_widget and hasattr(system_widget, "load") and hasattr(system_widget, "center_on_system"):
                     try:
-                        solar.load(system_id)
-                        solar.center_on_system(system_id)
+                        system_widget.load(system_id)
+                        system_widget.center_on_system(system_id)
                     except Exception:
                         try:
-                            solar.center_on_entity(-system_id)
+                            system_widget.center_on_entity(-system_id)
                         except Exception:
                             pass
             else:
-                if solar and hasattr(solar, "center_on_entity"):
+                if system_widget and hasattr(system_widget, "center_on_entity"):
                     try:
-                        solar.center_on_entity(int(entity_id))
+                        system_widget.center_on_entity(int(entity_id))
                     except Exception:
                         pass
 
-            # Ensure we are on the Solar tab
+            # Ensure we are on the System tab
             if tabs is not None:
                 try:
                     if getattr(tabs, "count", lambda: 0)() >= 2:
-                        tabs.setCurrentIndex(1)  # Galaxy=0, Solar=1
+                        tabs.setCurrentIndex(1)  # Galaxy=0, System=1
                 except Exception:
                     pass
         except Exception:
@@ -298,10 +297,10 @@ class SystemLocationPresenter:
         rows: List[Dict[str, Any]] = []
         sys_id = int(viewed_sys_id)
 
-        # Prefer entities coming from the solar widget
+        # Prefer entities coming from the system widget
         entities: List[Dict[str, Any]] = []
-        sol = getattr(self._tabs, "solar", None)
-        get_entities = getattr(sol, "get_entities", None)
+        system = getattr(self._tabs, "system", None)
+        get_entities = getattr(system, "get_entities", None)
         if callable(get_entities):
             try:
                 entities = self._coerce_list(get_entities())
@@ -480,7 +479,8 @@ class SystemLocationPresenter:
                 "distance": self._fmt_system_distance(td),
                 "dist_ly": _safe_float(td.get("dist_ly", 0.0), 0.0),
                 "dist_au": _safe_float(td.get("dist_au", 0.0), 0.0),
-                "fuel_cost": int(fuel_cost_val) if fuel_cost_val and fuel_cost_val > 0 else "—",
+                # Use numeric 0 when fuel cost is not available to avoid embedding null bytes in source
+                "fuel_cost": int(fuel_cost_val) if fuel_cost_val and fuel_cost_val > 0 else 0,
                 "x": exf,
                 "y": eyf,
                 "system_id": sys_id,

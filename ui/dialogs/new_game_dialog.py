@@ -105,7 +105,7 @@ class NewGameDialog(QDialog):
           (save_name: str, commander_name: str, starting_label: str)
 
         starting_label combines the race and the chosen start location for display,
-        e.g. "Aurelian — New Dawn (System: Solara)".
+    e.g. "Aurelian — New Dawn (System: Solara)".
         """
         race_txt = self.combo_race.currentText()
         start_txt = self.combo_start.currentText()

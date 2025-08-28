@@ -127,7 +127,7 @@ class LeadLine(QWidget):
 
 class SystemLeaderLineController(QObject):
     """
-    Hover → leader-line controller for the **System/Solar** map.
+    Hover → leader-line controller for the **System** map.
     - Active ONLY when the System tab is selected.
     - No click-lock; hover-only.
     - Star rows (negative ids) draw to the exact star center (radius = 0).
@@ -237,12 +237,12 @@ class SystemLeaderLineController(QObject):
     def _scope_allows_now(self) -> bool:
         """
         Active only when:
-        1) The System/Solar tab is the currently selected tab, AND
-        2) Our overlay is parented to the System/Solar viewport.
+    1) The System tab is the currently selected tab, AND
+    2) Our overlay is parented to the System viewport.
         """
         try:
             tw = getattr(self._tabs, "tabs", None)
-            sol = getattr(self._tabs, "solar", None)
+            sol = getattr(self._tabs, "system", None)
             if tw is None or sol is None or self._overlay_src is None:
                 return False
 
@@ -352,12 +352,12 @@ class SystemLeaderLineController(QObject):
         return None
 
     def _is_system_tab(self) -> bool:
-        """True when the active tab is the System/Solar map widget."""
+        """True when the active tab is the System map widget."""
         try:
             tw = self._tab_widget()
             if tw is None:
                 return False
-            sw = getattr(self._tabs, "solar", None)
+            sw = getattr(self._tabs, "system", None)
             if sw is None:
                 return False
             idx_current = tw.currentIndex()
@@ -367,7 +367,7 @@ class SystemLeaderLineController(QObject):
             return False
 
     def _install_view_event_filters(self) -> None:
-        for wname in ("galaxy", "solar"):
+        for wname in ("galaxy", "system"):
             w = getattr(self._tabs, wname, None)
             if isinstance(w, QWidget):
                 try:
@@ -542,7 +542,7 @@ class SystemLeaderLineController(QObject):
         if anchor is None:
             return None
 
-        # Keep original id to detect "star" rows in System/Solar (negative id there).
+    # Keep original id to detect "star" rows in System (negative id there).
         orig_eid = eid
 
         current_view = self._safe_current_widget()
@@ -556,7 +556,7 @@ class SystemLeaderLineController(QObject):
 
         center, radius = cast(Tuple[QPoint, float], info)
 
-        # In System/Solar view, star rows have negative ids.
+    # In System view, star rows have negative ids.
         # Draw all the way to the star center (no radius offset).
         if isinstance(orig_eid, int) and orig_eid < 0:
             radius = 0.0

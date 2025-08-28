@@ -7,9 +7,9 @@ This module only owns the two map views.
 MapTabs:
 - A QTabWidget with:
     • "Galaxy"  -> GalaxyMapWidget
-    • "System"  -> SolarMapWidget
+    • "System"  -> SystemMapWidget
 - Convenience methods to center/refresh.
-- Auto-loads SolarMapWidget for the player's current system.
+- Auto-loads SystemMapWidget for the player's current system.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout, QTabWidget
 
 from data import db
 from ui.maps.galaxy import GalaxyMapWidget
-from ui.maps.solar import SolarMapWidget
+from ui.maps.system import SystemMapWidget
 from game_controller.sim_loop import universe_sim
 
 
@@ -37,15 +37,15 @@ class MapTabs(QWidget):
         self.tabs.setTabPosition(QTabWidget.TabPosition.North)
 
         self.galaxy = GalaxyMapWidget(self.tabs)
-        self.solar = SolarMapWidget(self.tabs)
+        self.system = SystemMapWidget(self.tabs)
 
         self.tabs.addTab(self.galaxy, "Galaxy")
-        self.tabs.addTab(self.solar, "System")
+        self.tabs.addTab(self.system, "System")
 
         lay.addWidget(self.tabs, 1)
 
-        # Ensure solar is loaded for the current player's system on construction
-        self._ensure_solar_loaded_from_player()
+        # Ensure system view is loaded for the current player's system on construction
+        self._ensure_system_loaded_from_player()
 
         # Keep simulator in sync with which map is visible
         try:
@@ -57,12 +57,12 @@ class MapTabs(QWidget):
 
     def _on_tab_changed(self, idx: int) -> None:
         """Set simulator's visible system: None on Galaxy so all systems tick;
-        current solar system on System tab."""
+        current system on System tab."""
         try:
             if idx == self.tabs.indexOf(self.galaxy):
                 universe_sim.set_visible_system(None)
-            elif idx == self.tabs.indexOf(self.solar):
-                sid = getattr(self.solar, "_system_id", None)
+            elif idx == self.tabs.indexOf(self.system):
+                sid = getattr(self.system, "_system_id", None)
                 if sid is not None:
                     universe_sim.set_visible_system(int(sid))
         except Exception:
@@ -79,16 +79,16 @@ class MapTabs(QWidget):
     def show_galaxy(self) -> None:
         self.setCurrentIndex(self.tabs.indexOf(self.galaxy))
 
-    def show_solar(self) -> None:
-        self.setCurrentIndex(self.tabs.indexOf(self.solar))
+    def show_system(self) -> None:
+        self.setCurrentIndex(self.tabs.indexOf(self.system))
 
-    def _ensure_solar_loaded_from_player(self) -> None:
-        """Load the SolarMapWidget with the player's current system if needed."""
+    def _ensure_system_loaded_from_player(self) -> None:
+        """Load the SystemMapWidget with the player's current system if needed."""
         try:
             p = db.get_player_full() or {}
             sys_id = int(p.get("current_player_system_id") or 0)
-            if sys_id and getattr(self.solar, "_system_id", None) != sys_id:
-                self.solar.load(sys_id)
+            if sys_id and getattr(self.system, "_system_id", None) != sys_id:
+                self.system.load(sys_id)
         except Exception:
             pass
 
@@ -98,32 +98,32 @@ class MapTabs(QWidget):
         except Exception:
             pass
 
-    def center_solar_on_system(self, system_id: int) -> None:
+    def center_system_on_system(self, system_id: int) -> None:
         try:
-            if getattr(self.solar, "_system_id", None) != int(system_id):
-                self.solar.load(int(system_id))
-            self.solar.center_on_system(int(system_id))
+            if getattr(self.system, "_system_id", None) != int(system_id):
+                self.system.load(int(system_id))
+            self.system.center_on_system(int(system_id))
         except Exception:
             pass
 
-    def center_solar_on_location(self, location_id: int) -> None:
+    def center_system_on_location(self, location_id: int) -> None:
         try:
             # IMPORTANT: do NOT reload to player's system here.
-            # We are already viewing a specific system in Solar; just center there.
-            self.solar.center_on_location(int(location_id))
+            # We are already viewing a specific system in the System view; just center there.
+            self.system.center_on_location(int(location_id))
         except Exception:
             pass
 
     def reload_all(self) -> None:
-        """Reloads all map data, ensuring the solar view is synchronized with the player's current system."""
+        """Reloads all map data, ensuring the system view is synchronized with the player's current system."""
         try:
             self.galaxy.load()
         except Exception:
             pass
 
-        # Always ensure the solar map is showing the player's actual current system from the database.
+        # Always ensure the system map is showing the player's actual current system from the database.
         # This corrects the bug where the view would not update after a new game or load.
         try:
-            self._ensure_solar_loaded_from_player()
+            self._ensure_system_loaded_from_player()
         except Exception:
             pass

@@ -1,7 +1,7 @@
-# /ui/maps/solar.py
+# /ui/maps/system.py
 
 """
-SolarMapWidget (display-only, GIF-first assets):
+SystemMapWidget (display-only, GIF-first assets):
 - central star at (0, 0) using a star GIF (or a visible placeholder if missing)
 - planets on orbit rings (deterministic angles), with UNIQUE planet GIF per system when available
 - stations use UNIQUE station GIFs per system; stations orbit their parent planet, else the star
@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 # --- Assets ---
 ASSETS_ROOT = Path(__file__).resolve().parents[2] / "assets"
-SOLAR_BG_DIR = ASSETS_ROOT / "solar_backgrounds"
+SYSTEM_BG_DIR = ASSETS_ROOT / "system_backgrounds"
 STARS_DIR = ASSETS_ROOT / "stars"
 PLANETS_DIR = ASSETS_ROOT / "planets"
 STATIONS_DIR = ASSETS_ROOT / "stations"
@@ -49,6 +49,11 @@ GAS_DIR = ASSETS_ROOT / "gas_clouds"
 ASTEROID_DIR = ASSETS_ROOT / "asteroid_fields"
 ICE_DIR      = ASSETS_ROOT / "ice_fields"
 CRYSTAL_DIR  = ASSETS_ROOT / "crystal_veins"
+
+# Default orbit layout tunables (easy to tweak)
+DEFAULT_BASE_ORBIT_AU = 20.0    # innermost ring distance from star (AU)
+DEFAULT_RING_GAP_AU = 20.0      # default gap between rings (AU) when per-ring offsets not provided
+DEFAULT_SPREAD_PX_PER_AU = 8.0 # pixels per AU (visual scale)
 
 
 def _to_int(x: object) -> Optional[int]:
@@ -93,7 +98,7 @@ def _db_icons_only() -> bool:
         return False
 
 
-class SolarMapWidget(BackgroundView):
+class SystemMapWidget(BackgroundView):
     logMessage = Signal(str)
 
     def __init__(self, parent: object | None = None) -> None:
@@ -136,10 +141,14 @@ class SolarMapWidget(BackgroundView):
         self._star_radius_px: float = 20.0
 
         # Visual scale: we place items directly in pixels using a spread factor
-        self._spread: float = 12.0
+        self._spread: float = DEFAULT_SPREAD_PX_PER_AU
         # make ring spacing configurable (roomy defaults)
-        self._ring_gap_au: float = 10.4
-        self._base_orbit_au: float = 10.0
+        self._ring_gap_au: float = DEFAULT_RING_GAP_AU
+        self._base_orbit_au: float = DEFAULT_BASE_ORBIT_AU
+        # Optional per-ring AU offsets. If provided, this list defines the gap
+        # between consecutive rings starting at the gap after the base ring.
+        # For example, [4.0, 6.0] means: ring0=base, ring1=base+4.0, ring2=base+4.0+6.0
+        self._ring_offsets_au: Optional[List[float]] = None
 
         # If BackgroundView exposes unit scaling, keep it harmless
         try:
@@ -162,6 +171,21 @@ class SolarMapWidget(BackgroundView):
         except Exception:
             pass
 
+    def set_ring_offsets_au(self, offsets: Optional[List[float]], *, reload: bool = True) -> None:
+        """Set explicit per-ring AU offsets (list of gaps between consecutive rings).
+
+        If `offsets` is None, the widget falls back to the uniform `_ring_gap_au`.
+        """
+        try:
+            if offsets is None:
+                self._ring_offsets_au = None
+            else:
+                self._ring_offsets_au = [float(x) for x in offsets]
+            if reload and self._system_id is not None:
+                self.load(int(self._system_id))
+        except Exception:
+            pass
+
     def set_base_orbit_au(self, base_au: float, *, reload: bool = True) -> None:
         try:
             b = float(base_au)
@@ -181,6 +205,35 @@ class SolarMapWidget(BackgroundView):
                     self.load(int(self._system_id))
         except Exception:
             pass
+
+    # ---------- Orbit helpers ----------
+    def _ring_au_for_index(self, index: int) -> float:
+        """Return the AU distance for the ring at `index`.
+
+        index=0 => base orbit; index=1 => next ring, etc. If per-ring offsets
+        are provided via `_ring_offsets_au`, they are used; otherwise the
+        uniform `_ring_gap_au` is applied.
+        """
+        try:
+            base = float(self._base_orbit_au)
+            if index <= 0:
+                return base
+            # If explicit offsets provided, consume them where available
+            if self._ring_offsets_au:
+                s = 0.0
+                for i in range(index):
+                    if i < len(self._ring_offsets_au):
+                        try:
+                            s += float(self._ring_offsets_au[i])
+                        except Exception:
+                            s += float(self._ring_gap_au)
+                    else:
+                        s += float(self._ring_gap_au)
+                return base + s
+            # Fallback: uniform spacing
+            return base + float(index) * float(self._ring_gap_au)
+        except Exception:
+            return float(self._base_orbit_au)
 
     # ---------- Public API ----------
     def get_entities(self) -> List[Dict]:
@@ -289,9 +342,9 @@ class SolarMapWidget(BackgroundView):
 
         # Background selection
         candidates = [
-            SOLAR_BG_DIR / f"system_bg_{system_id}.png",
-            SOLAR_BG_DIR / "system_bg_01.png",
-            SOLAR_BG_DIR / "default.png",
+            SYSTEM_BG_DIR / f"system_bg_{system_id}.png",
+            SYSTEM_BG_DIR / "system_bg_01.png",
+            SYSTEM_BG_DIR / "default.png",
         ]
         bg_path = next((p for p in candidates if p.exists()), None)
         self.set_background_image(str(bg_path) if bg_path else None)
@@ -418,7 +471,7 @@ class SolarMapWidget(BackgroundView):
         ring_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         ring_pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
         for i in range(len(planets)):
-            r_au = base_au + i * ring_gap_au
+            r_au = self._ring_au_for_index(i)
             r = r_au * self._spread
             ring = self._scene.addEllipse(-r, -r, 2 * r, 2 * r, ring_pen)
             ring.setZValue(-9)
@@ -436,7 +489,7 @@ class SolarMapWidget(BackgroundView):
                 if n_planets == 1
                 else (min_px_planet + (max_px_planet - min_px_planet) * (i / (n_planets - 1)))
             )
-            ring_r = (base_au + i * ring_gap_au) * self._spread
+            ring_r = (self._ring_au_for_index(i)) * self._spread
             angle_deg = (((_row_id(l) or 0) * 73.398) % 360.0)
             a0 = radians(angle_deg)
             x = ring_r * cos(a0)
@@ -475,12 +528,23 @@ class SolarMapWidget(BackgroundView):
                 parent_id = planet_ids[j % len(planet_ids)]  # type: ignore[assignment]
             else:
                 parent_id = None  # type: ignore[assignment]
-
             if parent_id is not None:
-                radius_px = 8.0
+                # Orbit outside the parent's visible radius so the station is
+                # always visible and doesn't overlap the planet graphic.
+                parent_item = self._items.get(parent_id)
+                if parent_item is not None:
+                    try:
+                        pr = parent_item.mapToScene(parent_item.boundingRect()).boundingRect()
+                        parent_radius = max(pr.width(), pr.height()) * 0.5
+                    except Exception:
+                        parent_radius = 0.0
+                else:
+                    parent_radius = 0.0
+                margin_px = 8.0
+                radius_px = max(8.0, parent_radius + margin_px)
                 px, py = self._drawpos.get(parent_id, (0.0, 0.0))
             else:
-                radius_px = ((base_au + 0.5) * self._spread) * 0.5
+                radius_px = ((self._ring_au_for_index(0) + 0.5) * self._spread) * 0.5
                 px, py = (0.0, 0.0)
 
             a0 = radians(((lid * 211.73) % 360.0))
@@ -508,7 +572,7 @@ class SolarMapWidget(BackgroundView):
         for k, l in enumerate(gate_rows):
             lid = _row_id(l) or 0
             outer_index = len(planets) + k
-            ring_r = (base_au + outer_index * ring_gap_au) * self._spread
+            ring_r = (self._ring_au_for_index(outer_index)) * self._spread
 
             ring = self._scene.addEllipse(-ring_r, -ring_r, 2 * ring_r, 2 * ring_r, ring_pen)
             ring.setZValue(-9)
@@ -557,7 +621,20 @@ class SolarMapWidget(BackgroundView):
 
             ridx = next_radius_index.get(parent_key, 0)
             ridx = min(ridx, max(0, len(sat_radii) - 1))
-            radius_px = sat_radii[ridx] if sat_radii else 5.0
+            # Prefer an orbit radius that places the moon outside the parent's
+            # visual radius so it's always visible; fall back to sat_radii.
+            parent_item = self._items.get(parent_key)
+            if parent_item is not None:
+                try:
+                    pr = parent_item.mapToScene(parent_item.boundingRect()).boundingRect()
+                    parent_radius = max(pr.width(), pr.height()) * 0.5
+                except Exception:
+                    parent_radius = 0.0
+            else:
+                parent_radius = 0.0
+            margin_px = 6.0
+            fallback_radius = sat_radii[ridx] if sat_radii else 5.0
+            radius_px = max(fallback_radius, parent_radius + margin_px)
             next_radius_index[parent_key] = min(ridx + 1, max(0, len(sat_radii) - 1))
 
             a0 = radians((((lid * 997.13) % 360.0)))
@@ -587,7 +664,7 @@ class SolarMapWidget(BackgroundView):
             for n, l in enumerate(rows):
                 rid = _to_int(l.get("location_id")) or 0  # <-- FIX: use location_id
                 outer_index = len(planets) + len(gate_rows) + start_outer_index + n
-                ring_r = (base_au + outer_index * ring_gap_au) * self._spread
+                ring_r = (self._ring_au_for_index(outer_index)) * self._spread
 
                 ring = self._scene.addEllipse(-ring_r, -ring_r, 2 * ring_r, 2 * ring_r, ring_pen)
                 ring.setZValue(-9)

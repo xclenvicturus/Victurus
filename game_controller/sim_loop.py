@@ -65,7 +65,7 @@ class UniverseSimulator:
     """
     Runs a lightweight tick loop on a background thread.
 
-    - Skips the 'visible' system (the one currently shown in the Solar view).
+    - Skips the 'visible' system (the one currently shown in the System view).
     - Keeps basic economy/ship/etc. calculations moving for other systems.
     - Streams optional debug lines to a sink (UI log or file), and to tick_debug.
 
@@ -423,7 +423,7 @@ class UniverseSimulator:
     # ---- UI hook ----
     def publish_tick(self, **kv: Any) -> None:
         """
-        Optional: the *visible* Solar view can call this once per frame to push
+    Optional: the *visible* System view can call this once per frame to push
         a summary of on-screen work without paying logging costs when disabled.
         """
         if not self._debug_enabled:

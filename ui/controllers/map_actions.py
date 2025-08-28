@@ -36,16 +36,16 @@ class MapActions:
                 pass
         return True
 
-    def _solar(self):
-        return getattr(self._tabs, "solar", None)
+    def _system(self):
+        return getattr(self._tabs, "system", None)
 
     def _resolve_virtual(self, entity_id: int) -> Optional[Tuple[str, int]]:
         """
-        Ask the Solar widget to resolve virtual ids (moons or star).
+    Ask the System widget to resolve virtual ids (moons or star).
         Returns ('loc', location_id) or ('star', system_id) or None.
         """
-        solar = self._solar()
-        resolver = getattr(solar, "resolve_entity", None)
+        system = self._system()
+        resolver = getattr(system, "resolve_entity", None)
         if callable(resolver):
             try:
                 typed_resolver = cast(Callable[[int], Optional[Tuple[str, int]]], resolver)
@@ -71,7 +71,7 @@ class MapActions:
                 # Try resolver first; fall back to sentinel semantics (star/system)
                 vr = self._resolve_virtual(entity_id)
                 if vr and vr[0] == "star":
-                    center_sys = getattr(self._tabs, "center_solar_on_system", None)
+                    center_sys = getattr(self._tabs, "center_system_on_system", None)
                     if callable(center_sys):
                         try:
                             center_sys(int(vr[1]))
@@ -80,7 +80,7 @@ class MapActions:
                             pass
                 else:
                     # Fallback: negative id encodes system id of the star
-                    center_sys = getattr(self._tabs, "center_solar_on_system", None)
+                    center_sys = getattr(self._tabs, "center_system_on_system", None)
                     if callable(center_sys):
                         try:
                             center_sys(int(-entity_id))
@@ -88,7 +88,7 @@ class MapActions:
                         except Exception:
                             pass
 
-            center_loc = getattr(self._tabs, "center_solar_on_location", None)
+            center_loc = getattr(self._tabs, "center_system_on_location", None)
             if callable(center_loc):
                 try:
                     center_loc(int(entity_id))
@@ -97,8 +97,8 @@ class MapActions:
 
     def open(self, entity_id: int) -> None:
         """
-        In Galaxy: synchronously load the chosen system into the Solar view,
-        then switch to the Solar tab, then center on it.
+    In Galaxy: synchronously load the chosen system into the System view,
+    then switch to the System tab, then center on it.
         In System: same as focus.
         """
         if self._using_galaxy():
@@ -108,25 +108,25 @@ class MapActions:
             except Exception:
                 return
 
-            # 1) Load Solar with the target system *before* switching tabs
-            solar = self._solar()
-            load = getattr(solar, "load", None)
+            # 1) Load System with the target system *before* switching tabs
+            system = self._system()
+            load = getattr(system, "load", None)
             if callable(load):
                 try:
                     load(sys_id)
                 except Exception:
                     pass
 
-            # 2) Switch to Solar tab
+            # 2) Switch to System tab
             tw = self._tab_widget()
             if tw is not None:
                 try:
-                    tw.setCurrentIndex(1)  # 0=Galaxy, 1=Solar
+                    tw.setCurrentIndex(1)  # 0=Galaxy, 1=System
                 except Exception:
                     pass
 
             # 3) Center on that system
-            center_sys = getattr(self._tabs, "center_solar_on_system", None)
+            center_sys = getattr(self._tabs, "center_system_on_system", None)
             if callable(center_sys):
                 try:
                     center_sys(sys_id)

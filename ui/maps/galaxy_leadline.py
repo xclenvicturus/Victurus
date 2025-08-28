@@ -367,7 +367,7 @@ class GalaxyLeaderLineController(QObject):
             return False
 
     def _install_view_event_filters(self) -> None:
-        for wname in ("galaxy", "solar"):
+        for wname in ("galaxy", "system"):
             w = getattr(self._tabs, wname, None)
             if isinstance(w, QWidget):
                 try:

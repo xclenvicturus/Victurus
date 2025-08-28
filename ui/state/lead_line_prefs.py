@@ -51,7 +51,7 @@ class GalaxyLeaderLinePrefs:
 
 class SystemLeaderLinePrefs:
     """
-    Preferences for the System list → System/Solar map leader line.
+        Preferences for the System list → System map leader line.
     Applies only to the parent's `lead` (system) controller.
     """
     def __init__(self, color: str = "#00FF80", width: int = 2, glow: bool = True):
@@ -67,7 +67,7 @@ class SystemLeaderLinePrefs:
                 pass
 
     def apply_to_parent(self, parent) -> None:
-        # Apply ONLY to the system/solar leader-line controller
+    # Apply ONLY to the system leader-line controller
         lead = getattr(parent, "lead", None)
         if lead:
             try:

@@ -16,14 +16,14 @@ class _MainWindowLike(Protocol):
     log_dock: Optional[QDockWidget]
     # location panels (split UI)
     location_panel_galaxy: Optional[QWidget]
-    location_panel_solar: Optional[QWidget]
+    location_panel_system: Optional[QWidget]
     # legacy single panel (optional)
     location_panel: Optional[QWidget]
     # actions set up by this module
     act_panel_status: Optional[QAction]
     act_panel_log: Optional[QAction]
     act_panel_location_galaxy: Optional[QAction]
-    act_panel_location_solar: Optional[QAction]
+    act_panel_location_system: Optional[QAction]
     act_panel_location: Optional[QAction]
     # legacy global leader-line toggle
     act_leader_glow: Optional[QAction]
@@ -92,8 +92,8 @@ def sync_panels_menu_state(win: _MainWindowLike) -> None:
             act.blockSignals(False)
 
     # System list (bottom)
-    act = getattr(win, "act_panel_location_solar", None)
-    panel = getattr(win, "location_panel_solar", None)
+    act = getattr(win, "act_panel_location_system", None)
+    panel = getattr(win, "location_panel_system", None)
     if isinstance(act, QAction):
         try:
             act.blockSignals(True)
@@ -220,13 +220,13 @@ def install_view_menu_extras(win: _MainWindowLike, prefs: Any) -> None:
     win.act_panel_location_galaxy = act_p_gal
 
     # System list (bottom)
-    act_p_sol = QAction("System List", panels)
-    act_p_sol.setCheckable(True)
-    act_p_sol.setEnabled(isinstance(getattr(win, "location_panel_solar", None), QWidget))
-    act_p_sol.setChecked(_checked_visible(getattr(win, "location_panel_solar", None)))
-    act_p_sol.toggled.connect(_toggle(lambda: getattr(win, "location_panel_solar", None)))
-    panels.addAction(act_p_sol)
-    win.act_panel_location_solar = act_p_sol
+    act_p_sys = QAction("System List", panels)
+    act_p_sys.setCheckable(True)
+    act_p_sys.setEnabled(isinstance(getattr(win, "location_panel_system", None), QWidget))
+    act_p_sys.setChecked(_checked_visible(getattr(win, "location_panel_system", None)))
+    act_p_sys.toggled.connect(_toggle(lambda: getattr(win, "location_panel_system", None)))
+    panels.addAction(act_p_sys)
+    win.act_panel_location_system = act_p_sys
 
     # Legacy single list (optional)
     act_p_loc = QAction("Location List (legacy)", panels)
@@ -245,7 +245,7 @@ def install_view_menu_extras(win: _MainWindowLike, prefs: Any) -> None:
         _toggle(lambda: getattr(win, "status_dock", None))(True),
         _toggle(lambda: getattr(win, "log_dock", None))(True),
         _toggle(lambda: getattr(win, "location_panel_galaxy", None))(True),
-        _toggle(lambda: getattr(win, "location_panel_solar", None))(True),
+        _toggle(lambda: getattr(win, "location_panel_system", None))(True),
         _toggle(lambda: getattr(win, "location_panel", None))(True),  # legacy
     ])
     panels.addAction(act_show_all)
@@ -255,7 +255,7 @@ def install_view_menu_extras(win: _MainWindowLike, prefs: Any) -> None:
         _toggle(lambda: getattr(win, "status_dock", None))(False),
         _toggle(lambda: getattr(win, "log_dock", None))(False),
         _toggle(lambda: getattr(win, "location_panel_galaxy", None))(False),
-        _toggle(lambda: getattr(win, "location_panel_solar", None))(False),
+        _toggle(lambda: getattr(win, "location_panel_system", None))(False),
         _toggle(lambda: getattr(win, "location_panel", None))(False),  # legacy
     ])
     panels.addAction(act_hide_all)

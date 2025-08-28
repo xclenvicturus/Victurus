@@ -88,11 +88,11 @@ class MainWindow(QMainWindow):
         self._system_ll_prefs = SystemLeaderLinePrefs("#00FF80", 2, True)
 
         # ---- Controllers ----
-        self.lead: Optional[SystemLeaderLineController] = None          # System list → System map
-        self.lead_galaxy: Optional[GalaxyLeaderLineController] = None   # Galaxy list → Galaxy map
+        self.lead: Optional[SystemLeaderLineController] = None
+        self.lead_galaxy: Optional[GalaxyLeaderLineController] = None
         self.presenter_galaxy: Optional[GalaxyLocationPresenter] = None
         self.presenter_system: Optional[SystemLocationPresenter] = None
-        self.travel_flow = None  # created lazily by _ensure_travel_flow()
+        self.travel_flow = None
 
         # ---- Splitters ----
         self._central_splitter: Optional[QSplitter] = None
@@ -100,20 +100,18 @@ class MainWindow(QMainWindow):
 
         # ---- Location panels (typed to QWidget|None to satisfy protocol) ----
         self.location_panel_galaxy: QWidget | None = None
-        self.location_panel_solar: QWidget | None = None
-        self.location_panel: QWidget | None = None  # legacy alias to system list
+        self.location_panel_system: QWidget | None = None
+        self.location_panel: QWidget | None = None
 
         # ---- Actions expected by view_menu protocol (predeclare) ----
         self.act_panel_status: QAction | None = None
         self.act_panel_log: QAction | None = None
         self.act_panel_location_galaxy: QAction | None = None
-        self.act_panel_location_solar: QAction | None = None
-        self.act_panel_location: QAction | None = None  # legacy single list
+        self.act_panel_location_system: QAction | None = None
+        self.act_panel_location: QAction | None = None
 
         # Legacy leader-line glow action (needed for protocol compatibility)
         self.act_leader_glow: QAction | None = None
-
-        # Separate leader-line actions
         self.act_system_leader_glow: QAction | None = None
         self.act_galaxy_leader_glow: QAction | None = None
 
@@ -125,8 +123,8 @@ class MainWindow(QMainWindow):
         # ---- Log dock (exists at startup) ----
         self.log = QPlainTextEdit(self)
         self.log.setReadOnly(True)
-        self.log_dock: QDockWidget | None = QDockWidget("Log", self)  # Optional for protocol match
-        ldock = self.log_dock  # narrow type for calls below
+        self.log_dock: QDockWidget | None = QDockWidget("Log", self)
+        ldock = self.log_dock
         ldock.setObjectName("dock_Log")
         ldock.setWidget(self.log)
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, ldock)
@@ -148,11 +146,9 @@ class MainWindow(QMainWindow):
 
         # ---- Menus ----
         install_file_menu(self)
-        # Keep existing View/Panel wiring
         self.leader_prefs = _LeaderPrefsAdapter(self)
         install_view_menu_extras(self, self.leader_prefs)
-        # Add our separate per-line menus
-    
+
         # ---- Window state restore (global/app-wide) ----
         window_state.restore_mainwindow_state(self, self.WIN_ID)
         window_state.set_window_open(self.WIN_ID, True)
@@ -341,7 +337,7 @@ class MainWindow(QMainWindow):
 
             # Assign to Optional QWidget-typed attributes (satisfies protocol)
             self.location_panel_galaxy = panel_galaxy
-            self.location_panel_solar = panel_system
+            self.location_panel_system = panel_system
             self.location_panel = panel_system  # legacy alias
 
             right.addWidget(panel_galaxy)
@@ -565,7 +561,7 @@ class MainWindow(QMainWindow):
         # Location lists visibility
         try:
             state["galaxy_list_visible"] = bool(self.location_panel_galaxy.isVisible()) if self.location_panel_galaxy else True
-            state["system_list_visible"] = bool(self.location_panel_solar.isVisible()) if self.location_panel_solar else True
+            state["system_list_visible"] = bool(self.location_panel_system.isVisible()) if self.location_panel_system else True
         except Exception:
             pass
 
@@ -581,12 +577,12 @@ class MainWindow(QMainWindow):
             pass
 
         try:
-            if isinstance(self.location_panel_solar, SystemLocationList):
-                tree = self.location_panel_solar.tree
+            if isinstance(self.location_panel_system, SystemLocationList):
+                tree = self.location_panel_system.tree
                 state["system_col_widths"] = [tree.columnWidth(i) for i in range(tree.columnCount())]
-                state["system_sort_text"] = str(self.location_panel_solar.sort.currentText())
-                state["system_category_index"] = int(self.location_panel_solar.category.currentIndex())
-                state["system_search"] = str(self.location_panel_solar.search.text())
+                state["system_sort_text"] = str(self.location_panel_system.sort.currentText())
+                state["system_category_index"] = int(self.location_panel_system.category.currentIndex())
+                state["system_search"] = str(self.location_panel_system.search.text())
         except Exception:
             pass
 
@@ -667,8 +663,8 @@ class MainWindow(QMainWindow):
 
         try:
             vis_s = state.get("system_list_visible", True)
-            if self.location_panel_solar:
-                self.location_panel_solar.setVisible(bool(vis_s))
+            if self.location_panel_system:
+                self.location_panel_system.setVisible(bool(vis_s))
         except Exception:
             pass
 
@@ -695,18 +691,18 @@ class MainWindow(QMainWindow):
             pass
 
         try:
-            if isinstance(self.location_panel_solar, SystemLocationList):
+            if isinstance(self.location_panel_system, SystemLocationList):
                 cat_idx = int(state.get("system_category_index", 0))
-                self.location_panel_solar.category.setCurrentIndex(cat_idx)
+                self.location_panel_system.category.setCurrentIndex(cat_idx)
                 sort_text = state.get("system_sort_text")
                 if isinstance(sort_text, str) and sort_text:
-                    i = self.location_panel_solar.sort.findText(sort_text)
+                    i = self.location_panel_system.sort.findText(sort_text)
                     if i >= 0:
-                        self.location_panel_solar.sort.setCurrentIndex(i)
-                self.location_panel_solar.search.setText(str(state.get("system_search", "")))
+                        self.location_panel_system.sort.setCurrentIndex(i)
+                self.location_panel_system.search.setText(str(state.get("system_search", "")))
                 widths = state.get("system_col_widths")
                 if isinstance(widths, list):
-                    tree = self.location_panel_solar.tree
+                    tree = self.location_panel_system.tree
                     for i, w in enumerate(widths):
                         try:
                             tree.setColumnWidth(i, int(w))

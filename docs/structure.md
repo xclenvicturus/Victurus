@@ -4,7 +4,7 @@ This document summarizes the repository layout and what each part is responsible
 
 ## Key modules
 
-- **UI (`ui/`)** — Widgets, panels, and map views (galaxy/solar) built with PySide6.
+- **UI (`ui/`)** — Widgets, panels, and map views (galaxy/system) built with PySide6.
 - **Game (`game/`)** — Player snapshot, ship state, travel math, and game‑flow orchestration.
 - **Data (`data/`)** — SQLite schema, seed helpers, and the runtime DB access layer.
 - **Save (`save/`)** — Save‑game models, paths, serialization, and lifecycle management.
@@ -50,7 +50,7 @@ Victurus/
 │  │  └─ `w01.gif`
 │  ├─ galaxy_backgrounds/
 │  │  └─ `default.png`
-│  └─ solar_backgrounds/
+│  └─ system_backgrounds/
 │     └─ `system_bg_01.png`
 │
 ├─ docs/
@@ -102,7 +102,7 @@ Victurus/
   │  ├─ `galaxy.py`
   │  ├─ `icons.py`
   │  ├─ `background.py`
-  │  ├─ `solar.py`
+  │  ├─ `system.py`
   │  ├─ `tabs.py`
   │  ├─ `galaxy_leadline.py`
   │  └─ `system_leadline.py`
@@ -192,7 +192,7 @@ These tools are intended for developer/test use and write into the user's Docume
 - `ice_fields/` — Sprites for ice field nodes.
 - `gas_clouds/` — Sprites for gas cloud nodes.
 - `planets/`, `moons/`, `stars/`, `stations/`, `warpgates/` — Body and structure sprites.
-- `galaxy_backgrounds/`, `solar_backgrounds/` — Parallax/skybox images.
+- `galaxy_backgrounds/`, `system_backgrounds/` — Parallax/skybox images.
 
 ### docs/
 
@@ -234,7 +234,7 @@ These tools are intended for developer/test use and write into the user's Docume
 - `__init__.py` — Package marker.
 - `galaxy_location_presenter.py` — Adapts galaxy‑level DB rows to widget‑ready models.
 - `map_actions.py` — Shared actions/commands for map UIs (zoom, center, selection).
-- `system_location_presenter.py` — Adapts system‑level locations/resources for solar map.
+- `system_location_presenter.py` — Adapts system‑level locations/resources for system map.
 
 ### ui/dialogs/
 
@@ -251,8 +251,8 @@ These tools are intended for developer/test use and write into the user's Docume
 
 - `galaxy.py` — Galaxy map widget and rendering pipeline.
 - `icons.py` — Icon loading/cataloging helpers for map entities.
-- `background.py` — Parallax/starfield background loaders (galaxy/solar).
-- `solar.py` — System map widget; renders bodies and resource nodes (uses plural resource asset dirs).
+- `background.py` — Parallax/starfield background loaders (galaxy/system).
+- `system.py` — System map widget; renders bodies and resource nodes (uses plural resource asset dirs).
 - `tabs.py` — Map tab container & tab‑switching logic.
 - `galaxy_leadline.py` — Lead lines and selection overlay for galaxy map.
 - `system_leadline.py` — Lead lines and selection overlay for system map.

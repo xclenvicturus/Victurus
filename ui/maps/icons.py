@@ -43,7 +43,7 @@ ASSETS_ROOT = Path(__file__).resolve().parents[2] / "assets"
 _ASSET_SUBFOLDERS = [
     "stars", "planets", "moons", "stations", "warp_gates",
     "asteroid_fields", "gas_clouds", "ice_fields", "crystal_veins",
-    "solar_backgrounds", "galaxy_backgrounds", "icons",
+    "system_backgrounds", "galaxy_backgrounds", "icons",
 ]
 
 # ---------- helpers ----------

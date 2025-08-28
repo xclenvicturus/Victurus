@@ -38,7 +38,7 @@ class _MainWindowLike(Protocol):
     # Optional presenters / panels (new split or legacy dual)
     presenter_system: Any  # may not exist in older builds
     presenter_dual: Any    # legacy
-    location_panel_solar: Optional[QWidget]
+    location_panel_system: Optional[QWidget]
 
 
 # ------------------------ small utils ------------------------
@@ -104,7 +104,7 @@ class GalaxyLocationPresenter:
         """
         Single-click behavior for Galaxy tab:
           • Center the galaxy map on the clicked system.
-          • ALSO load that system into the Solar view and refresh the System list,
+          • ALSO load that system into the System view and refresh the System list,
             without switching tabs. This makes the right-side System list reflect
             the clicked system immediately.
         """
@@ -134,11 +134,11 @@ class GalaxyLocationPresenter:
                 except Exception:
                     pass
 
-        # Load the selected system into the Solar widget (no tab switch).
-        solar_widget = getattr(self._tabs, "solar", None)
-        if solar_widget is not None and hasattr(solar_widget, "load"):
+        # Load the selected system into the System widget (no tab switch).
+        system_widget = getattr(self._tabs, "system", None)
+        if system_widget is not None and hasattr(system_widget, "load"):
             try:
-                solar_widget.load(sys_id)
+                system_widget.load(sys_id)
             except Exception:
                 pass
 
@@ -148,7 +148,7 @@ class GalaxyLocationPresenter:
     def open(self, entity_id: int) -> None:
         """
         Double-click:
-          - System row (entity_id < 0): load that system in Solar and switch to the Solar tab.
+          - System row (entity_id < 0): load that system in the System view and switch to the System tab.
         """
         try:
             if entity_id >= 0:
@@ -157,23 +157,23 @@ class GalaxyLocationPresenter:
             system_id = -int(entity_id)
 
             tabs = getattr(self._tabs, "tabs", None)
-            solar = getattr(self._tabs, "solar", None)
+            system_widget = getattr(self._tabs, "system", None)
 
-            if solar and hasattr(solar, "load") and hasattr(solar, "center_on_system"):
+            if system_widget and hasattr(system_widget, "load") and hasattr(system_widget, "center_on_system"):
                 try:
-                    solar.load(system_id)
-                    solar.center_on_system(system_id)
+                    system_widget.load(system_id)
+                    system_widget.center_on_system(system_id)
                 except Exception:
                     try:
-                        solar.center_on_entity(-system_id)
+                        system_widget.center_on_entity(-system_id)
                     except Exception:
                         pass
 
-            # Switch to Solar tab
+            # Switch to System tab
             if tabs is not None:
                 try:
                     if getattr(tabs, "count", lambda: 0)() >= 2:
-                        tabs.setCurrentIndex(1)  # Galaxy=0, Solar=1
+                        tabs.setCurrentIndex(1)  # Galaxy=0, System=1
                 except Exception:
                     pass
         except Exception:
@@ -203,7 +203,7 @@ class GalaxyLocationPresenter:
     def _trigger_system_list_refresh(self) -> None:
         """
         Try multiple strategies (new split presenters and legacy dual) to refresh
-        the right-side System list immediately after we load the Solar system.
+    the right-side System list immediately after we load the System.
         """
         try:
             mw = self._main_window()
@@ -228,7 +228,7 @@ class GalaxyLocationPresenter:
                     pass
 
             # As a last resort, poke the System list panel to ask for a refresh
-            panel = getattr(mw, "location_panel_solar", None)
+            panel = getattr(mw, "location_panel_system", None)
             if panel is not None and hasattr(panel, "refreshRequested"):
                 try:
                     panel.refreshRequested.emit()

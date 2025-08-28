@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS markets (
     FOREIGN KEY (item_id) REFERENCES items(item_id) ON DELETE CASCADE
 );
 
--- Locations inside a system (for solar map), using HIERARCHICAL LOCAL AU COORDS
+-- Locations inside a system (for system map), using HIERARCHICAL LOCAL AU COORDS
 CREATE TABLE IF NOT EXISTS locations (
     location_id          INTEGER PRIMARY KEY AUTOINCREMENT,
     system_id            INTEGER NOT NULL,
@@ -153,8 +153,7 @@ CREATE TABLE IF NOT EXISTS gate_links (
 );
 
 -- Resource node metadata (attached to a location with location_type like 'asteroid_field','gas_clouds','ice_field','crystal_vein')
--- resource_nodes merged into `locations` (use columns: resource_type, richness, regen_rate)
-
+-- Locations inside a system (for system map), using HIERARCHICAL LOCAL AU COORDS
 -- Facilities placed at locations (planet/station/resource)
 CREATE TABLE IF NOT EXISTS facilities (
   facility_id   INTEGER PRIMARY KEY AUTOINCREMENT,

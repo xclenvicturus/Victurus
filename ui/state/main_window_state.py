@@ -115,23 +115,23 @@ def collect(win) -> Dict[str, Any]:
     # ---- Panels (new: capture BOTH if present) ----
     try:
         # Preferred names in the new split UI:
-        panel_solar  = getattr(win, "location_panel_solar",  None)
+        panel_system = getattr(win, "location_panel_system",  None)
         panel_galaxy = getattr(win, "location_panel_galaxy", None)
 
         # Back-compat: some builds still expose a single 'location_panel'
         legacy_panel = getattr(win, "location_panel", None)
 
-        solar_state  = _collect_panel_state(panel_solar)  or _collect_panel_state(legacy_panel)
+        system_state  = _collect_panel_state(panel_system)  or _collect_panel_state(legacy_panel)
         galaxy_state = _collect_panel_state(panel_galaxy)
 
-        if solar_state:
-            state["panel_solar"] = solar_state
+        if system_state:
+            state["panel_system"] = system_state
         if galaxy_state:
             state["panel_galaxy"] = galaxy_state
 
         # Also keep legacy keys for older restores
-        if legacy_panel and "panel_solar" not in state:
-            state["panel_legacy"] = solar_state or {}
+        if legacy_panel and "panel_system" not in state:
+            state["panel_legacy"] = system_state or {}
     except Exception:
         pass
 
@@ -187,15 +187,15 @@ def restore(win, state: Dict[str, Any]) -> None:
 
     # ---- Panels (new: restore BOTH if present) ----
     try:
-        panel_solar  = getattr(win, "location_panel_solar",  None)
+        panel_system  = getattr(win, "location_panel_system",  None)
         panel_galaxy = getattr(win, "location_panel_galaxy", None)
         legacy_panel = getattr(win, "location_panel", None)
 
-        solar_state  = state.get("panel_solar")
+        system_state  = state.get("panel_system")
         galaxy_state = state.get("panel_galaxy")
 
-        if solar_state:
-            _restore_panel_state(panel_solar or legacy_panel, solar_state)
+        if system_state:
+            _restore_panel_state(panel_system or legacy_panel, system_state)
         elif "panel_legacy" in state:
             _restore_panel_state(legacy_panel, state.get("panel_legacy", {}))
 
