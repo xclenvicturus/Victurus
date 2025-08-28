@@ -1,4 +1,5 @@
 # /ui/state/leader_line_prefs.py
+
 from __future__ import annotations
 
 from PySide6.QtGui import QColor

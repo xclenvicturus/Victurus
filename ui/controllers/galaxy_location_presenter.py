@@ -1,4 +1,5 @@
 # /ui/controllers/galaxy_location_presenter.py
+
 from __future__ import annotations
 
 from typing import Dict, List, Optional, Iterable, Any, Protocol, runtime_checkable, cast
@@ -256,7 +257,7 @@ class GalaxyLocationPresenter:
 
     def _icon_provider(self, r: Dict[str, Any]):
         """Use the universal pm_from_path_or_kind for crisp thumbnails from any source."""
-        p = r.get("icon_path") or r.get("star_icon_path")
+        p = r.get("icon_path")
         if isinstance(p, str) and p:
             if pm_from_path_or_kind is not None:
                 try:
@@ -327,8 +328,8 @@ class GalaxyLocationPresenter:
                 "can_reach": bool(td.get("can_reach", True)),
                 "can_reach_jump": bool(td.get("can_reach_jump", True)),
                 "can_reach_fuel": bool(td.get("can_reach_fuel", True)),
-                # Prefer DB star_icon_path if present (DB fallback), else whatever the galaxy widget provided
-                "icon_path": s.get("icon_path") or s.get("star_icon_path"),
+                # Prefer DB icon_path (system-level) if present, else whatever the galaxy widget provided
+                "icon_path": s.get("icon_path"),
                 "is_current": (sid == cur_sys_id),
             })
         return rows

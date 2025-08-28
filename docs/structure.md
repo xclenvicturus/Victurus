@@ -11,6 +11,8 @@ This document summarizes the repository layout and what each part is responsible
 - **Docs (`docs/`)** — Developer‑facing documentation.
 - **Assets (`assets/`)** — Star, planet, station, and other art assets (GIF/PNG) organized by type (e.g., `assets/planets/p01.gif`). The UI selects deterministic assets per system/location so thumbnails match the map.
 
+Note: resource art lives under the plural resource folders, e.g. `assets/asteroid_fields`, `assets/gas_clouds`, `assets/ice_fields`, `assets/crystal_veins`.
+
 ## Tree
 
 Victurus/
@@ -22,7 +24,7 @@ Victurus/
 │  ├─ `db.py`
 │  ├─ `schema.sql`
 │  ├─ `seed.py`
-│  └─ `universal_seed.json`
+│  └─ `universe_seed.json`
 │
 ├─ database/
 │  └─ `game.db`
@@ -126,6 +128,8 @@ Victurus/
 - **data/db.py** — DB access layer (connections, queries, pragmas).
 - **data/schema.sql** — Authoritative SQLite schema.
 - **data/seed.py** — Initial seed logic (only on fresh DB).
+- **data/schema.sql** — Authoritative SQLite schema. (Recent change: resource metadata merged into `locations` with columns `resource_type`, `richness`, `regen_rate`; the standalone `resource_nodes` table was removed.)
+- **data/seed.py** — Initial seed logic (only on fresh DB). (Recent change: resource entries in the seed are applied directly to `locations`.)
 - **database/** — Generated database files (runtime).
 - **docs/** — Project documentation.
 - **game/** — Game logic (status, travel).
@@ -139,6 +143,11 @@ Victurus/
 - **save/paths.py** — Filesystem paths.
 - **save/serializers.py** — Serialization helpers.
 - **save/icon_paths.py** — Deterministic icons for save slots.
+
+## Notes on save behavior and icons
+
+- New‑save flow runs a deterministic "bake" (`save/icon_paths.py:bake_icon_paths`) after seeding; this populates `systems.icon_path` and `locations.icon_path`, including resource locations (the bake uses `locations.resource_type` when `location_type=='resource'`).
+- User-selected icons are persisted into `locations.icon_path` so the same asset is used on subsequent loads.
 - **ui/** — UI (Qt widgets, maps, panels, menus).
 - **ui/main_window.py** — Main window, docks, and wiring for all UI components.
 - **ui/constants.py** — Centralized UI constants (sizes, fonts, asset roots).
@@ -148,6 +157,13 @@ Victurus/
 - **ui/menus/view_menu.py** — View/menu toggles.
 - **ui/maps/** — Map views and infrastructure.
 - **ui/widgets/** — Reusable panels and widgets.
+
+### Recent developer utilities
+
+- `tools/test_newgame_runner.py` — Helper that creates new saves by launching the new-game bootstrap in a subprocess. It picks unique save names and enforces a configurable timeout (default 60s) to avoid orphaned/hung runs during automated tests.
+- `tools/check_resource_icons.py` — Small inspector script used during development to verify resource locations exist on `locations` and that `icon_path` values are present.
+
+These tools are intended for developer/test use and write into the user's Documents/Victurus_game/Saves directory by default.
 
 ---
 

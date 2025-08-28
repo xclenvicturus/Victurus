@@ -86,7 +86,7 @@ def _ensure_schema_and_seed(conn: sqlite3.Connection) -> None:
 
         # Keep compatibility columns (idempotent checks)
         _ensure_icon_column(conn)
-        _ensure_system_star_column(conn)
+        _deprecated_ensure_system_star_column(conn)
 
         _is_initialized = True
 
@@ -103,12 +103,12 @@ def _ensure_icon_column(conn: sqlite3.Connection) -> None:
         conn.commit()
 
 
-def _ensure_system_star_column(conn: sqlite3.Connection) -> None:
+def _deprecated_ensure_system_star_column(conn: sqlite3.Connection) -> None:
     """Optional per-system star icon path assigned by UI/runtime."""
     cur = conn.execute("PRAGMA table_info(systems)")
     columns = [row[1] for row in cur.fetchall()]
-    if "star_icon_path" not in columns:
-        conn.execute("ALTER TABLE systems ADD COLUMN star_icon_path TEXT;")
+    if "icon_path" not in columns:
+        conn.execute("ALTER TABLE systems ADD COLUMN icon_path TEXT;")
         conn.commit()
 
 
@@ -300,14 +300,18 @@ def get_gate_links(system_id: int) -> List[Dict]:
 
 
 def get_resource_nodes(system_id: int) -> List[Dict]:
-    """All resource nodes (asteroids, gas, ice, etc.) in a system."""
+    """All resource nodes (asteroids, gas, ice, etc.) in a system.
+
+    Resource metadata is now stored on `locations` (columns: resource_type,
+    richness, regen_rate). This returns location rows filtered to those with a
+    non-null resource_type to preserve existing call sites.
+    """
     conn = get_connection()
     rows = conn.execute(
         """
-        SELECT rn.*, l.location_name, l.location_x, l.location_y, l.location_id
-        FROM resource_nodes rn
-        JOIN locations l ON l.location_id = rn.location_id
-        WHERE l.system_id = ?
+        SELECT l.*, l.location_name, l.location_x, l.location_y, l.location_id
+        FROM locations l
+        WHERE l.system_id = ? AND COALESCE(l.resource_type, '') != ''
         ORDER BY l.location_name
         """,
         (system_id,),
@@ -417,10 +421,11 @@ def set_location_icon_path(location_id: int, icon_path: Optional[str]) -> None:
     conn.commit()
 
 
-def set_system_star_icon_path(system_id: int, icon_path: Optional[str]) -> None:
+def set_system_icon_path(system_id: int, icon_path: Optional[str]) -> None:
+    """[DEPRECATED] Writes to systems.icon_path for new schema."""
     """Persist/clear the assigned star GIF path for a system."""
     conn = get_connection()
-    conn.execute("UPDATE systems SET star_icon_path=? WHERE system_id=?", (icon_path, system_id))
+    conn.execute("UPDATE systems SET icon_path=? WHERE system_id=?", (icon_path, system_id))
     # If the star also exists as a location row, mirror it for convenience
     conn.execute(
         "UPDATE locations SET icon_path=? WHERE system_id=? AND location_type='star'",
@@ -451,4 +456,27 @@ def clear_icon_paths_for_system(system_id: int, kinds: Optional[List[str]] = Non
         conn.execute(sql, (system_id, *kinds))
     else:
         conn.execute("UPDATE locations SET icon_path=NULL WHERE system_id=?", (system_id,))
+    conn.commit()
+
+
+def set_resource_node_icon_path(location_id: int, icon_path: Optional[str]) -> None:
+    """Persist/clear the assigned icon for a specific resource node (by location_id).
+
+    After merging, resource icons live on `locations.icon_path` so this updates
+    that column for the resource's location id.
+    """
+    conn = get_connection()
+    conn.execute("UPDATE locations SET icon_path=? WHERE location_id=?", (icon_path, location_id))
+    conn.commit()
+
+
+def set_resource_node_icons_bulk(pairs: List[tuple[int, Optional[str]]]) -> None:
+    """Batch update locations.icon_path for resource nodes (location_id, icon_path)."""
+    if not pairs:
+        return
+    conn = get_connection()
+    conn.executemany(
+        "UPDATE locations SET icon_path=? WHERE location_id=?",
+        [(p, lid) for (lid, p) in pairs],
+    )
     conn.commit()

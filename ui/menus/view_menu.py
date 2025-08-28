@@ -1,4 +1,5 @@
 # /ui/menus/view_menu.py
+
 from __future__ import annotations
 
 from typing import Protocol, Optional, cast, Any, Callable

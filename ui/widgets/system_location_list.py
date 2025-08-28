@@ -1,10 +1,12 @@
 # /ui/widgets/system_location_list.py
+
 from __future__ import annotations
 
 from typing import Callable, Dict, List, Optional, Tuple
 import re
 
 from game import player_status
+from pathlib import Path
 
 from PySide6.QtCore import QPoint, QEvent, Qt, Signal, QPointF
 from PySide6.QtGui import QFont, QIcon, QColor, QBrush, QAction, QCursor
@@ -18,6 +20,7 @@ from PySide6.QtWidgets import (
     QWidget,
     QMenu,
     QHeaderView,
+    QFileDialog,
 )
 
 # Try to use the GIF-first pixmap helper if available (keeps thumbnails in sync with map GIFs)
@@ -25,6 +28,12 @@ try:
     from ui.maps.icons import pm_from_path_or_kind  # type: ignore
 except Exception:  # pragma: no cover
     pm_from_path_or_kind = None  # type: ignore
+
+try:
+    from save.icon_paths import persist_location_icon, persist_system_icon
+except Exception:  # pragma: no cover
+    persist_location_icon = None  # type: ignore
+    persist_system_icon = None  # type: ignore
 
 # -------- Helpers (duplicated for independence) --------
 _LY_TO_AU = 63241.0  # Approximate astronomical units in one light-year
@@ -310,6 +319,44 @@ class SystemLocationList(QWidget):
             menu.addAction(act_travel_loc)
 
         if menu.actions():
+            # Add a 'Set Icon...' action for both locations and stars/systems
+            def _set_icon_action():
+                # Open file dialog to pick an image
+                filters = "Image Files (*.gif *.png *.jpg *.jpeg *.svg);;All Files (*)"
+                start_dir = str(Path(__file__).resolve().parents[2] / "assets")
+                fn, _ = QFileDialog.getOpenFileName(self, "Choose Icon", start_dir, filters)
+                if not fn:
+                    return
+
+                # Persist the choice
+                try:
+                    if entity_id < 0:
+                        # negative entity ids represent stars/system rows
+                        sys_id = -int(entity_id)
+                        if persist_system_icon is not None:
+                            persist_system_icon(sys_id, fn)
+                    else:
+                        if persist_location_icon is not None:
+                            persist_location_icon(entity_id, fn)
+                except Exception:
+                    # ignore persistence failures (UI shouldn't crash)
+                    pass
+
+                # Update the list item's icon immediately
+                it = self.find_item_by_id(entity_id)
+                if it is not None:
+                    try:
+                        from PySide6.QtGui import QIcon
+
+                        icon_obj = QIcon(fn)
+                        if not icon_obj.isNull():
+                            it.setIcon(0, icon_obj)
+                    except Exception:
+                        pass
+
+            act_set_icon = QAction("Set Icon...", self)
+            act_set_icon.triggered.connect(_set_icon_action)
+            menu.addAction(act_set_icon)
             menu.exec(self.tree.viewport().mapToGlobal(pos))
 
     # ----- Event plumbing -----

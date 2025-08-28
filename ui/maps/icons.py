@@ -1,4 +1,5 @@
-# ui/maps/icons.py
+# /ui/maps/icons.py
+
 """
 Image utilities for map visuals (GIF + PNG/JPG/SVG + Qt resources).
 
@@ -40,8 +41,8 @@ SVG_EXTS    = {".svg", ".svgz"}
 
 ASSETS_ROOT = Path(__file__).resolve().parents[2] / "assets"
 _ASSET_SUBFOLDERS = [
-    "stars", "planets", "stations", "warpgates", "moons",
-    "asteroid_field", "gas_clouds", "ice_field", "crystal_vein",
+    "stars", "planets", "moons", "stations", "warp_gates",
+    "asteroid_fields", "gas_clouds", "ice_fields", "crystal_veins",
     "solar_backgrounds", "galaxy_backgrounds", "icons",
 ]
 

@@ -1,4 +1,5 @@
-# ui/maps/solar.py
+# /ui/maps/solar.py
+
 """
 SolarMapWidget (display-only, GIF-first assets):
 - central star at (0, 0) using a star GIF (or a visible placeholder if missing)
@@ -31,6 +32,10 @@ from .background_view import BackgroundView
 # uses list_images so static PNG/JPG/SVG are supported too (if present)
 from .icons import AnimatedGifItem, list_gifs, list_images, make_map_symbol_item
 from game_controller.sim_loop import universe_sim
+from save.icon_paths import persist_icon_paths_bulk, persist_system_icon
+from data import db as data_db
+import logging
+logger = logging.getLogger(__name__)
 
 # --- Assets ---
 ASSETS_ROOT = Path(__file__).resolve().parents[2] / "assets"
@@ -38,7 +43,7 @@ SOLAR_BG_DIR = ASSETS_ROOT / "solar_backgrounds"
 STARS_DIR = ASSETS_ROOT / "stars"
 PLANETS_DIR = ASSETS_ROOT / "planets"
 STATIONS_DIR = ASSETS_ROOT / "stations"
-WARP_GATES_DIR = ASSETS_ROOT / "warpgates"  # corrected folder name
+WARP_GATES_DIR = ASSETS_ROOT / "warp_gates"  # corrected folder name
 MOONS_DIR = ASSETS_ROOT / "moons"
 GAS_DIR = ASSETS_ROOT / "gas_clouds"
 ASTEROID_DIR = ASSETS_ROOT / "asteroid_fields"
@@ -196,7 +201,7 @@ class SolarMapWidget(BackgroundView):
         if sys_row:
             star_icon: Optional[str] = None
             db_only = _db_icons_only()
-            db_path = sys_row.get("star_icon_path") or ""
+            db_path = sys_row.get("icon_path") or ""
             if db_path:
                 star_icon = str(db_path)
             else:
@@ -338,13 +343,10 @@ class SolarMapWidget(BackgroundView):
 
         # -------- Star (always draw; placeholder if missing) --------
         sys_row = db.get_system(system_id) or {}
-        star_icon_path = sys_row.get("star_icon_path") or ""
+        star_icon_val = sys_row.get("icon_path") or ""
         star_path: Optional[str] = None
-        if star_icon_path:
-            star_path = str(star_icon_path)
-        elif not db_only and star_imgs:
-            star_path = str(star_imgs[rng.randrange(len(star_imgs))])
-
+        if star_icon_val:
+            star_path = str(star_icon_val)
         min_px_star, max_px_star = 180, 300
         desired_px_star = rng.randint(min_px_star, max_px_star)
         star_item = make_map_symbol_item(star_path or "", int(desired_px_star), self, salt=system_id)
@@ -376,10 +378,7 @@ class SolarMapWidget(BackgroundView):
                 if db_icon:
                     mapping[rid] = str(db_icon)
                     continue
-                if db_only:
-                    mapping[rid] = None
-                    continue
-                mapping[rid] = remaining_paths[i] if i < len(remaining_paths) else (remaining_paths[-1] if remaining_paths else None)
+                mapping[rid] = None
                 i += 1
             return mapping
 
@@ -403,10 +402,7 @@ class SolarMapWidget(BackgroundView):
                 if db_icon:
                     mapping[rid] = str(db_icon)
                     continue
-                if db_only:
-                    mapping[rid] = None
-                    continue
-                mapping[rid] = remaining[i] if i < len(remaining) else (remaining[-1] if remaining else None)
+                mapping[rid] = None
                 i += 1
             return mapping
 
@@ -643,6 +639,69 @@ class SolarMapWidget(BackgroundView):
 
         # Center on star
         self.center_on_system(system_id)
+
+        # Persist any assigned icons into the active save DB so they are
+        # available on subsequent loads. We only write values for rows that
+        # did not already have an `icon_path` stored by the seed or previous
+        # user action, to avoid overwriting deliberate choices.
+        try:
+            # Persist system/star icon if we selected one and DB lacks it
+            try:
+                db_sys_icon = sys_row.get("icon_path") if sys_row else None
+            except Exception:
+                db_sys_icon = None
+            if sys_row and not (db_sys_icon or "") and star_path:
+                try:
+                    persist_system_icon(system_id, star_path)
+                except Exception:
+                    logger.exception("Failed to persist system icon for %s", system_id)
+
+            # Persist per-location assigned icons when the location had no stored icon
+            pairs = []
+            rn_pairs: list[tuple[int, Optional[str]]] = []
+            for r in self._locs_cache:
+                rid = _row_id(r)
+                if rid is None:
+                    continue
+                existing = r.get("icon_path") or ""
+                assigned = self._assigned_icons.get(rid)
+                if assigned and not existing:
+                    pairs.append((rid, assigned))
+            # Resource nodes are represented as locations with resource_type set;
+            # fetch them and persist any assigned icons that weren't already present.
+            try:
+                res_nodes = data_db.get_resource_nodes(system_id) or []
+                for rn in res_nodes:
+                    lid = rn.get("location_id") or rn.get("location")
+                    if lid is None:
+                        continue
+                    existing_rn = rn.get("icon_path") or ""
+                    assigned_rn = self._assigned_icons.get(int(lid))
+                    if assigned_rn and not existing_rn:
+                        rn_pairs.append((int(lid), assigned_rn))
+            except Exception:
+                logger.exception("Failed reading resource_nodes for persistence for system %s", system_id)
+            if pairs:
+                try:
+                    persist_icon_paths_bulk(pairs)
+                except Exception:
+                    logger.exception("Failed to persist location icons; pairs=%s", pairs[:10])
+            if rn_pairs:
+                try:
+                    # prefer data.db bulk API if available
+                    try:
+                        data_db.set_resource_node_icons_bulk(rn_pairs)
+                    except Exception:
+                        # fallback: update locations.icon_path directly
+                        conn = data_db.get_connection()
+                        cur = conn.cursor()
+                        cur.executemany("UPDATE locations SET icon_path=? WHERE location_id=?", [(p, lid) for (lid, p) in rn_pairs])
+                        conn.commit()
+                except Exception:
+                    logger.exception("Failed to persist resource node icons; pairs=%s", rn_pairs[:10])
+        except Exception:
+            # Never bubble UI errors from persistence
+            logger.exception("Error while persisting assigned icons for system %s", system_id)
 
     # ---------- Highlight / Center ----------
     def refresh_highlight(self, location_id: Optional[int]) -> None:

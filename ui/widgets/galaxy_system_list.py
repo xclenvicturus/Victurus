@@ -1,4 +1,5 @@
 # /ui/widgets/galaxy_system_list.py
+
 from __future__ import annotations
 
 from typing import Callable, Dict, List, Optional, Tuple

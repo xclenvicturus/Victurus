@@ -83,7 +83,7 @@ def _insert_locations_topologically(cur: sqlite3.Cursor, locs: List[Dict[str, An
     Filters out locations whose system_id is not present.
     If parent id not present among the seed's location ids, parent is set to NULL.
     In cycles, remaining parents are set to NULL and inserted if possible.
-    Also ensures star locations inherit their system's star_icon_path into locations.icon_path.
+    Leaves all icon_path columns NULL; New Game creation assigns icons once.
     Returns: (inserted_ids, forced_or_skipped_rows)
     """
     if not locs:
@@ -116,14 +116,15 @@ def _insert_locations_topologically(cur: sqlite3.Cursor, locs: List[Dict[str, An
     def _row_with_icon(base_row: Tuple[int, int, str, str, float, float, Optional[int], Optional[str]],
                        parent_override: Optional[int] = None) -> Tuple:
         """Return a row tuple including an icon_path value.
-        For stars, copy systems.star_icon_path into locations.icon_path. Otherwise NULL.
+    For stars, copy systems.icon_path into locations.icon_path. Otherwise NULL.
         """
         lid, sid, name, lt, x, y, parent_id, desc = base_row
         if parent_override is not None:
             parent_id = parent_override
         icon_path: Optional[str] = None
         if lt == "star":
-            row = cur.execute("SELECT star_icon_path FROM systems WHERE system_id=?;", (sid,)).fetchone()
+            # For stars, copy systems.icon_path into locations.icon_path when present.
+            row = cur.execute("SELECT icon_path FROM systems WHERE system_id=?;", (sid,)).fetchone()
             if row:
                 icon_path = row[0]
         return (lid, sid, name, lt, x, y, parent_id, desc, icon_path)
@@ -225,14 +226,14 @@ def seed(conn: sqlite3.Connection) -> None:
                 s["system_name"],
                 int(s["system_x"]),
                 int(s["system_y"]),
-                s.get("star_icon_path"),
+                s.get("icon_path"),
             )
             for s in seed["systems"]
         ]
         _try_execmany(
             cur,
             """            INSERT OR REPLACE INTO systems
-              (system_id, system_name, system_x, system_y, star_icon_path)
+              (system_id, system_name, system_x, system_y, icon_path)
             VALUES (?, ?, ?, ?, ?);
             """ ,
             sys_rows,
@@ -390,19 +391,20 @@ def seed(conn: sqlite3.Connection) -> None:
 
     # ----------------- resources & facilities -----------------
     if seed.get("resource_nodes"):
-        rn_rows = []
+        # Merge resource node metadata into the corresponding `locations` rows.
         for rn in seed["resource_nodes"]:
             lid = rn["location_id"]
             if lid not in inserted_loc_ids:
-                # location missing in this seed batch; skip (UI relies on a location row for placement)
                 continue
             rtype = _norm_resource_type(rn["resource_type"])
-            rn_rows.append((lid, rtype, int(rn["richness"]), float(rn["regen_rate"])))
-        _try_execmany(
-            cur,
-            "INSERT OR REPLACE INTO resource_nodes (location_id, resource_type, richness, regen_rate) VALUES (?, ?, ?, ?);" ,
-            rn_rows,
-        )
+            try:
+                cur.execute(
+                    "UPDATE locations SET resource_type=?, richness=?, regen_rate=? WHERE location_id=?",
+                    (rtype, int(rn.get("richness", 0)), float(rn.get("regen_rate", 0.0)), lid),
+                )
+            except Exception:
+                # ignore problematic resource rows during seed
+                continue
 
     if seed.get("facilities"):
         fac_rows = []

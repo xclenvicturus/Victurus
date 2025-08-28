@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS systems (
     system_name        TEXT NOT NULL UNIQUE,
     system_x           INTEGER NOT NULL,
     system_y           INTEGER NOT NULL,
-    star_icon_path     TEXT
+    icon_path     TEXT
 );
 
 -- Systems economic tags (seed: systems[].econ_tags)
@@ -60,6 +60,9 @@ CREATE TABLE IF NOT EXISTS locations (
     parent_location_id   INTEGER NULL,       -- NULL => parent is system center
     location_description TEXT,
     icon_path            TEXT,               -- assigned at runtime; no duplicates per system/type
+  resource_type        TEXT,               -- resource-specific metadata (if this location is a resource)
+  richness             INTEGER,
+  regen_rate           REAL,
     FOREIGN KEY (system_id) REFERENCES systems(system_id) ON DELETE CASCADE,
     FOREIGN KEY (parent_location_id) REFERENCES locations(location_id) ON DELETE CASCADE
 );
@@ -150,13 +153,7 @@ CREATE TABLE IF NOT EXISTS gate_links (
 );
 
 -- Resource node metadata (attached to a location with location_type like 'asteroid_field','gas_clouds','ice_field','crystal_vein')
-CREATE TABLE IF NOT EXISTS resource_nodes (
-  location_id   INTEGER PRIMARY KEY,
-  resource_type TEXT NOT NULL,
-  richness      INTEGER NOT NULL,     -- total capacity / stock ceiling
-  regen_rate    REAL NOT NULL,        -- stock per tick
-  FOREIGN KEY(location_id) REFERENCES locations(location_id) ON DELETE CASCADE
-);
+-- resource_nodes merged into `locations` (use columns: resource_type, richness, regen_rate)
 
 -- Facilities placed at locations (planet/station/resource)
 CREATE TABLE IF NOT EXISTS facilities (

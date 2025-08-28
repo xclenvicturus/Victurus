@@ -1,4 +1,5 @@
 # /ui/controllers/map_actions.py
+
 from __future__ import annotations
 
 from typing import Callable, Optional, Tuple, cast

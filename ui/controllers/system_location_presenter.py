@@ -1,4 +1,5 @@
 # /ui/controllers/system_location_presenter.py
+
 from __future__ import annotations
 
 import logging
@@ -71,7 +72,7 @@ class SystemLocationPresenter:
 
     - Uses icon_path provided by SolarMapWidget.get_entities() when available so
       the list thumbnails match the map exactly (including DB-only behavior).
-    - Falls back to DB (locations + system.star_icon_path).
+    - Falls back to DB (locations + system.icon_path).
     - Travel/fuel display: uses game.travel when available; otherwise coarse fallback.
     """
 
@@ -278,7 +279,7 @@ class SystemLocationPresenter:
                     sysrow = db.get_system(system_id) or {}
                 except Exception:
                     sysrow = {}
-                sys_icon = sysrow.get("star_icon_path") or sysrow.get("icon_path")
+                sys_icon = sysrow.get("icon_path")
                 path = sys_icon or path
                 try:
                     logger.debug(
@@ -384,7 +385,7 @@ class SystemLocationPresenter:
                     "system_id": int(sys_id),
                     "name": _sysrow.get("name") or "Star",
                     "kind": "star",
-                    "icon_path": _sysrow.get("star_icon_path") or _sysrow.get("icon_path"),
+                    "icon_path": _sysrow.get("icon_path"),
                     "x": 0.0,
                     "y": 0.0,
                     "parent_location_id": None,
@@ -397,7 +398,7 @@ class SystemLocationPresenter:
             _sysrow = db.get_system(sys_id) or {}
         except Exception:
             _sysrow = {}
-        _sys_icon = _sysrow.get("star_icon_path") or _sysrow.get("icon_path")
+        _sys_icon = _sysrow.get("icon_path")
         if _sys_icon:
             try:
                 for _e in entities:
