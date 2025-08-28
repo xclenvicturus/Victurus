@@ -1,4 +1,5 @@
-# game_controller/logging.py
+# /game_controller/logging.py
+
 # Lightweight, centralized logging utilities for Victurus.
 # - Simple setup() that can log to console and/or a rotating file
 # - Plain text or JSON formatting

@@ -1,6 +1,7 @@
+# /ui/dialogs/new_game_dialog.py
 from __future__ import annotations
 
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
 
 from PySide6.QtWidgets import (
     QDialog,
@@ -14,6 +15,33 @@ from PySide6.QtCore import Qt
 
 # pull starting options directly from the database
 from data.db import get_connection
+
+
+# ---------- Safe coercion helpers (silence Pylance + runtime robust) ----------
+
+def _as_int(val: Any, default: int = 0) -> int:
+    try:
+        if val is None:
+            return default
+        if isinstance(val, bool):
+            return int(val)
+        if isinstance(val, int):
+            return val
+        if isinstance(val, float):
+            return int(val)
+        return int(str(val))
+    except Exception:
+        return default
+
+
+def _as_str(val: Any, default: str = "") -> str:
+    try:
+        if val is None:
+            return default
+        s = str(val)
+        return s if s is not None else default
+    except Exception:
+        return default
 
 
 class NewGameDialog(QDialog):
@@ -99,12 +127,43 @@ class NewGameDialog(QDialog):
             return None
 
         return {
-            "race_id": int(race_data["race_id"]),
-            "system_id": int(start_data["system_id"]),
-            "location_id": int(start_data["location_id"]),
+            "race_id": _as_int(race_data.get("race_id")),
+            "system_id": _as_int(start_data.get("system_id")),
+            "location_id": _as_int(start_data.get("location_id")),
         }
 
     # ----- Internals -----
+
+    @staticmethod
+    def _has_column(conn, table: str, col: str) -> bool:
+        try:
+            rows = conn.execute(f"PRAGMA table_info({table});").fetchall()
+            # make rows dict-like for stable access
+            rows = [dict(r) for r in rows]
+            cols = {r.get("name") for r in rows}
+            return col in cols
+        except Exception:
+            return False
+
+    @staticmethod
+    def _table_exists(conn, name: str) -> bool:
+        r = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?;", (name,)
+        ).fetchone()
+        try:
+            if r is None:
+                return False
+            r = dict(r)
+            return r.get("name") == name
+        except Exception:
+            try:
+                return bool(r and r[0] == name)  # tuple fallback
+            except Exception:
+                return False
+
+    def _pick_col(self, conn, table: str, preferred: str, fallback: str) -> str:
+        """Return preferred if it exists, otherwise fallback (assumed to exist)."""
+        return preferred if self._has_column(conn, table, preferred) else fallback
 
     def _populate_races(self) -> None:
         """
@@ -116,22 +175,29 @@ class NewGameDialog(QDialog):
         conn = get_connection()
         self.combo_race.clear()
 
-        rows = conn.execute(
-            """
+        # Resolve schema differences dynamically
+        systems_name_col = self._pick_col(conn, "systems", "system_name", "name")
+        locations_name_col = self._pick_col(conn, "locations", "location_name", "name")
+
+        sql = f"""
             SELECT
               r.race_id,
-              r.name                    AS race_name,
-              s.system_id               AS home_system_id,
-              s.system_name             AS home_system_name,
-              l.location_id             AS home_location_id,
-              l.location_name           AS home_location_name
+              r.name                                  AS race_name,
+              s.system_id                              AS home_system_id,
+              s.{systems_name_col}                     AS home_system_name,
+              l.location_id                            AS home_location_id,
+              l.{locations_name_col}                   AS home_location_name
             FROM races r
             JOIN systems  s ON s.system_id = r.home_system_id
             JOIN locations l ON l.location_id = r.home_planet_location_id
             WHERE COALESCE(r.starting_world, 1) = 1
-            ORDER BY r.name COLLATE NOCASE
-            """
-        ).fetchall()
+            ORDER BY r.name COLLATE NOCASE;
+        """
+
+        try:
+            rows = [dict(r) for r in conn.execute(sql).fetchall()]
+        except Exception:
+            rows = []
 
         if not rows:
             self.combo_race.addItem("(no races found)", None)
@@ -140,16 +206,17 @@ class NewGameDialog(QDialog):
             self.combo_start.setEnabled(False)
             return
 
+        self.combo_race.setEnabled(True)
         for r in rows:
-            label = f"{r['race_name']}"
             payload = {
-                "race_id": int(r["race_id"]),
-                "race_name": r["race_name"],
-                "home_system_id": int(r["home_system_id"]),
-                "home_system_name": r["home_system_name"],
-                "home_location_id": int(r["home_location_id"]),
-                "home_location_name": r["home_location_name"],
+                "race_id": _as_int(r.get("race_id")),
+                "race_name": _as_str(r.get("race_name")),
+                "home_system_id": _as_int(r.get("home_system_id")),
+                "home_system_name": _as_str(r.get("home_system_name")),
+                "home_location_id": _as_int(r.get("home_location_id")),
+                "home_location_name": _as_str(r.get("home_location_name")),
             }
+            label = payload["race_name"] or "Race"
             self.combo_race.addItem(label, payload)
 
     def _on_race_changed(self) -> None:
@@ -163,9 +230,9 @@ class NewGameDialog(QDialog):
 
         # Try to load multiple start locations if an extension table exists.
         start_rows = self._load_start_locations_for_race(
-            race_id=race_data["race_id"],
-            fallback_system_id=race_data["home_system_id"],
-            fallback_location_id=race_data["home_location_id"],
+            race_id=_as_int(race_data.get("race_id")),
+            fallback_system_id=_as_int(race_data.get("home_system_id")),
+            fallback_location_id=_as_int(race_data.get("home_location_id")),
         )
 
         if not start_rows:
@@ -175,82 +242,80 @@ class NewGameDialog(QDialog):
 
         self.combo_start.setEnabled(True)
         for row in start_rows:
-            label = f"{row['location_name']} (System: {row['system_name']})"
+            label = f"{_as_str(row.get('location_name'))} (System: {_as_str(row.get('system_name'))})"
             payload = {
-                "system_id": int(row["system_id"]),
-                "location_id": int(row["location_id"]),
+                "system_id": _as_int(row.get("system_id")),
+                "location_id": _as_int(row.get("location_id")),
             }
             self.combo_start.addItem(label, payload)
-
-    # ---- helpers ----
-
-    def _table_exists(self, conn, name: str) -> bool:
-        r = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name=?;", (name,)
-        ).fetchone()
-        return bool(r and r[0] == name)
 
     def _load_start_locations_for_race(
         self,
         race_id: int,
         fallback_system_id: int,
         fallback_location_id: int,
-    ) -> List[Dict]:
+    ) -> List[Dict[str, Any]]:
         """
         Load start locations for a race.
         If table 'race_start_locations(race_id, location_id)' exists and has rows,
         use those. Otherwise return the homeworld as the single option.
         """
         conn = get_connection()
-        rows: List[Dict] = []
+        rows: List[Dict[str, Any]] = []
+
+        systems_name_col = self._pick_col(conn, "systems", "system_name", "name")
+        locations_name_col = self._pick_col(conn, "locations", "location_name", "name")
 
         if self._table_exists(conn, "race_start_locations"):
-            # Expected minimal schema:
-            #   race_start_locations(race_id INTEGER, location_id INTEGER)
-            # Join to enrich with names and system info.
-            dbrows = conn.execute(
-                """
+            sql = f"""
                 SELECT
                   l.location_id,
-                  l.location_name,
+                  l.{locations_name_col} AS location_name,
                   s.system_id,
-                  s.system_name
+                  s.{systems_name_col}   AS system_name
                 FROM race_start_locations rsl
                 JOIN locations l ON l.location_id = rsl.location_id
                 JOIN systems   s ON s.system_id   = l.system_id
                 WHERE rsl.race_id = ?
-                ORDER BY l.location_name COLLATE NOCASE
-                """,
-                (race_id,),
-            ).fetchall()
+                ORDER BY l.{locations_name_col} COLLATE NOCASE;
+            """
+            try:
+                dbrows = [dict(r) for r in conn.execute(sql, (race_id,)).fetchall()]
+            except Exception:
+                dbrows = []
             for r in dbrows:
                 rows.append(
                     {
-                        "location_id": int(r["location_id"]),
-                        "location_name": r["location_name"],
-                        "system_id": int(r["system_id"]),
-                        "system_name": r["system_name"],
+                        "location_id": _as_int(r.get("location_id")),
+                        "location_name": _as_str(r.get("location_name")),
+                        "system_id": _as_int(r.get("system_id")),
+                        "system_name": _as_str(r.get("system_name")),
                     }
                 )
 
         # Fallback to homeworld if no explicit starts were found.
         if not rows and fallback_location_id is not None:
-            r = conn.execute(
-                """
-                SELECT l.location_id, l.location_name, s.system_id, s.system_name
+            sql2 = f"""
+                SELECT l.location_id,
+                       l.{locations_name_col} AS location_name,
+                       s.system_id,
+                       s.{systems_name_col}   AS system_name
                 FROM locations l
                 JOIN systems s ON s.system_id = l.system_id
-                WHERE l.location_id = ?
-                """,
-                (fallback_location_id,),
-            ).fetchone()
+                WHERE l.location_id = ?;
+            """
+            try:
+                r = conn.execute(sql2, (fallback_location_id,)).fetchone()
+                r = dict(r) if r is not None else None
+            except Exception:
+                r = None
             if r:
                 rows.append(
                     {
-                        "location_id": int(r["location_id"]),
-                        "location_name": r["location_name"],
-                        "system_id": int(r["system_id"]),
-                        "system_name": r["system_name"],
+                        "location_id": _as_int(r.get("location_id")),
+                        "location_name": _as_str(r.get("location_name")),
+                        "system_id": _as_int(r.get("system_id")),
+                        "system_name": _as_str(r.get("system_name")),
                     }
                 )
 

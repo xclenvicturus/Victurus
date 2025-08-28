@@ -1,20 +1,16 @@
-# /ui/maps/icons.py
-
+# ui/maps/icons.py
 """
-GIF-only icon utilities for map visuals.
+Image utilities for map visuals (GIF + PNG/JPG/SVG + Qt resources).
 
-- Planet/star/station map items are GIFs via QMovie.
-- Deterministic size variance support (up to +50% by default).
-- Provides icon_from_path_or_kind and pm_from_path_or_kind (GIF-first) so
-  existing callers (e.g., tabs.py) continue to work without SVGs.
+- Works with filesystem paths *and* Qt resource paths (":/..." or "qrc:/...").
+- Falls back to searching your ./assets/* folders if a relative path is provided.
+- Provides pm_from_path_or_kind (for list thumbnails) and make_map_symbol_item (map items).
+- Animated GIFs via QMovie; static images via QPixmap or SVG renderer.
 
-Smoothness fixes:
-- Each frame is painted onto a fixed-size transparent canvas (movie.frameRect()) to
-  eliminate per-frame crop/offset jitter from trimmed GIFs.
-- Scaled size and item offset are constant across frames.
-- Uses ItemCoordinateCache (avoids device-pixel snapping).
-- No ItemIgnoresTransformations; instead we apply an inverse view-scale so icons keep
-  a constant on-screen size without rounding artifacts.
+Jitter fixes:
+- GIFs: each frame is drawn into a fixed canvas from movie.frameRect() and then scaled,
+  so trimmed GIFs don't "swim".
+- Static: ItemIgnoresTransformations keeps a constant on-screen size.
 """
 
 from __future__ import annotations
@@ -26,14 +22,32 @@ from PySide6.QtCore import Qt, QSize, QPoint
 from PySide6.QtGui import QIcon, QImage, QMovie, QPixmap, QPainter
 from PySide6.QtWidgets import QGraphicsPixmapItem, QGraphicsView, QGraphicsItem
 
+# Optional SVG
+try:
+    from PySide6.QtSvg import QSvgRenderer  # type: ignore
+except Exception:  # pragma: no cover
+    QSvgRenderer = None  # type: ignore
+
 import hashlib
 
-# Max growth as a fraction of the base size (0.50 = up to +50% bigger)
+# ---------- constants ----------
+
 ICON_SIZE_VARIANCE_MAX = 0.50
 
+RASTER_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".webp"}
+GIF_EXTS    = {".gif"}
+SVG_EXTS    = {".svg", ".svgz"}
+
+ASSETS_ROOT = Path(__file__).resolve().parents[2] / "assets"
+_ASSET_SUBFOLDERS = [
+    "stars", "planets", "stations", "warpgates", "moons",
+    "asteroid_field", "gas_clouds", "ice_field", "crystal_vein",
+    "solar_backgrounds", "galaxy_backgrounds", "icons",
+]
+
+# ---------- helpers ----------
 
 def randomized_px(base_px: int, *, salt: Optional[object] = None, variance: float = ICON_SIZE_VARIANCE_MAX) -> int:
-    """Return base_px grown by [0 .. variance], deterministically from salt."""
     try:
         variance = float(variance)
     except Exception:
@@ -41,109 +55,182 @@ def randomized_px(base_px: int, *, salt: Optional[object] = None, variance: floa
     if variance <= 0:
         return int(base_px)
     h = hashlib.sha1()
-    h.update(str(base_px).encode('utf-8'))
+    h.update(str(base_px).encode("utf-8"))
     if salt is not None:
-        h.update(str(salt).encode('utf-8'))
+        h.update(str(salt).encode("utf-8"))
     r = (int(h.hexdigest(), 16) % 10000) / 10000.0
-    scale = 1.0 + r * float(variance)
-    return max(1, int(round(base_px * scale)))
-
+    return max(1, int(round(base_px * (1.0 + r * variance))))
 
 def list_gifs(folder: str | Path) -> List[Path]:
     p = Path(folder)
     if not p.exists():
         return []
-    return sorted([pp for pp in p.iterdir() if pp.suffix.lower() == ".gif"])
+    return sorted([pp for pp in p.iterdir() if pp.suffix.lower() in GIF_EXTS])
 
+def list_images(folder: str | Path) -> List[Path]:
+    """Return common image files in folder (gif/png/jpg/jpeg/webp/svg/svgz), sorted."""
+    p = Path(folder)
+    if not p.exists():
+        return []
+    allowed = RASTER_EXTS | GIF_EXTS | SVG_EXTS
+    return sorted([pp for pp in p.iterdir() if pp.suffix.lower() in allowed])
 
-# ---------- Small helpers for list icons / pixmaps (GIF-first) ----------
+def _is_qt_resource(path_str: str) -> bool:
+    # QRC paths typically start with ":" (":/folder/file.png") or "qrc:/"
+    return path_str.startswith(":") or path_str.startswith("qrc:/")
 
-def _first_frame_from_gif(path: Path) -> Optional[QPixmap]:
-    """Extract first frame from GIF for static usage (e.g., list icons)."""
-    mv = QMovie(str(path))
-    if not mv.isValid():
+def _candidate_paths(path_str: str) -> List[str]:
+    """
+    Build a list of candidate strings to try loading:
+      1) as given (handles absolute, relative, and qrc)
+      2) assets/<path_str>  (if relative)
+      3) assets/<subdir>/<basename>
+    """
+    cands: List[str] = [path_str]
+    p = Path(path_str)
+
+    # If it's a qrc path, nothing else to try
+    if _is_qt_resource(path_str):
+        return cands
+
+    # Try under assets root if relative or not found
+    rel = Path(str(p).lstrip("/\\"))
+    cand2 = ASSETS_ROOT / rel
+    cands.append(str(cand2))
+
+    # Try basename in common asset subfolders
+    name = p.name
+    if name:
+        for sub in _ASSET_SUBFOLDERS:
+            cands.append(str(ASSETS_ROOT / sub / name))
+
+    # De-duplicate while preserving order
+    seen = set()
+    uniq = []
+    for s in cands:
+        if s not in seen:
+            uniq.append(s)
+            seen.add(s)
+    return uniq
+
+# ---------- thumbnail pixmaps ----------
+
+def _first_frame_from_gif_any(path_str: str) -> Optional[QPixmap]:
+    for cand in _candidate_paths(path_str):
+        mv = QMovie(cand)
+        if mv.isValid():
+            mv.jumpToFrame(0)
+            pm = mv.currentPixmap()
+            if not pm.isNull():
+                return pm
+    return None
+
+def _pm_from_svg_any(path_str: str, desired_px: int) -> Optional[QPixmap]:
+    if QSvgRenderer is None:
         return None
-    mv.jumpToFrame(0)
-    pm = mv.currentPixmap()
-    return pm if not pm.isNull() else None
+    for cand in _candidate_paths(path_str):
+        try:
+            r = QSvgRenderer(cand)
+            if not r.isValid():
+                continue
+            img = QImage(desired_px, desired_px, QImage.Format.Format_ARGB32_Premultiplied)
+            img.fill(Qt.GlobalColor.transparent)
+            p = QPainter(img)
+            try:
+                r.render(p)
+            finally:
+                p.end()
+            pm = QPixmap.fromImage(img)
+            if not pm.isNull():
+                return pm
+        except Exception:
+            continue
+    return None
 
+def _pm_from_raster_any(path_str: str) -> Optional[QPixmap]:
+    for cand in _candidate_paths(path_str):
+        pm = QPixmap(cand)
+        if not pm.isNull():
+            return pm
+    return None
+
+def _scaled(pm: QPixmap, desired_px: int) -> QPixmap:
+    return pm.scaled(
+        desired_px, desired_px,
+        Qt.AspectRatioMode.KeepAspectRatio,
+        Qt.TransformationMode.SmoothTransformation,
+    )
 
 def pm_from_path_or_kind(path_or_none: Optional[str | Path], kind: str, desired_px: int = 24) -> QPixmap:
     """
-    GIF-only: return a QPixmap from the first frame of the GIF at path_or_none.
-    If the path is missing/invalid/non-GIF, return a tiny red placeholder.
-    `kind` is ignored (kept for compatibility).
+    Build a QPixmap preview for list thumbnails.
+    Supports filesystem + Qt resource paths. Accepts GIF/PNG/JPG/SVG.
     """
     if path_or_none:
-        p = Path(path_or_none)
-        if p.exists() and p.suffix.lower() == ".gif":
-            pm = _first_frame_from_gif(p)
-            if pm is not None and not pm.isNull():
-                # scale to desired size for crisp icons
-                return pm.scaled(desired_px, desired_px, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-    # fallback tiny red pixel
-    ph = QPixmap(2, 2)
+        s = str(path_or_none)
+        ext = Path(s).suffix.lower()
+        pm: Optional[QPixmap] = None
+        if ext in GIF_EXTS:
+            pm = _first_frame_from_gif_any(s)
+        elif ext in RASTER_EXTS:
+            pm = _pm_from_raster_any(s)
+        elif ext in SVG_EXTS:
+            pm = _pm_from_svg_any(s, desired_px)
+        else:
+            # Unknown ext: try raster first, then GIF as static fallback
+            pm = _pm_from_raster_any(s) or _first_frame_from_gif_any(s)
+        if pm is not None and not pm.isNull():
+            return _scaled(pm, desired_px)
+
+    # tiny red pixel placeholder
+    ph = QPixmap(6, 6)
     ph.fill(Qt.GlobalColor.red)
     return ph
 
-
 def icon_from_path_or_kind(path_or_none: Optional[str | Path], kind: str) -> QIcon:
-    """
-    GIF-only: build a QIcon from the first frame of the GIF.
-    If invalid/missing, returns a small red square icon.
-    `kind` is ignored (kept for compatibility).
-    """
-    pm = pm_from_path_or_kind(path_or_none, kind, desired_px=24)
-    return QIcon(pm)
+    return QIcon(pm_from_path_or_kind(path_or_none, kind, desired_px=24))
 
-
-# ---------- Animated map items (GIF-only) ----------
+# ---------- map items ----------
 
 class AnimatedGifItem(QGraphicsPixmapItem):
-    """
-    QGraphicsPixmapItem that plays an animated GIF via QMovie and keeps a stable
-    on-screen size (desired_px), with minimal jitter.
-
-    - Uses a fixed logical canvas based on movie.frameRect().
-    - Scales the canvas once to a constant target size; offset stays constant.
-    - ItemCoordinateCache avoids device rounding artifacts.
-    - Applies inverse view scale so icons remain constant size on screen.
-    """
-    def __init__(self, gif_path: str | Path, desired_px: int, view: QGraphicsView, parent=None):
+    def __init__(self, gif_path: str, desired_px: int, view: QGraphicsView, parent=None):
         super().__init__(parent)
         self._desired_px = int(desired_px)
         self._view = view
-
-        self._movie = QMovie(str(gif_path))
-        self._movie.setCacheMode(QMovie.CacheMode.CacheAll)
-
-        # Fixed canvas & scaled size computed on first valid frame
+        self._movie: Optional[QMovie] = None
         self._canvas_size: Optional[QSize] = None
         self._scaled_w: Optional[int] = None
         self._scaled_h: Optional[int] = None
         self._const_offset: Optional[Tuple[float, float]] = None
-
-        # Cache in item coordinates to avoid device-pixel snapping
         self.setCacheMode(QGraphicsItem.CacheMode.ItemCoordinateCache)
 
+        # Try all candidate paths for a valid movie
+        for cand in _candidate_paths(gif_path):
+            mv = QMovie(cand)
+            if mv.isValid():
+                self._movie = mv
+                break
+
+        if self._movie is None:
+            # degrade to a tiny placeholder
+            ph = QPixmap(6, 6)
+            ph.fill(Qt.GlobalColor.red)
+            self.setPixmap(ph)
+            self.setOffset(-3, -3)
+            return
+
+        self._movie.setCacheMode(QMovie.CacheMode.CacheAll)
         self._movie.frameChanged.connect(self._on_frame)
         self._movie.start()
 
     def _ensure_geometry(self, pm_native: QPixmap) -> None:
-        """Compute constant canvas size, scaled size, and offset once."""
         if self._canvas_size is not None:
             return
-
-        # Use the movie's logical frame rect as a stable canvas.
-        base_rect = self._movie.frameRect()
-        base_size = base_rect.size()
-        if not base_size.isValid() or base_size.width() <= 0 or base_size.height() <= 0:
-            base_size = pm_native.size()
+        base_rect = self._movie.frameRect() if self._movie else None
+        base_size = base_rect.size() if base_rect is not None else pm_native.size()
         w0 = max(1, base_size.width())
         h0 = max(1, base_size.height())
         self._canvas_size = QSize(w0, h0)
-
-        # Compute final scaled size (keep aspect) to approx desired_px box
         if w0 >= h0:
             scale = self._desired_px / float(w0)
             sw = self._desired_px
@@ -154,34 +241,27 @@ class AnimatedGifItem(QGraphicsPixmapItem):
             sw = max(1, int(round(w0 * scale)))
         self._scaled_w = sw
         self._scaled_h = sh
-
-        # Constant offset so the item is centered about its position
         self._const_offset = (-sw / 2.0, -sh / 2.0)
 
     def _on_frame(self, _frame_idx: int) -> None:
+        if self._movie is None:
+            return
         pm_native = self._movie.currentPixmap()
         if pm_native.isNull():
             return
 
         self._ensure_geometry(pm_native)
 
-        # ---- FIX: build QImage via (w, h, format) to avoid Optional[QSize] complaints ----
         size = self._canvas_size or pm_native.size()
-        canvas = QImage(
-            int(size.width()),
-            int(size.height()),
-            QImage.Format.Format_ARGB32_Premultiplied,
-        )
+        canvas = QImage(int(size.width()), int(size.height()), QImage.Format.Format_ARGB32_Premultiplied)
         canvas.fill(Qt.GlobalColor.transparent)
 
-        # Draw at the movie's logical top-left so trimmed frames align consistently
         base_rect = self._movie.frameRect()
         tl = base_rect.topLeft()
         p = QPainter(canvas)
         p.drawPixmap(QPoint(tl.x(), tl.y()), pm_native)
         p.end()
 
-        # Scale to the constant final size (smooth)
         pm_canvas = QPixmap.fromImage(canvas)
         pm_scaled = pm_canvas.scaled(
             int(self._scaled_w or pm_canvas.width()),
@@ -191,12 +271,8 @@ class AnimatedGifItem(QGraphicsPixmapItem):
         )
 
         self.setPixmap(pm_scaled)
-
-        # Constant offset (centered)
         if self._const_offset is not None:
             self.setOffset(self._const_offset[0], self._const_offset[1])
-
-        # Keep size constant on screen by inverting current view scale
         self._apply_scale()
 
     def _apply_scale(self) -> None:
@@ -205,20 +281,33 @@ class AnimatedGifItem(QGraphicsPixmapItem):
         sy = tr.m22()
         if sx == 0 or sy == 0:
             return
-        # Use uniform inverse scale to avoid anisotropic jitter if pixels are non-square
         inv = 1.0 / max(abs(sx), abs(sy))
         if self.scale() != inv:
             self.setScale(inv)
 
     def set_playing(self, playing: bool) -> None:
+        if self._movie is None:
+            return
         if playing and self._movie.state() != QMovie.MovieState.Running:
             self._movie.start()
         elif not playing and self._movie.state() == QMovie.MovieState.Running:
             self._movie.stop()
 
+class StaticImageItem(QGraphicsPixmapItem):
+    def __init__(self, pm: QPixmap, desired_px: int, parent=None):
+        super().__init__(parent)
+        pm_scaled = pm.scaled(
+            int(desired_px), int(desired_px),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self.setPixmap(pm_scaled)
+        self.setOffset(-pm_scaled.width() / 2.0, -pm_scaled.height() / 2.0)
+        self.setCacheMode(QGraphicsItem.CacheMode.ItemCoordinateCache)
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations, True)
 
 def make_map_symbol_item(
-    gif_path: str | Path,
+    img_path: str | Path,
     desired_px: int,
     view: QGraphicsView,
     *,
@@ -226,22 +315,48 @@ def make_map_symbol_item(
     variance: Optional[float] = None,
 ) -> QGraphicsPixmapItem:
     """
-    Create a GIF-only graphics item for the map.
+    Create a graphics item for the map.
 
-    - Path MUST be a .gif that exists.
-    - Size is randomized by up to `variance` (default ICON_SIZE_VARIANCE_MAX) using `salt`.
+    - GIFs -> AnimatedGifItem (tries resource and assets paths)
+    - PNG/JPG/SVG -> StaticImageItem
+    - On failure: small red placeholder (constant size)
     """
-    p = Path(gif_path)
     var = ICON_SIZE_VARIANCE_MAX if variance is None else float(variance)
     final_px = randomized_px(int(desired_px), salt=salt, variance=var)
 
-    if p.suffix.lower() == ".gif" and p.exists():
-        return AnimatedGifItem(p, final_px, view)
+    s = str(img_path) if img_path is not None else ""
+    if not s:
+        # placeholder
+        ph = QPixmap(6, 6)
+        ph.fill(Qt.GlobalColor.red)
+        item = QGraphicsPixmapItem(ph)
+        item.setCacheMode(QGraphicsItem.CacheMode.ItemCoordinateCache)
+        item.setOffset(-ph.width() / 2.0, -ph.height() / 2.0)
+        item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations, True)
+        return item
 
-    # Tiny red placeholder rather than crashing; visible but harmless.
-    pm = QPixmap(2, 2)
-    pm.fill(Qt.GlobalColor.red)
-    item = QGraphicsPixmapItem(pm)
+    ext = Path(s).suffix.lower()
+
+    if ext in GIF_EXTS:
+        return AnimatedGifItem(s, final_px, view)
+
+    pm: Optional[QPixmap] = None
+    if ext in RASTER_EXTS:
+        pm = _pm_from_raster_any(s)
+    elif ext in SVG_EXTS:
+        pm = _pm_from_svg_any(s, final_px) if QSvgRenderer is not None else None
+    else:
+        # unknown ext: try raster then gif first frame as a static fallback
+        pm = _pm_from_raster_any(s) or _first_frame_from_gif_any(s)
+
+    if pm is not None and not pm.isNull():
+        return StaticImageItem(pm, final_px)
+
+    # placeholder
+    ph = QPixmap(6, 6)
+    ph.fill(Qt.GlobalColor.red)
+    item = QGraphicsPixmapItem(ph)
     item.setCacheMode(QGraphicsItem.CacheMode.ItemCoordinateCache)
-    item.setOffset(-pm.width() / 2.0, -pm.height() / 2.0)
+    item.setOffset(-ph.width() / 2.0, -ph.height() / 2.0)
+    item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations, True)
     return item

@@ -6,6 +6,12 @@ from typing import Dict, List, Optional, Iterable, Any, Protocol, runtime_checka
 from PySide6.QtGui import QFont, QIcon
 from PySide6.QtWidgets import QWidget
 
+# Prefer GIF-first pixmap helper for crisp list thumbnails
+try:
+    from ui.maps.icons import pm_from_path_or_kind  # type: ignore
+except Exception:  # pragma: no cover
+    pm_from_path_or_kind = None  # type: ignore
+
 from data import db
 
 # travel planner is optional; we fall back gracefully when it isn't present
@@ -249,8 +255,18 @@ class GalaxyLocationPresenter:
         return []
 
     def _icon_provider(self, r: Dict[str, Any]):
-        p = r.get("icon_path")
-        return QIcon(p) if isinstance(p, str) and p else None
+        """Use the universal pm_from_path_or_kind for crisp thumbnails from any source."""
+        p = r.get("icon_path") or r.get("star_icon_path")
+        if isinstance(p, str) and p:
+            if pm_from_path_or_kind is not None:
+                try:
+                    pm = pm_from_path_or_kind(p, "star", desired_px=24)
+                    if pm is not None and not pm.isNull():
+                        return QIcon(pm)
+                except Exception:
+                    pass
+            return QIcon(p)
+        return None
 
     # ---------- formatting helpers ----------
 
@@ -311,7 +327,8 @@ class GalaxyLocationPresenter:
                 "can_reach": bool(td.get("can_reach", True)),
                 "can_reach_jump": bool(td.get("can_reach_jump", True)),
                 "can_reach_fuel": bool(td.get("can_reach_fuel", True)),
-                "icon_path": s.get("icon_path"),
+                # Prefer DB star_icon_path if present (DB fallback), else whatever the galaxy widget provided
+                "icon_path": s.get("icon_path") or s.get("star_icon_path"),
                 "is_current": (sid == cur_sys_id),
             })
         return rows

@@ -1,4 +1,5 @@
 # /game/travel.py
+
 from __future__ import annotations
 
 from typing import Dict, Any, Optional, Tuple, cast

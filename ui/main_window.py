@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 
 from data import db
 from game import player_status
-from save.manager import SaveManager
+from save.save_manager import SaveManager
 
 from .maps.tabs import MapTabs
 from .maps.system_leadline import SystemLeaderLineController
@@ -35,7 +35,7 @@ from .controllers.system_location_presenter import SystemLocationPresenter
 from .state import window_state
 
 # Separate prefs for each leader line
-from .state.leader_line_prefs import GalaxyLeaderLinePrefs, SystemLeaderLinePrefs
+from .state.lead_line_prefs import GalaxyLeaderLinePrefs, SystemLeaderLinePrefs
 
 # Menus
 from .menus.file_menu import install_file_menu

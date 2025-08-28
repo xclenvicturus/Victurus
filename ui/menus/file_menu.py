@@ -5,7 +5,7 @@ from __future__ import annotations
 from PySide6.QtWidgets import QMessageBox, QDialog
 from PySide6.QtGui import QAction
 
-from save.manager import SaveManager
+from save.save_manager import SaveManager
 from ui.dialogs.save_as_dialog import SaveAsDialog
 from ui.dialogs.load_game_dialog import LoadGameDialog
 

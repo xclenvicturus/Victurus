@@ -55,8 +55,10 @@ def _get_temp_state() -> Optional[str]:
     return _LOCAL_TEMP_STATE
 
 
-def _first_nonempty_str(d: Dict[str, Any], keys: Iterable[str]) -> Optional[str]:
+def _first_nonempty_str(d: Dict[str, Any] | None, keys: Iterable[str]) -> Optional[str]:
     """Return the first non-empty string value found in d[keys[i]]."""
+    if not d:
+        return None
     for k in keys:
         v = d.get(k)
         if isinstance(v, str) and v.strip():
@@ -64,21 +66,20 @@ def _first_nonempty_str(d: Dict[str, Any], keys: Iterable[str]) -> Optional[str]
     return None
 
 
-def _first_numeric(d: Dict[str, Any], keys: Iterable[str]) -> Optional[float]:
+def _first_numeric(d: Dict[str, Any] | None, keys: Iterable[str]) -> Optional[float]:
     """Return the first value convertible to float from d[key] (None if not found)."""
+    if not d:
+        return None
     for k in keys:
         if k not in d:
             continue
         v = d.get(k)
-        # Skip explicit None to avoid passing None to float() (fixes type-checker error)
         if v is None:
             continue
         try:
-            # Accept ints, floats, numeric strings
             return float(v)
         except Exception:
             try:
-                # Try str() fallback (e.g., Decimal, numpy, etc.)
                 return float(str(v))
             except Exception:
                 continue
@@ -181,9 +182,10 @@ def get_status_snapshot() -> Dict[str, Any]:
       - player_name: string (derived from common player-name fields)
       - ship_name:   string (from ships.name/ship_name)
       - current_jump_distance: float (best available, in ly)
+      - jump_distance: float (alias for back-compat)
       - system_id, location_id
       - system_name, display_location
-      - status
+      - status (and 'ship_state' alias for back-compat)
       - credits (int)
       - hull/hull_max, shield/shield_max
       - fuel/fuel_max, energy/energy_max
@@ -199,11 +201,11 @@ def get_status_snapshot() -> Dict[str, Any]:
     sys_row = cast(Optional[Dict[str, Any]], db.get_system(int(sys_id)) if sys_id else None)
     loc_row = cast(Optional[Dict[str, Any]], db.get_location(int(loc_id)) if loc_id else None)
 
-    system_name = (sys_row.get("name") if sys_row else None) or "—"
+    # System/location names with broad fallbacks
+    system_name = _first_nonempty_str(sys_row, ("name", "system_name")) or "—"
 
-    # Default display location from DB
     if loc_row:
-        display_location = (loc_row.get("name") or loc_row.get("location_name") or "—")
+        display_location = _first_nonempty_str(loc_row, ("name", "location_name")) or "—"
     else:
         display_location = f"{system_name} (Star)" if system_name != "—" else "—"
 
@@ -222,7 +224,7 @@ def get_status_snapshot() -> Dict[str, Any]:
     # ---- Names ----
     player_name = _first_nonempty_str(
         player,
-        [
+        (
             "player_name",
             "commander",
             "commander_name",
@@ -230,17 +232,17 @@ def get_status_snapshot() -> Dict[str, Any]:
             "player",
             "current_commander_name",
             "current_player_name",
-        ],
+        ),
     ) or "—"
 
     # db.get_player_ship() aliases ship_name AS name; keep fallbacks too
     ship_name = _first_nonempty_str(
         ship,
-        [
+        (
             "name",
             "ship_name",
             "current_player_ship_name",
-        ],
+        ),
     ) or "—"
 
     # ---- Jump range (ly): populate `current_jump_distance` if any known field exists ----
@@ -289,16 +291,18 @@ def get_status_snapshot() -> Dict[str, Any]:
         except Exception:
             return default
 
-    hull      = _int(player.get("current_player_ship_hull"))
-    hull_max  = _int(ship.get("base_ship_hull"), 1)
-    shield    = _int(player.get("current_player_ship_shield"))
-    shield_max= _int(ship.get("base_ship_shield"), 1)
-    fuel      = _float(player.get("current_player_ship_fuel"))
-    fuel_max  = _float(ship.get("base_ship_fuel"), 1.0)
-    energy    = _float(player.get("current_player_ship_energy"))
-    energy_max= _float(ship.get("base_ship_energy"), 1.0)
-    cargo     = _int(player.get("current_player_ship_cargo"))
-    cargo_max = _int(ship.get("base_ship_cargo"), 1)
+    hull       = _int(player.get("current_player_ship_hull"))
+    hull_max   = _int(ship.get("base_ship_hull"), 1)
+    shield     = _int(player.get("current_player_ship_shield"))
+    shield_max = _int(ship.get("base_ship_shield"), 1)
+    fuel       = _float(player.get("current_player_ship_fuel"))
+    fuel_max   = _float(ship.get("base_ship_fuel"), 1.0)
+    energy     = _float(player.get("current_player_ship_energy"))
+    energy_max = _float(ship.get("base_ship_energy"), 1.0)
+    cargo      = _int(player.get("current_player_ship_cargo"))
+    cargo_max  = _int(ship.get("base_ship_cargo"), 1)
+
+    status = get_ship_status(player)
 
     return {
         # IDs & names
@@ -310,7 +314,8 @@ def get_status_snapshot() -> Dict[str, Any]:
         "ship_name": ship_name,
 
         # Status & resources
-        "status": get_ship_status(player),
+        "status": status,
+        "ship_state": status,  # back-compat alias
         "credits": credits,
         "hull": hull, "hull_max": hull_max,
         "shield": shield, "shield_max": shield_max,
@@ -320,4 +325,5 @@ def get_status_snapshot() -> Dict[str, Any]:
 
         # Jump range (as displayed by StatusSheet)
         "current_jump_distance": current_jump_distance,
+        "jump_distance": current_jump_distance,  # alias for legacy readers
     }

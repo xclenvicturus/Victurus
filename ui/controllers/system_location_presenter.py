@@ -1,12 +1,22 @@
+# /ui/controllers/system_location_presenter.py
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Iterable, Any, Protocol, runtime_checkable, cast
+import logging
 import math
+from typing import Any, Dict, Iterable, List, Optional, Protocol, runtime_checkable, cast
 
 from PySide6.QtGui import QFont, QIcon
 from PySide6.QtWidgets import QWidget
 
+# Prefer GIF-first pixmap helper for crisp list thumbnails
+try:
+    from ui.maps.icons import pm_from_path_or_kind  # type: ignore
+except Exception:  # pragma: no cover
+    pm_from_path_or_kind = None  # type: ignore
+
 from data import db
+
+logger = logging.getLogger(__name__)
 
 # travel planner is optional; we fall back gracefully when it isn't present
 try:
@@ -16,6 +26,7 @@ except Exception:  # pragma: no cover
 
 from ..maps.tabs import MapTabs
 from ..widgets.system_location_list import SystemLocationList
+
 
 # ------------------------ typing helpers ------------------------
 
@@ -58,7 +69,10 @@ class SystemLocationPresenter:
     """
     Populates the SystemLocationList (star + locations).
 
-    Distances/fuel come from travel.get_travel_display_data() when available.
+    - Uses icon_path provided by SolarMapWidget.get_entities() when available so
+      the list thumbnails match the map exactly (including DB-only behavior).
+    - Falls back to DB (locations + system.star_icon_path).
+    - Travel/fuel display: uses game.travel when available; otherwise coarse fallback.
     """
 
     def __init__(self,
@@ -216,10 +230,22 @@ class SystemLocationPresenter:
         return []
 
     def _icon_provider(self, r: Dict[str, Any]):
+        """
+        Provide a list QIcon for a row. Use the universal pm_from_path_or_kind for
+        GIF/PNG/JPG/SVG and Qt resources (':/...') so thumbnails always work.
+        """
         p = r.get("icon_path")
-        return QIcon(p) if isinstance(p, str) and p else None
-
-    # ---------- formatting helpers ----------
+        kind = r.get("kind") or r.get("type") or ""
+        if isinstance(p, str) and p:
+            if pm_from_path_or_kind is not None:
+                try:
+                    pm = pm_from_path_or_kind(p, kind, desired_px=24)
+                    if pm is not None and not pm.isNull():
+                        return QIcon(pm)
+                except Exception:
+                    pass
+            return QIcon(p)
+        return None
 
     def _fmt_system_distance(self, td: Dict[str, Any]) -> str:
         same = bool(td.get("same_system", False))
@@ -232,16 +258,40 @@ class SystemLocationPresenter:
 
     # ---------- helpers ----------
 
-    def _norm_kind(self, v):
+    def _norm_kind(self, v: Any) -> str:
         try:
             k = str(v or "").lower().strip()
         except Exception:
             return ""
-        if k in ("warp gate", "warp_gate"):
+        if k in ("warp gate", "warp_gate", "warpgate"):
             return "warp_gate"
         return k
 
-# ---------- row builders ----------
+    def _resolve_icon_path(self, e: Dict[str, Any], system_id: int) -> Optional[str]:
+        """Return icon_path for a row. For STAR rows, fall back to the system's icon."""
+        try:
+            path = e.get("icon_path")
+            kind = str(e.get("kind") or e.get("location_type") or "").lower()
+            if (not path) and kind == "star":
+                sysrow: Dict[str, Any] = {}
+                try:
+                    sysrow = db.get_system(system_id) or {}
+                except Exception:
+                    sysrow = {}
+                sys_icon = sysrow.get("star_icon_path") or sysrow.get("icon_path")
+                path = sys_icon or path
+                try:
+                    logger.debug(
+                        "resolve_icon_path: kind=star system_id=%s loc_icon=%s sys_icon=%s chosen=%s",
+                        system_id, e.get('icon_path'), sys_icon, path
+                    )
+                except Exception:
+                    pass
+            return path
+        except Exception:
+            return e.get("icon_path")
+
+    # ---------- row builders ----------
 
     def _build_system_rows(self, viewed_sys_id: int, cur_loc_id: int, cur_sys_id: int) -> List[Dict[str, Any]]:
         rows: List[Dict[str, Any]] = []
@@ -263,10 +313,10 @@ class SystemLocationPresenter:
                 for loc in db.get_locations(viewed_sys_id):
                     d = dict(loc)
                     mapped = {
-                        "id": d.get("location_id"),
+                        "id": d.get("location_id") or d.get("id"),
                         "system_id": d.get("system_id", viewed_sys_id),
-                        "name": d.get("location_name"),
-                        "kind": (d.get("location_type") or "").lower(),
+                        "name": d.get("location_name") or d.get("name"),
+                        "kind": (d.get("location_type") or d.get("kind") or "").lower(),
                         "icon_path": d.get("icon_path"),
                         "x": d.get("local_x_au", d.get("location_x", 0.0)),
                         "y": d.get("local_y_au", d.get("location_y", 0.0)),
@@ -291,39 +341,72 @@ class SystemLocationPresenter:
         normalized_entities: List[Dict[str, Any]] = []
         has_star = False
         for e in entities:
-            eid = int(e.get("id", e.get("location_id", 0)) or 0)
+            eid = _safe_int(e.get("id", e.get("location_id", 0)) or 0, 0)
             kind = self._norm_kind(e.get("kind") or e.get("location_type"))
-            # Drop system rows or synthetic negatives
-            if eid < 0 or kind == "system":
+            # Drop system rows; allow negative star sentinel rows to pass through
+            if kind == "system":
                 continue
             # Track if we already have the real star
             if kind == "star":
                 has_star = True
             mapped = {
                 "id": eid,
-                "system_id": int(e.get("system_id", viewed_sys_id) or viewed_sys_id),
+                "system_id": _safe_int(e.get("system_id", viewed_sys_id) or viewed_sys_id, viewed_sys_id),
                 "name": e.get("name") or e.get("location_name"),
                 "kind": kind or "location",
-                "icon_path": e.get("icon_path"),
+                "icon_path": self._resolve_icon_path(e, sys_id),
                 "x": e.get("x", e.get("local_x_au", e.get("location_x", 0.0))),
                 "y": e.get("y", e.get("local_y_au", e.get("location_y", 0.0))),
                 "parent_location_id": e.get("parent_location_id"),
             }
             normalized_entities.append(mapped)
 
-        if not has_star and star_loc is not None:
-            normalized_entities.append({
-                "id": _safe_int(star_loc.get("id", star_loc.get("location_id")), 0),
-                "system_id": _safe_int(star_loc.get("system_id", viewed_sys_id), viewed_sys_id),
-                "name": star_loc.get("name", star_loc.get("location_name")),
-                "kind": "star",
-                "icon_path": star_loc.get("icon_path"),
-                "x": star_loc.get("local_x_au", star_loc.get("location_x", 0.0)),
-                "y": star_loc.get("local_y_au", star_loc.get("location_y", 0.0)),
-                "parent_location_id": star_loc.get("parent_location_id"),
-            })
+        if not has_star:
+            if star_loc is not None:
+                normalized_entities.append({
+                    "id": _safe_int(star_loc.get("id", star_loc.get("location_id")), 0),
+                    "system_id": _safe_int(star_loc.get("system_id", viewed_sys_id), viewed_sys_id),
+                    "name": star_loc.get("name", star_loc.get("location_name")),
+                    "kind": "star",
+                    "icon_path": self._resolve_icon_path(star_loc, _safe_int(star_loc.get("system_id", viewed_sys_id), viewed_sys_id)),
+                    "x": star_loc.get("local_x_au", star_loc.get("location_x", 0.0)),
+                    "y": star_loc.get("local_y_au", star_loc.get("location_y", 0.0)),
+                    "parent_location_id": star_loc.get("parent_location_id"),
+                })
+            else:
+                # No star location row exists; synthesize a star from the system record
+                try:
+                    _sysrow = db.get_system(sys_id) or {}
+                except Exception:
+                    _sysrow = {}
+                normalized_entities.append({
+                    "id": int(sys_id),  # any positive id; UI will store negative system id sentinel
+                    "system_id": int(sys_id),
+                    "name": _sysrow.get("name") or "Star",
+                    "kind": "star",
+                    "icon_path": _sysrow.get("star_icon_path") or _sysrow.get("icon_path"),
+                    "x": 0.0,
+                    "y": 0.0,
+                    "parent_location_id": None,
+                })
 
         entities = normalized_entities
+
+        # Ensure STAR has an icon like Galaxy's system entry
+        try:
+            _sysrow = db.get_system(sys_id) or {}
+        except Exception:
+            _sysrow = {}
+        _sys_icon = _sysrow.get("star_icon_path") or _sysrow.get("icon_path")
+        if _sys_icon:
+            try:
+                for _e in entities:
+                    _k = self._norm_kind(_e.get("kind") or _e.get("location_type"))
+                    if _k == "star" and not (_e.get("icon_path") or ""):
+                        _e["icon_path"] = _sys_icon
+                        logger.debug("seed-fallback star icon: system_id=%s chosen=%s", sys_id, _sys_icon)
+            except Exception:
+                pass
 
         # Current player location coord (fallback 0,0)
         cur_x = 0.0
@@ -345,7 +428,7 @@ class SystemLocationPresenter:
             ey = e.get("y", None)
             locrow_cache: Dict[str, Any] = {}
             if ex is None or ey is None:
-                if eid >= 0:
+                if eid is not None and eid >= 0:
                     locrow_cache = db.get_location(eid) or {}
                     ex = locrow_cache.get("local_x_au", locrow_cache.get("location_x", 0.0))
                     ey = locrow_cache.get("local_y_au", locrow_cache.get("location_y", 0.0))
@@ -357,7 +440,7 @@ class SystemLocationPresenter:
 
             # authoritative parent id for moons/stations
             parent_id_val = e.get("parent_location_id")
-            if parent_id_val is None and kind in ("moon", "station") and eid >= 0:
+            if parent_id_val is None and kind in ("moon", "station") and (eid is not None and eid >= 0):
                 if not locrow_cache:
                     locrow_cache = db.get_location(eid) or {}
                 parent_id_val = locrow_cache.get("parent_location_id")
@@ -365,7 +448,7 @@ class SystemLocationPresenter:
             td: Dict[str, Any] = {}
             if travel and hasattr(travel, "get_travel_display_data"):
                 try:
-                    td = travel.get_travel_display_data("loc", eid) or {}
+                    td = travel.get_travel_display_data("loc", eid if isinstance(eid, int) else 0) or {}
                 except Exception:
                     td = {}
 
@@ -387,10 +470,10 @@ class SystemLocationPresenter:
             can_reach_fuel = bool(td.get("can_reach_fuel", True))
             can_reach = bool(td.get("can_reach", True))
 
-            is_current_system = (eid < 0 and (-eid == cur_sys_id))
+            is_current_system = (isinstance(eid, int) and eid < 0 and (-eid == cur_sys_id))
 
             rows.append({
-                "id": int(eid),
+                "id": int(eid) if isinstance(eid, int) else 0,
                 "name": e.get("name", e.get("location_name", "Location")),
                 "kind": kind,
                 "distance": self._fmt_system_distance(td),
@@ -400,9 +483,9 @@ class SystemLocationPresenter:
                 "x": exf,
                 "y": eyf,
                 "system_id": sys_id,
-                "icon_path": e.get("icon_path"),
+                "icon_path": self._resolve_icon_path(e, sys_id),
                 "is_current_system": bool(is_current_system),
-                "is_current": (eid == cur_loc_id) if eid >= 0 else False,
+                "is_current": (isinstance(eid, int) and eid == cur_loc_id) if (isinstance(eid, int) and eid >= 0) else False,
                 "can_reach": bool(can_reach),
                 "can_reach_jump": bool(can_reach_jump),
                 "can_reach_fuel": bool(can_reach_fuel),

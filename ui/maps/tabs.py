@@ -1,5 +1,4 @@
 # /ui/maps/tabs.py
-
 """
 ui/maps/tabs.py
 This module only owns the two map views.
@@ -70,13 +69,17 @@ class MapTabs(QWidget):
 
     # ---- Simple helpers the main window can call ----
     def setCurrentIndex(self, idx: int) -> None:
-        self.tabs.setCurrentIndex(max(0, min(1, idx)))
+        try:
+            idx = max(0, min(self.tabs.count() - 1, int(idx)))
+            self.tabs.setCurrentIndex(idx)
+        except Exception:
+            pass
 
     def show_galaxy(self) -> None:
-        self.setCurrentIndex(0)
+        self.setCurrentIndex(self.tabs.indexOf(self.galaxy))
 
     def show_solar(self) -> None:
-        self.setCurrentIndex(1)
+        self.setCurrentIndex(self.tabs.indexOf(self.solar))
 
     def _ensure_solar_loaded_from_player(self) -> None:
         """Load the SolarMapWidget with the player's current system if needed."""
@@ -116,7 +119,7 @@ class MapTabs(QWidget):
             self.galaxy.load()
         except Exception:
             pass
-        
+
         # Always ensure the solar map is showing the player's actual current system from the database.
         # This corrects the bug where the view would not update after a new game or load.
         try:

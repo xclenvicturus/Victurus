@@ -20,8 +20,15 @@ from PySide6.QtWidgets import (
     QHeaderView,
 )
 
+# Try to use the GIF-first pixmap helper if available (keeps thumbnails in sync with map GIFs)
+try:
+    from ui.maps.icons import pm_from_path_or_kind  # type: ignore
+except Exception:  # pragma: no cover
+    pm_from_path_or_kind = None  # type: ignore
+
 # -------- Helpers (duplicated for independence) --------
 _LY_TO_AU = 63241.0  # Approximate astronomical units in one light-year
+
 
 def _norm(s: Optional[str]) -> str:
     """Normalize kind/category text for robust matching (case/space/punct-insensitive)."""
@@ -34,14 +41,17 @@ def _norm(s: Optional[str]) -> str:
             out.append(ch)
     return "".join(out)
 
+
 def _to_int(x) -> Optional[int]:
     try:
         return int(x)  # type: ignore[arg-type]
     except Exception:
         return None
 
+
 _LY_RE = re.compile(r"([+-]?\d+(?:\.\d+)?)\s*ly\b", re.IGNORECASE)
 _AU_RE = re.compile(r"([+-]?\d+(?:\.\d+)?)\s*au\b", re.IGNORECASE)
+
 
 def _extract_ly(r: Dict) -> float:
     """Prefer numeric LY, else parse from 'distance'. Unknown -> inf."""
@@ -66,6 +76,7 @@ def _extract_ly(r: Dict) -> float:
         pass
     return float("inf")
 
+
 def _extract_au(r: Dict) -> float:
     """Prefer numeric AU, else sum intra legs, else parse AU from 'distance'. Unknown -> inf."""
     try:
@@ -79,13 +90,15 @@ def _extract_au(r: Dict) -> float:
     try:
         v = r.get("intra_current_au")
         if v not in (None, ""):
-            total += float(v); has_leg = True
+            total += float(v)
+            has_leg = True
     except Exception:
         pass
     try:
         v = r.get("intra_target_au")
         if v not in (None, ""):
-            total += float(v); has_leg = True
+            total += float(v)
+            has_leg = True
     except Exception:
         pass
     if has_leg:
@@ -98,6 +111,7 @@ def _extract_au(r: Dict) -> float:
     except Exception:
         pass
     return float("inf")
+
 
 def _smart_distance_key(r: Dict, descending: bool) -> Tuple[float, float, str]:
     name = (r.get("name") or r.get("location_name") or "").lower()
@@ -170,6 +184,7 @@ def _smart_distance_key(r: Dict, descending: bool) -> Tuple[float, float, str]:
         key = (1.0, 0.0, name)
         return key
 
+
 def _fuel_sort_key(r: Dict, descending: bool) -> Tuple[float, float, str]:
     name = (r.get("name") or r.get("location_name") or "").lower()
     v = r.get("fuel_cost", None)
@@ -180,6 +195,7 @@ def _fuel_sort_key(r: Dict, descending: bool) -> Tuple[float, float, str]:
     except Exception:
         return (1.0, 0.0, name)
     return (0.0, -fv, name) if descending else (0.0, fv, name)
+
 
 # -------- Widget (SYSTEM) --------
 
@@ -220,9 +236,9 @@ class SystemLocationList(QWidget):
         try:
             header.setStretchLastSection(False)
             header.setDefaultSectionSize(160)
-            header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)       # Name stretches
-            header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)  # Distance autosize
-            header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)  # Fuel autosize
+            header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)            # Name stretches
+            header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)   # Distance autosize
+            header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)   # Fuel autosize
         except Exception:
             pass
 
@@ -387,10 +403,10 @@ class SystemLocationList(QWidget):
         return k
 
     def _display_name(self, r: Dict) -> str:
-        """Append ' (star)' for explicit star rows; prefer location_name if present."""
+        """Append ' (Star)' for explicit star rows; prefer location_name if present."""
         name = r.get("name") or r.get("location_name") or "Unknown"
         if self._kind_of(r) == "star" and "(star)" not in name.lower():
-            name = f"{name} (star)"
+            name = f"{name} (Star)"
         return name
 
     def find_item_by_id(self, entity_id: int) -> Optional[QTreeWidgetItem]:
@@ -408,7 +424,13 @@ class SystemLocationList(QWidget):
         white = QBrush(QColor("white"))
 
         # ---- Name ----
-        if bool(r.get("is_current", False)):
+        try:
+            kind = str(r.get("kind") or r.get("location_type") or "").lower().strip()
+        except Exception:
+            kind = ""
+        if kind == "star":
+            it.setForeground(0, QBrush(QColor("lightblue")))
+        elif bool(r.get("is_current", False)):
             it.setForeground(0, yellow)
         else:
             it.setForeground(0, white)
@@ -425,6 +447,29 @@ class SystemLocationList(QWidget):
         else:
             it.setForeground(2, white)
 
+    # ----- Icon fallback (GIF-first) -----
+
+    def _default_icon_provider(self, r: Dict) -> Optional[QIcon]:
+        """
+        If presenter doesn't provide an icon, prefer a GIF-first pixmap (first frame)
+        so list thumbnails match the map exactly; fallback to QIcon(path).
+        """
+        p = r.get("icon_path")
+        kind = r.get("kind") or r.get("location_type") or ""
+        if isinstance(p, str) and p:
+            if p.lower().endswith(".gif") and pm_from_path_or_kind is not None:
+                try:
+                    pm = pm_from_path_or_kind(p, kind, desired_px=24)
+                    if pm is not None and not pm.isNull():
+                        return QIcon(pm)
+                except Exception:
+                    pass
+            try:
+                return QIcon(p)
+            except Exception:
+                return None
+        return None
+
     # ----- Population (grouped vs flat handled by sort mode) -----
 
     def populate(
@@ -439,8 +484,8 @@ class SystemLocationList(QWidget):
         # Remove any "system" entries entirely from the System list
         rows = [r for r in rows if self._kind_of(r) != "system"]
 
-        red_brush    = QBrush(QColor("red"))
-        green_brush  = QBrush(QColor("green"))
+        red_brush = QBrush(QColor("red"))
+        green_brush = QBrush(QColor("green"))
         yellow_brush = QBrush(QColor("yellow"))
 
         # Grouped default view?
@@ -448,6 +493,19 @@ class SystemLocationList(QWidget):
         grouped = (sort_text in ("Default View",))
 
         self.tree.setRootIsDecorated(grouped)
+
+        # Helper to apply icon from provider with GIF-first fallback
+        def _apply_icon(it: QTreeWidgetItem, row: Dict) -> None:
+            icon: Optional[QIcon] = None
+            if icon_provider is not None:
+                try:
+                    icon = icon_provider(row)
+                except Exception:
+                    icon = None
+            if icon is None:
+                icon = self._default_icon_provider(row)
+            if icon:
+                it.setIcon(0, icon)
 
         if not grouped:
             # Flat list — skip 'system' rows; label star with '(star)'
@@ -461,11 +519,14 @@ class SystemLocationList(QWidget):
                 disp = self._display_name(r)
 
                 it = QTreeWidgetItem(self.tree, [disp, dist_text, fuel_text])
-                it.setData(0, Qt.ItemDataRole.UserRole, rid)
-                if icon_provider:
-                    icon = icon_provider(r)
-                    if icon:
-                        it.setIcon(0, icon)
+                # Use negative system-id for star entries to support leader line
+                if self._kind_of(r) == "star":
+                    sys_id = _to_int(r.get("system_id") or r.get("systemid"))
+                    it.setData(0, Qt.ItemDataRole.UserRole, -int(sys_id) if sys_id is not None else rid)
+                else:
+                    it.setData(0, Qt.ItemDataRole.UserRole, rid)
+
+                _apply_icon(it, r)
                 self._apply_row_styling(it, r, red=red_brush, green=green_brush, yellow=yellow_brush)
             return
 
@@ -507,11 +568,11 @@ class SystemLocationList(QWidget):
                 fuel_text = str(fuel_val) if fuel_val != "—" else "—"
                 disp = self._display_name(star)
                 star_it = QTreeWidgetItem(self.tree, [disp, dist_text, fuel_text])
-                star_it.setData(0, Qt.ItemDataRole.UserRole, rid)
-                if icon_provider:
-                    icon = icon_provider(star)
-                    if icon:
-                        star_it.setIcon(0, icon)
+                # For star row, store negative system-id to enable leader line/system-centric behaviors
+                sys_id = _to_int(star.get("system_id") or star.get("systemid"))
+                star_entity_id = -int(sys_id) if sys_id is not None else rid
+                star_it.setData(0, Qt.ItemDataRole.UserRole, star_entity_id)
+                _apply_icon(star_it, star)
                 self._apply_row_styling(star_it, star, red=red_brush, green=green_brush, yellow=yellow_brush)
                 star_it.setExpanded(True)
 
@@ -527,10 +588,7 @@ class SystemLocationList(QWidget):
 
             planet_it = QTreeWidgetItem(self.tree, [(r.get("name") or r.get("location_name") or "Unknown"), dist_text, fuel_text])
             planet_it.setData(0, Qt.ItemDataRole.UserRole, rid)
-            if icon_provider:
-                icon = icon_provider(r)
-                if icon:
-                    planet_it.setIcon(0, icon)
+            _apply_icon(planet_it, r)
             self._apply_row_styling(planet_it, r, red=red_brush, green=green_brush, yellow=yellow_brush)
 
             # Order children: stations first, then moons, then others
@@ -554,10 +612,7 @@ class SystemLocationList(QWidget):
 
                 child_it = QTreeWidgetItem(planet_it, [(ch.get("name") or ch.get("location_name") or "Unknown"), c_dist, c_fuel])
                 child_it.setData(0, Qt.ItemDataRole.UserRole, cid)
-                if icon_provider:
-                    c_icon = icon_provider(ch)
-                    if c_icon:
-                        child_it.setIcon(0, c_icon)
+                _apply_icon(child_it, ch)
                 self._apply_row_styling(child_it, ch, red=red_brush, green=green_brush, yellow=yellow_brush)
 
             planet_it.setExpanded(True)
@@ -580,10 +635,7 @@ class SystemLocationList(QWidget):
 
             it = QTreeWidgetItem(self.tree, [(r.get("name") or r.get("location_name") or "Unknown"), dist_text, fuel_text])
             it.setData(0, Qt.ItemDataRole.UserRole, rid)
-            if icon_provider:
-                icon = icon_provider(r)
-                if icon:
-                    it.setIcon(0, icon)
+            _apply_icon(it, r)
             self._apply_row_styling(it, r, red=red_brush, green=green_brush, yellow=yellow_brush)
 
         # 4) Warpgate(s) always last (alphabetical)
@@ -597,10 +649,7 @@ class SystemLocationList(QWidget):
                 w_fuel = str(w_fuel_val) if w_fuel_val != "—" else "—"
                 wg_it = QTreeWidgetItem(self.tree, [(wg.get("name") or wg.get("location_name") or "Unknown"), w_dist, w_fuel])
                 wg_it.setData(0, Qt.ItemDataRole.UserRole, wid)
-                if icon_provider:
-                    w_icon = icon_provider(wg)
-                    if w_icon:
-                        wg_it.setIcon(0, w_icon)
+                _apply_icon(wg_it, wg)
                 self._apply_row_styling(wg_it, wg, red=red_brush, green=green_brush, yellow=yellow_brush)
 
     # ----- Filtering & sorting -----

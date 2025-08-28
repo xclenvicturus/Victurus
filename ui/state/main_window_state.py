@@ -5,10 +5,76 @@ from __future__ import annotations
 from typing import Dict, Any, Optional, List
 from PySide6.QtCore import QByteArray, Qt
 
+
+def _collect_panel_state(panel) -> Optional[Dict[str, Any]]:
+    """Capture list panel state (Category/Sort/Search/Column widths/Visible)."""
+    if not panel:
+        return None
+    try:
+        tree = getattr(panel, "tree", None)
+        return {
+            "visible": bool(panel.isVisible()),
+            "category_index": int(getattr(panel, "category").currentIndex()) if hasattr(panel, "category") else 0,
+            "sort_text": str(getattr(panel, "sort").currentText()) if hasattr(panel, "sort") else "",
+            "search": str(getattr(panel, "search").text()) if hasattr(panel, "search") else "",
+            "col_widths": [tree.columnWidth(i) for i in range(tree.columnCount())] if tree else [],
+        }
+    except Exception:
+        return None
+
+
+def _restore_panel_state(panel, state: Dict[str, Any]) -> None:
+    """Restore list panel state captured by _collect_panel_state()."""
+    if not panel or not isinstance(state, dict):
+        return
+    try:
+        if "visible" in state:
+            panel.setVisible(bool(state["visible"]))
+    except Exception:
+        pass
+    try:
+        if "category_index" in state and hasattr(panel, "category"):
+            panel.category.setCurrentIndex(int(state["category_index"]))
+    except Exception:
+        pass
+    try:
+        if "sort_text" in state and hasattr(panel, "sort"):
+            sort_text = state.get("sort_text")
+            if isinstance(sort_text, str) and sort_text:
+                i = panel.sort.findText(sort_text)
+                if i >= 0:
+                    panel.sort.setCurrentIndex(i)
+                else:
+                    # allow unknown/legacy values to still be applied
+                    try:
+                        panel.sort.setCurrentText(sort_text)
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+    try:
+        if "search" in state and hasattr(panel, "search"):
+            panel.search.setText(str(state.get("search", "")))
+    except Exception:
+        pass
+    try:
+        widths = state.get("col_widths")
+        if isinstance(widths, list):
+            tree = getattr(panel, "tree", None)
+            if tree:
+                for i, w in enumerate(widths):
+                    try:
+                        tree.setColumnWidth(i, int(w))
+                    except Exception:
+                        continue
+    except Exception:
+        pass
+
+
 def collect(win) -> Dict[str, Any]:
     """
     Capture per-save UI state for the current MainWindow instance.
-    This is stored via SaveManager (NOT the global window_state).
+    Stored via SaveManager (NOT the global window_state).
     """
     state: Dict[str, Any] = {}
 
@@ -30,7 +96,8 @@ def collect(win) -> Dict[str, Any]:
 
     # Map tab index
     try:
-        tabs = getattr(win._map_view, "tabs", None)
+        tabs = getattr(win, "_map_view", None)
+        tabs = getattr(tabs, "tabs", None) if tabs else None
         state["map_tab_index"] = int(tabs.currentIndex()) if tabs else 0
     except Exception:
         state["map_tab_index"] = 0
@@ -45,16 +112,26 @@ def collect(win) -> Dict[str, Any]:
     except Exception:
         pass
 
-    # Location List visibility + settings
+    # ---- Panels (new: capture BOTH if present) ----
     try:
-        panel = getattr(win, "location_panel", None)
-        state["location_list_visible"] = bool(panel.isVisible()) if panel else True
-        if panel:
-            state["panel_category_index"] = int(panel.category.currentIndex())
-            state["panel_sort_text"]     = str(panel.sort.currentText())
-            state["panel_search"]        = str(panel.search.text())
-            tree = panel.tree
-            state["panel_col_widths"]    = [tree.columnWidth(i) for i in range(tree.columnCount())]
+        # Preferred names in the new split UI:
+        panel_solar  = getattr(win, "location_panel_solar",  None)
+        panel_galaxy = getattr(win, "location_panel_galaxy", None)
+
+        # Back-compat: some builds still expose a single 'location_panel'
+        legacy_panel = getattr(win, "location_panel", None)
+
+        solar_state  = _collect_panel_state(panel_solar)  or _collect_panel_state(legacy_panel)
+        galaxy_state = _collect_panel_state(panel_galaxy)
+
+        if solar_state:
+            state["panel_solar"] = solar_state
+        if galaxy_state:
+            state["panel_galaxy"] = galaxy_state
+
+        # Also keep legacy keys for older restores
+        if legacy_panel and "panel_solar" not in state:
+            state["panel_legacy"] = solar_state or {}
     except Exception:
         pass
 
@@ -85,7 +162,8 @@ def restore(win, state: Dict[str, Any]) -> None:
     # Map tab index
     try:
         idx = int(state.get("map_tab_index", 0))
-        tabs = getattr(win._map_view, "tabs", None)
+        tabs = getattr(win, "_map_view", None)
+        tabs = getattr(tabs, "tabs", None) if tabs else None
         if tabs:
             tabs.setCurrentIndex(max(0, min(tabs.count() - 1, idx)))
     except Exception:
@@ -107,31 +185,21 @@ def restore(win, state: Dict[str, Any]) -> None:
     except Exception:
         pass
 
-    # Location List visibility + settings
+    # ---- Panels (new: restore BOTH if present) ----
     try:
-        panel = getattr(win, "location_panel", None)
-        if panel:
-            vis = state.get("location_list_visible", True)
-            panel.setVisible(bool(vis))
+        panel_solar  = getattr(win, "location_panel_solar",  None)
+        panel_galaxy = getattr(win, "location_panel_galaxy", None)
+        legacy_panel = getattr(win, "location_panel", None)
 
-            cat_idx = int(state.get("panel_category_index", 0))
-            panel.category.setCurrentIndex(cat_idx)
+        solar_state  = state.get("panel_solar")
+        galaxy_state = state.get("panel_galaxy")
 
-            sort_text = state.get("panel_sort_text")
-            if isinstance(sort_text, str) and sort_text:
-                i = panel.sort.findText(sort_text)
-                if i >= 0:
-                    panel.sort.setCurrentIndex(i)
+        if solar_state:
+            _restore_panel_state(panel_solar or legacy_panel, solar_state)
+        elif "panel_legacy" in state:
+            _restore_panel_state(legacy_panel, state.get("panel_legacy", {}))
 
-            panel.search.setText(str(state.get("panel_search", "")))
-
-            widths = state.get("panel_col_widths")
-            if isinstance(widths, list):
-                tree = panel.tree
-                for i, w in enumerate(widths):
-                    try:
-                        tree.setColumnWidth(i, int(w))
-                    except Exception:
-                        pass
+        if galaxy_state:
+            _restore_panel_state(panel_galaxy, galaxy_state)
     except Exception:
         pass

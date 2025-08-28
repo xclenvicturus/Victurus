@@ -67,16 +67,26 @@ class MapActions:
         else:
             # We can center on the virtual item directly (moons are real items in scene)
             if entity_id < 0:
-                sol = self._solar()
-                center_sys = getattr(self._tabs, "center_solar_on_system", None)
-                if callable(center_sys) and sol is not None:
-                    vr = self._resolve_virtual(entity_id)
-                    if vr and vr[0] == "star":
+                # Try resolver first; fall back to sentinel semantics (star/system)
+                vr = self._resolve_virtual(entity_id)
+                if vr and vr[0] == "star":
+                    center_sys = getattr(self._tabs, "center_solar_on_system", None)
+                    if callable(center_sys):
                         try:
                             center_sys(int(vr[1]))
                             return
                         except Exception:
                             pass
+                else:
+                    # Fallback: negative id encodes system id of the star
+                    center_sys = getattr(self._tabs, "center_solar_on_system", None)
+                    if callable(center_sys):
+                        try:
+                            center_sys(int(-entity_id))
+                            return
+                        except Exception:
+                            pass
+
             center_loc = getattr(self._tabs, "center_solar_on_location", None)
             if callable(center_loc):
                 try:
@@ -128,22 +138,36 @@ class MapActions:
         """Context menu action."""
         if self._begin_travel_cb is None:
             return
+
         if self._using_galaxy():
             # entity_id is -system_id in the lists
-            sys_id = int(-entity_id) if entity_id < 0 else int(entity_id)
+            try:
+                sys_id = int(-entity_id) if entity_id < 0 else int(entity_id)
+            except Exception:
+                return
             self._begin_travel_cb("star", sys_id)
             return
 
-        # System view: support star sentinel and virtual moon ids
+        # System view: support star sentinel and virtual ids
         if entity_id < 0:
             vr = self._resolve_virtual(entity_id)
             if vr:
                 kind, ident = vr
                 if kind == "star":
                     self._begin_travel_cb("star", int(ident))
-                elif kind == "loc":
+                    return
+                if kind == "loc":
                     self._begin_travel_cb("loc", int(ident))
+                    return
+            # Fallback if resolver not present: negative means system/star
+            try:
+                self._begin_travel_cb("star", int(-entity_id))
+            except Exception:
+                pass
             return
 
         # Otherwise it's a real location id
-        self._begin_travel_cb("loc", int(entity_id))
+        try:
+            self._begin_travel_cb("loc", int(entity_id))
+        except Exception:
+            pass

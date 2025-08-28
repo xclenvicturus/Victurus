@@ -1,5 +1,5 @@
-# /ui/maps/panzoom_view.py
 
+# /ui/maps/background_view.py
 """
 BackgroundView
 - background image; can be drawn in viewport ("screen") or scene space

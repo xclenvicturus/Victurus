@@ -1,4 +1,5 @@
-# game_controller/sim_tasks.py
+# /game_controller/sim_tasks.py
+
 # Worker-side tasks for the universe simulator.
 # Pure functions only: no Qt, no global mutable state shared across processes.
 

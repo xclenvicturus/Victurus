@@ -1,5 +1,4 @@
-# data/seed.py
-# Quiet seeder for the v2 universe (no debug prints/log files).
+# /data/seed.py
 
 from __future__ import annotations
 
@@ -16,9 +15,7 @@ SEED_PATHS = [DATA_DIR / "universe_seed.json", DATA_DIR / "universe_seed_v2.json
 # ----------------------------- helpers -----------------------------
 
 def _try_execmany(cur: sqlite3.Cursor, sql: str, rows: Iterable[tuple]) -> None:
-    """
-    Execute a batch. On FK errors, retry row-by-row and skip offending rows.
-    """
+    """Execute a batch. On FK errors, retry row-by-row and skip offending rows."""
     rows = list(rows)
     if not rows:
         return
@@ -54,6 +51,12 @@ def _norm_loc_type(t: str) -> str:
     # accept 'warpgate' from old seeds, convert to 'warp_gate'
     return "warp_gate" if t == "warpgate" else t
 
+def _norm_resource_type(t: str) -> str:
+    # canonicalize resource types to match asset folders and UI expectations
+    if t == "gas_cloud":
+        return "gas_clouds"
+    return t
+
 
 def _prepare_location_row(loc: Dict[str, Any]) -> Tuple[int, int, str, str, float, float, Optional[int], Optional[str]]:
     lt = _norm_loc_type(loc.get("location_type", ""))
@@ -80,6 +83,7 @@ def _insert_locations_topologically(cur: sqlite3.Cursor, locs: List[Dict[str, An
     Filters out locations whose system_id is not present.
     If parent id not present among the seed's location ids, parent is set to NULL.
     In cycles, remaining parents are set to NULL and inserted if possible.
+    Also ensures star locations inherit their system's star_icon_path into locations.icon_path.
     Returns: (inserted_ids, forced_or_skipped_rows)
     """
     if not locs:
@@ -103,12 +107,26 @@ def _insert_locations_topologically(cur: sqlite3.Cursor, locs: List[Dict[str, An
     pending = dict(sanitized)  # lid -> row
     inserted: set[int] = set()
 
-    sql = """
-        INSERT OR REPLACE INTO locations
+    sql = """        INSERT OR REPLACE INTO locations
           (location_id, system_id, location_name, location_type,
            location_x, location_y, parent_location_id, location_description, icon_path)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL);
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
     """
+
+    def _row_with_icon(base_row: Tuple[int, int, str, str, float, float, Optional[int], Optional[str]],
+                       parent_override: Optional[int] = None) -> Tuple:
+        """Return a row tuple including an icon_path value.
+        For stars, copy systems.star_icon_path into locations.icon_path. Otherwise NULL.
+        """
+        lid, sid, name, lt, x, y, parent_id, desc = base_row
+        if parent_override is not None:
+            parent_id = parent_override
+        icon_path: Optional[str] = None
+        if lt == "star":
+            row = cur.execute("SELECT star_icon_path FROM systems WHERE system_id=?;", (sid,)).fetchone()
+            if row:
+                icon_path = row[0]
+        return (lid, sid, name, lt, x, y, parent_id, desc, icon_path)
 
     safety = 0
     while pending and safety < 20000:
@@ -119,7 +137,7 @@ def _insert_locations_topologically(cur: sqlite3.Cursor, locs: List[Dict[str, An
             to_force = list(pending.items())
             for lid, r in to_force:
                 _, sid, name, lt, x, y, _pid, desc = r
-                r2 = (lid, sid, name, lt, x, y, None, desc)
+                r2 = _row_with_icon((lid, sid, name, lt, x, y, None, desc))
                 try:
                     cur.execute(sql, r2)
                     inserted.add(lid)
@@ -133,11 +151,11 @@ def _insert_locations_topologically(cur: sqlite3.Cursor, locs: List[Dict[str, An
         for lid in ready_ids:
             r = pending.pop(lid)
             try:
-                cur.execute(sql, r)
+                cur.execute(sql, _row_with_icon(r))
                 inserted.add(lid)
             except sqlite3.IntegrityError:
                 # retry with parent=NULL
-                r2 = (r[0], r[1], r[2], r[3], r[4], r[5], None, r[7])
+                r2 = _row_with_icon(r, parent_override=None)
                 try:
                     cur.execute(sql, r2)
                     inserted.add(lid)
@@ -159,8 +177,7 @@ def seed(conn: sqlite3.Connection) -> None:
     if seed.get("items"):
         _try_execmany(
             cur,
-            """
-            INSERT OR REPLACE INTO items
+            """            INSERT OR REPLACE INTO items
               (item_id, item_name, item_base_price, item_description, item_category)
             VALUES (?, ?, ?, ?, ?);
             """,
@@ -180,8 +197,7 @@ def seed(conn: sqlite3.Connection) -> None:
     if seed.get("ships"):
         _try_execmany(
             cur,
-            """
-            INSERT OR REPLACE INTO ships
+            """            INSERT OR REPLACE INTO ships
               (ship_id, ship_name, base_ship_cargo, base_ship_fuel,
                base_ship_jump_distance, base_ship_shield, base_ship_hull, base_ship_energy)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?);
@@ -215,13 +231,25 @@ def seed(conn: sqlite3.Connection) -> None:
         ]
         _try_execmany(
             cur,
-            """
-            INSERT OR REPLACE INTO systems
+            """            INSERT OR REPLACE INTO systems
               (system_id, system_name, system_x, system_y, star_icon_path)
             VALUES (?, ?, ?, ?, ?);
-            """,
+            """ ,
             sys_rows,
         )
+
+        # econ tags (optional)
+        tag_rows = []
+        for s in seed["systems"]:
+            tags = s.get("econ_tags") or []
+            for t in tags:
+                tag_rows.append((s["system_id"], str(t)))
+        if tag_rows:
+            _try_execmany(
+                cur,
+                "INSERT OR IGNORE INTO system_econ_tags (system_id, tag) VALUES (?, ?);" ,
+                tag_rows,
+            )
 
     # Precompute system_ids
     system_ids = {row[0] for row in cur.execute("SELECT system_id FROM systems").fetchall()}
@@ -230,11 +258,10 @@ def seed(conn: sqlite3.Connection) -> None:
     if seed.get("markets"):
         _try_execmany(
             cur,
-            """
-            INSERT OR REPLACE INTO markets
+            """            INSERT OR REPLACE INTO markets
               (system_id, item_id, local_market_price, local_market_stock)
             VALUES (?, ?, ?, ?);
-            """,
+            """ ,
             [
                 (
                     m["system_id"],
@@ -252,16 +279,43 @@ def seed(conn: sqlite3.Connection) -> None:
     if seed.get("locations"):
         inserted_loc_ids, _ = _insert_locations_topologically(cur, seed["locations"])
 
+    # ----------------- ensure warpgate location rows exist -----------------
+    if seed.get("warpgates"):
+        for wg in seed["warpgates"]:
+            sid = wg.get("system_id")
+            lid = wg.get("location_id")
+            if sid is None or lid is None:
+                continue
+            if sid not in system_ids:
+                continue
+            row = cur.execute("SELECT system_id, location_type FROM locations WHERE location_id=?;", (lid,)).fetchone()
+            if row is None:
+                # create a minimal warp gate location at (0,0) with name 'Warp Gate'
+                try:
+                    cur.execute(
+                        """                        INSERT OR REPLACE INTO locations
+                          (location_id, system_id, location_name, location_type, location_x, location_y, parent_location_id, location_description, icon_path)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+                        """ ,
+                        (lid, sid, "Warp Gate", "warp_gate", 0.0, 0.0, None, None, None),
+                    )
+                    inserted_loc_ids.add(int(lid))
+                except sqlite3.IntegrityError:
+                    pass
+            else:
+                if row[0] == sid and row[1] != "warp_gate":
+                    # normalize existing row to warp_gate type
+                    cur.execute("UPDATE locations SET location_type='warp_gate' WHERE location_id=?;", (lid,))
+
     # ----------------- races / ownership / diplomacy -----------------
     if seed.get("races"):
         _try_execmany(
             cur,
-            """
-            INSERT OR REPLACE INTO races
+            """            INSERT OR REPLACE INTO races
               (race_id, name, adjective, description, tech_theme, ship_doctrine,
                government, color, home_system_id, home_planet_location_id, starting_world)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-            """,
+            """ ,
             [
                 (
                     r["race_id"],
@@ -295,7 +349,7 @@ def seed(conn: sqlite3.Connection) -> None:
             own_rows.append((sid, rid, o.get("status", "unclaimed")))
         _try_execmany(
             cur,
-            "INSERT OR REPLACE INTO ownerships (system_id, race_id, status) VALUES (?, ?, ?);",
+            "INSERT OR REPLACE INTO ownerships (system_id, race_id, status) VALUES (?, ?, ?);" ,
             own_rows,
         )
 
@@ -310,7 +364,7 @@ def seed(conn: sqlite3.Connection) -> None:
                 dip_rows.append((a, b, int(d.get("stance", 0)), d.get("status", "neutral")))
         _try_execmany(
             cur,
-            "INSERT OR REPLACE INTO diplomacy (race_a_id, race_b_id, stance, status) VALUES (?, ?, ?, ?);",
+            "INSERT OR REPLACE INTO diplomacy (race_a_id, race_b_id, stance, status) VALUES (?, ?, ?, ?);" ,
             dip_rows,
         )
 
@@ -325,12 +379,12 @@ def seed(conn: sqlite3.Connection) -> None:
             if a not in system_ids or b not in system_ids:
                 continue
             a2, b2 = (a, b) if a <= b else (b, a)
-            dist = float(gl["distance_pc"])
+            dist = float(gl["distance_pc"]) if gl.get("distance_pc") is not None else 0.0
             gl_set.add((a2, b2, dist))
         gl_rows = list(gl_set)
         _try_execmany(
             cur,
-            "INSERT OR REPLACE INTO gate_links (system_a_id, system_b_id, distance_pc) VALUES (?, ?, ?);",
+            "INSERT OR REPLACE INTO gate_links (system_a_id, system_b_id, distance_pc) VALUES (?, ?, ?);" ,
             gl_rows,
         )
 
@@ -340,11 +394,13 @@ def seed(conn: sqlite3.Connection) -> None:
         for rn in seed["resource_nodes"]:
             lid = rn["location_id"]
             if lid not in inserted_loc_ids:
+                # location missing in this seed batch; skip (UI relies on a location row for placement)
                 continue
-            rn_rows.append((lid, rn["resource_type"], int(rn["richness"]), float(rn["regen_rate"])))
+            rtype = _norm_resource_type(rn["resource_type"])
+            rn_rows.append((lid, rtype, int(rn["richness"]), float(rn["regen_rate"])))
         _try_execmany(
             cur,
-            "INSERT OR REPLACE INTO resource_nodes (location_id, resource_type, richness, regen_rate) VALUES (?, ?, ?, ?);",
+            "INSERT OR REPLACE INTO resource_nodes (location_id, resource_type, richness, regen_rate) VALUES (?, ?, ?, ?);" ,
             rn_rows,
         )
 
@@ -366,19 +422,19 @@ def seed(conn: sqlite3.Connection) -> None:
         if fac_rows:
             _try_execmany(
                 cur,
-                "INSERT OR REPLACE INTO facilities (facility_id, location_id, facility_type, notes) VALUES (?, ?, ?, ?);",
+                "INSERT OR REPLACE INTO facilities (facility_id, location_id, facility_type, notes) VALUES (?, ?, ?, ?);" ,
                 fac_rows,
             )
         if finputs:
             _try_execmany(
                 cur,
-                "INSERT OR REPLACE INTO facility_inputs (facility_id, item_id, rate) VALUES (?, ?, ?);",
+                "INSERT OR REPLACE INTO facility_inputs (facility_id, item_id, rate) VALUES (?, ?, ?);" ,
                 finputs,
             )
         if foutputs:
             _try_execmany(
                 cur,
-                "INSERT OR REPLACE INTO facility_outputs (facility_id, item_id, rate) VALUES (?, ?, ?);",
+                "INSERT OR REPLACE INTO facility_outputs (facility_id, item_id, rate) VALUES (?, ?, ?);" ,
                 foutputs,
             )
 
@@ -392,8 +448,24 @@ def seed(conn: sqlite3.Connection) -> None:
         if sr_rows:
             _try_execmany(
                 cur,
-                "INSERT OR IGNORE INTO ship_roles (ship_id, role) VALUES (?, ?);",
+                "INSERT OR IGNORE INTO ship_roles (ship_id, role) VALUES (?, ?);" ,
                 sr_rows,
+            )
+
+    # ----------------- consumption profiles (ships) -----------------
+    cp = seed.get("consumption_profiles") or {}
+    ship_profiles = cp.get("ship") or []
+    if ship_profiles:
+        rows = []
+        for prof in ship_profiles:
+            role = str(prof.get("role", "any"))
+            for ent in prof.get("consumes", []):
+                rows.append((role, ent["item_id"], float(ent["rate"])))
+        if rows:
+            _try_execmany(
+                cur,
+                "INSERT OR REPLACE INTO consumption_profiles_ship (role, item_id, rate) VALUES (?, ?, ?);" ,
+                rows,
             )
 
     # ----------------- player row -----------------
@@ -405,8 +477,7 @@ def seed(conn: sqlite3.Connection) -> None:
     if row and row[0] is not None:
         _, start_sid, start_lid = row
         ship = cur.execute(
-            """
-            SELECT ship_id, ship_name, base_ship_fuel, base_ship_hull,
+            """            SELECT ship_id, ship_name, base_ship_fuel, base_ship_hull,
                    base_ship_shield, base_ship_energy, base_ship_jump_distance,
                    base_ship_cargo
             FROM ships
@@ -416,8 +487,7 @@ def seed(conn: sqlite3.Connection) -> None:
         ).fetchone()
         if ship:
             cur.execute(
-                """
-                INSERT OR REPLACE INTO player(
+                """                INSERT OR REPLACE INTO player(
                     id, name, current_wallet_credits, current_player_system_id,
                     current_player_ship_id, current_player_ship_fuel,
                     current_player_ship_hull, current_player_ship_shield,
@@ -425,7 +495,7 @@ def seed(conn: sqlite3.Connection) -> None:
                     current_player_location_id
                 )
                 VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-                """,
+                """ ,
                 (
                     "Captain",
                     1000,

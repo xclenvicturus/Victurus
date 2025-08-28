@@ -1,5 +1,4 @@
 # /data/db.py
-# SQLite access layer: connection, schema/seed, and query helpers (v2 aware).
 
 from __future__ import annotations
 
@@ -49,7 +48,7 @@ def _open_new_connection() -> sqlite3.Connection:
     ap.parent.mkdir(parents=True, exist_ok=True)
     # Default sqlite3 connections are NOT threadsafe across threads.
     # We keep one connection per thread via _tls below.
-    conn = sqlite3.connect(str(ap))
+    conn = sqlite3.connect(str(ap), detect_types=sqlite3.PARSE_DECLTYPES)
     conn.row_factory = sqlite3.Row
 
     # Pragmas tuned for UI + background sim concurrency
@@ -407,3 +406,49 @@ def get_player_location() -> Optional[Dict]:
         (player["current_player_location_id"],),
     ).fetchone()
     return dict(row) if row else None
+
+
+# ---------- Icon path helpers (persist runtime image choices) ----------
+
+def set_location_icon_path(location_id: int, icon_path: Optional[str]) -> None:
+    """Persist/clear the assigned icon for a specific location."""
+    conn = get_connection()
+    conn.execute("UPDATE locations SET icon_path=? WHERE location_id=?", (icon_path, location_id))
+    conn.commit()
+
+
+def set_system_star_icon_path(system_id: int, icon_path: Optional[str]) -> None:
+    """Persist/clear the assigned star GIF path for a system."""
+    conn = get_connection()
+    conn.execute("UPDATE systems SET star_icon_path=? WHERE system_id=?", (icon_path, system_id))
+    # If the star also exists as a location row, mirror it for convenience
+    conn.execute(
+        "UPDATE locations SET icon_path=? WHERE system_id=? AND location_type='star'",
+        (icon_path, system_id),
+    )
+    conn.commit()
+
+
+def set_icon_paths_bulk(pairs: List[tuple[int, Optional[str]]]) -> None:
+    """Batch update location icon paths in a single transaction."""
+    if not pairs:
+        return
+    conn = get_connection()
+    conn.executemany(
+        "UPDATE locations SET icon_path=? WHERE location_id=?",
+        [(p, lid) for (lid, p) in pairs],
+    )
+    conn.commit()
+
+
+def clear_icon_paths_for_system(system_id: int, kinds: Optional[List[str]] = None) -> None:
+    """Clear stored icon assignments for a system (optionally limited to some kinds).
+    kinds examples: ['planet','station','moon','resource','warp_gate']. """
+    conn = get_connection()
+    if kinds:
+        qmarks = ",".join(["?"] * len(kinds))
+        sql = f"UPDATE locations SET icon_path=NULL WHERE system_id=? AND location_type IN ({qmarks})"
+        conn.execute(sql, (system_id, *kinds))
+    else:
+        conn.execute("UPDATE locations SET icon_path=NULL WHERE system_id=?", (system_id,))
+    conn.commit()

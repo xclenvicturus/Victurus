@@ -20,8 +20,15 @@ from PySide6.QtWidgets import (
     QHeaderView,
 )
 
+# Try to use the GIF-first pixmap helper if available (keeps thumbnails in sync with map GIFs)
+try:
+    from ui.maps.icons import pm_from_path_or_kind  # type: ignore
+except Exception:  # pragma: no cover
+    pm_from_path_or_kind = None  # type: ignore
+
 # -------- Helpers (duplicated for independence) --------
 _LY_TO_AU = 63241.0  # Approximate astronomical units in one light-year
+
 
 def _norm(s: Optional[str]) -> str:
     """Normalize kind/category text for robust matching (case/space/punct-insensitive)."""
@@ -34,14 +41,17 @@ def _norm(s: Optional[str]) -> str:
             out.append(ch)
     return "".join(out)
 
+
 def _to_int(x) -> Optional[int]:
     try:
         return int(x)  # type: ignore[arg-type]
     except Exception:
         return None
 
+
 _LY_RE = re.compile(r"([+-]?\d+(?:\.\d+)?)\s*ly\b", re.IGNORECASE)
 _AU_RE = re.compile(r"([+-]?\d+(?:\.\d+)?)\s*au\b", re.IGNORECASE)
+
 
 def _extract_ly(r: Dict) -> float:
     """Prefer numeric LY, else parse from 'distance'. Unknown -> inf."""
@@ -66,6 +76,7 @@ def _extract_ly(r: Dict) -> float:
         pass
     return float("inf")
 
+
 def _extract_au(r: Dict) -> float:
     """Prefer numeric AU, else sum intra legs, else parse AU from 'distance'. Unknown -> inf."""
     try:
@@ -79,13 +90,15 @@ def _extract_au(r: Dict) -> float:
     try:
         v = r.get("intra_current_au")
         if v not in (None, ""):
-            total += float(v); has_leg = True
+            total += float(v)
+            has_leg = True
     except Exception:
         pass
     try:
         v = r.get("intra_target_au")
         if v not in (None, ""):
-            total += float(v); has_leg = True
+            total += float(v)
+            has_leg = True
     except Exception:
         pass
     if has_leg:
@@ -98,6 +111,7 @@ def _extract_au(r: Dict) -> float:
     except Exception:
         pass
     return float("inf")
+
 
 def _smart_distance_key(r: Dict, descending: bool) -> Tuple[float, float, str]:
     name = (r.get("name", "") or "").lower()
@@ -170,6 +184,7 @@ def _smart_distance_key(r: Dict, descending: bool) -> Tuple[float, float, str]:
         key = (1.0, 0.0, name)
         return key
 
+
 def _fuel_sort_key(r: Dict, descending: bool) -> Tuple[float, float, str]:
     name = (r.get("name", "") or "").lower()
     v = r.get("fuel_cost", None)
@@ -180,6 +195,7 @@ def _fuel_sort_key(r: Dict, descending: bool) -> Tuple[float, float, str]:
     except Exception:
         return (1.0, 0.0, name)
     return (0.0, -fv, name) if descending else (0.0, fv, name)
+
 
 # -------- Widget (GALAXY) --------
 
@@ -215,23 +231,15 @@ class GalaxySystemList(QWidget):
         self.tree.setUniformRowHeights(True)
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree.setRootIsDecorated(False)
-        try:
-            self.tree.header().setStretchLastSection(False)
-            self.tree.header().setDefaultSectionSize(160)
-            # Use QHeaderView.ResizeMode.Stretch to satisfy static type checkers
-            self.tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        except Exception:
-            pass
-            pass
 
         # Header + sizing
         header = self.tree.header()
         try:
             header.setStretchLastSection(False)
             header.setDefaultSectionSize(160)
-            header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)       # Name stretches
-            header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)  # Distance autosize
-            header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)  # Fuel autosize
+            header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)            # Name stretches
+            header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)   # Distance autosize
+            header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)   # Fuel autosize
         except Exception:
             pass
 
@@ -243,11 +251,11 @@ class GalaxySystemList(QWidget):
         except Exception:
             pass
         try:
-            self.category.setVisible(False)  # remove "system select"
+            self.category.setVisible(False)  # hide category selector
         except Exception:
             pass
         try:
-            self.sort.setVisible(False)      # remove sort dropdown
+            self.sort.setVisible(False)      # hide sort dropdown (we drive it via header)
         except Exception:
             pass
 
@@ -255,7 +263,7 @@ class GalaxySystemList(QWidget):
         main_layout.setContentsMargins(6, 6, 6, 6)
         main_layout.setSpacing(6)
         main_layout.addWidget(QLabel(title))
-        # Removed: system select & sort dropdown from UI
+        # Removed: category & sort dropdowns from UI
         main_layout.addWidget(self.search)
         main_layout.addWidget(self.tree, 1)
 
@@ -287,6 +295,7 @@ class GalaxySystemList(QWidget):
 
         # Identify current player system
         snap = player_status.get_status_snapshot() or {}
+
         def _to_int_local(x):
             try:
                 return int(x)
@@ -421,6 +430,28 @@ class GalaxySystemList(QWidget):
         else:
             it.setForeground(2, white)
 
+    # ----- Icon fallback (GIF-first) -----
+
+    def _default_icon_provider(self, r: Dict) -> Optional[QIcon]:
+        """
+        If presenter doesn't provide an icon, prefer a GIF-first pixmap (first frame)
+        so list thumbnails match the map exactly; fallback to QIcon(path).
+        """
+        p = r.get("icon_path")
+        if isinstance(p, str) and p:
+            if p.lower().endswith(".gif") and pm_from_path_or_kind is not None:
+                try:
+                    pm = pm_from_path_or_kind(p, "star", desired_px=24)
+                    if pm is not None and not pm.isNull():
+                        return QIcon(pm)
+                except Exception:
+                    pass
+            try:
+                return QIcon(p)
+            except Exception:
+                return None
+        return None
+
     # ----- Population & sorting/filtering -----
 
     def populate(
@@ -434,8 +465,8 @@ class GalaxySystemList(QWidget):
         self.tree.setFont(list_font)
         self.tree.setRootIsDecorated(False)
 
-        red_brush    = QBrush(QColor("red"))
-        green_brush  = QBrush(QColor("green"))
+        red_brush = QBrush(QColor("red"))
+        green_brush = QBrush(QColor("green"))
         yellow_brush = QBrush(QColor("yellow"))
 
         for r in rows:
@@ -449,10 +480,17 @@ class GalaxySystemList(QWidget):
             it = QTreeWidgetItem(self.tree, [r.get("name", "Unknown"), dist_text, fuel_text])
             it.setData(0, Qt.ItemDataRole.UserRole, rid)
 
-            if icon_provider:
-                icon = icon_provider(r)
-                if icon:
-                    it.setIcon(0, icon)
+            # Icon, with GIF-first fallback if presenter does not supply
+            icon = None
+            if icon_provider is not None:
+                try:
+                    icon = icon_provider(r)
+                except Exception:
+                    icon = None
+            if icon is None:
+                icon = self._default_icon_provider(r)
+            if icon:
+                it.setIcon(0, icon)
 
             self._apply_row_styling(it, r, red=red_brush, green=green_brush, yellow=yellow_brush)
 
@@ -517,8 +555,6 @@ class GalaxySystemList(QWidget):
         r = self.tree.visualItemRect(item)
         pt_view = r.center()
         pt_view.setX(r.right() - 4)  # near the right edge
-        # translate to overlay coords
-        overlay = overlay
         p_view = self.tree.viewport().mapToGlobal(pt_view)
         p_overlay = overlay.mapFromGlobal(p_view)
         return QPoint(

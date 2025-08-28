@@ -1,4 +1,5 @@
-# game_controller/sim_loop.py
+# /game_controller/sim_loop.py
+
 # Background "universe" simulator that runs off the UI thread and
 # advances all NON-visible systems, markets, ships, etc.
 # It also exposes a small publish_tick() hook the UI can call to

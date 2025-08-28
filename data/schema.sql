@@ -9,6 +9,14 @@ CREATE TABLE IF NOT EXISTS systems (
     star_icon_path     TEXT
 );
 
+-- Systems economic tags (seed: systems[].econ_tags)
+CREATE TABLE IF NOT EXISTS system_econ_tags (
+    system_id INTEGER NOT NULL,
+    tag       TEXT NOT NULL,
+    PRIMARY KEY (system_id, tag),
+    FOREIGN KEY (system_id) REFERENCES systems(system_id) ON DELETE CASCADE
+);
+
 -- Items traded in markets
 CREATE TABLE IF NOT EXISTS items (
     item_id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -46,7 +54,7 @@ CREATE TABLE IF NOT EXISTS locations (
     location_id          INTEGER PRIMARY KEY AUTOINCREMENT,
     system_id            INTEGER NOT NULL,
     location_name        TEXT NOT NULL,
-    location_type        TEXT NOT NULL,      -- 'star','planet','moon','station','resource','warp_gate'
+    location_type        TEXT NOT NULL,      -- 'star','planet','moon','station','warp_gate','asteroid_field','gas_clouds','ice_field','crystal_vein'
     location_x           REAL NOT NULL,      -- local AU offset (relative to parent or system)
     location_y           REAL NOT NULL,      -- local AU offset
     parent_location_id   INTEGER NULL,       -- NULL => parent is system center
@@ -141,10 +149,10 @@ CREATE TABLE IF NOT EXISTS gate_links (
   FOREIGN KEY(system_b_id) REFERENCES systems(system_id) ON DELETE CASCADE
 );
 
--- Resource node metadata (attached to a location with location_type='resource')
+-- Resource node metadata (attached to a location with location_type like 'asteroid_field','gas_clouds','ice_field','crystal_vein')
 CREATE TABLE IF NOT EXISTS resource_nodes (
   location_id   INTEGER PRIMARY KEY,
-  resource_type TEXT NOT NULL,        -- 'asteroid_field' | 'gas_cloud' | 'ice_field' | 'crystal_vein' | etc.
+  resource_type TEXT NOT NULL,
   richness      INTEGER NOT NULL,     -- total capacity / stock ceiling
   regen_rate    REAL NOT NULL,        -- stock per tick
   FOREIGN KEY(location_id) REFERENCES locations(location_id) ON DELETE CASCADE
@@ -186,6 +194,15 @@ CREATE TABLE IF NOT EXISTS ship_roles (
   FOREIGN KEY(ship_id) REFERENCES ships(ship_id) ON DELETE CASCADE
 );
 
+-- Seeded consumption profiles for ships by role (from seed.consumption_profiles.ship)
+CREATE TABLE IF NOT EXISTS consumption_profiles_ship (
+  role    TEXT NOT NULL,
+  item_id INTEGER NOT NULL,
+  rate    REAL NOT NULL,
+  PRIMARY KEY (role, item_id),
+  FOREIGN KEY(item_id) REFERENCES items(item_id) ON DELETE CASCADE
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_systems_name       ON systems(system_name);
 CREATE INDEX IF NOT EXISTS idx_items_name         ON items(item_name);
@@ -198,3 +215,4 @@ CREATE INDEX IF NOT EXISTS idx_prices_hist_ts     ON prices_history(ts);
 CREATE INDEX IF NOT EXISTS idx_gates_a            ON gate_links(system_a_id);
 CREATE INDEX IF NOT EXISTS idx_gates_b            ON gate_links(system_b_id);
 CREATE INDEX IF NOT EXISTS idx_races_name         ON races(name);
+CREATE INDEX IF NOT EXISTS idx_sys_econ_tag       ON system_econ_tags(tag);

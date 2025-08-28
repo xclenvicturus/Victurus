@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 
-from save.manager import SaveManager
+from save.save_manager import SaveManager
 from ui.dialogs.new_game_dialog import NewGameDialog
 
 

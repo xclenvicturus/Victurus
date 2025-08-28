@@ -1,4 +1,5 @@
-# /config.py
+# /game_controller/config.py
+
 # Centralized configuration for Victurus. Values are environment-driven,
 # with safe defaults. Import and use wherever needed.
 #

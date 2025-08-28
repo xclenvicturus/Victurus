@@ -1,4 +1,4 @@
-# /save/manager.py
+# /save/save_manager.py
 
 from __future__ import annotations
 
@@ -14,9 +14,30 @@ from data import seed as seed_module
 from .paths import get_saves_dir, save_folder_for, sanitize_save_name
 from .serializers import write_meta, read_meta
 from .models import SaveMetadata
+from .icon_paths import bake_icon_paths
 
 # --- UI state provider is module-level to avoid Pylance binding warnings ---
 _UI_STATE_PROVIDER: Optional[Callable[[], Dict[str, Any]]] = None
+
+
+def _apply_pragmas(conn: sqlite3.Connection) -> None:
+    try:
+        conn.execute("PRAGMA foreign_keys=ON;")
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA synchronous=NORMAL;")
+    except Exception:
+        pass
+
+
+def _count_missing_icons(conn: sqlite3.Connection) -> Dict[str, int]:
+    cur = conn.cursor()
+    systems_missing = cur.execute(
+        "SELECT COUNT(*) FROM systems WHERE COALESCE(star_icon_path,'') = ''"
+    ).fetchone()[0]
+    locations_missing = cur.execute(
+        "SELECT COUNT(*) FROM locations WHERE COALESCE(icon_path,'') = ''"
+    ).fetchone()[0]
+    return {"systems": int(systems_missing), "locations": int(locations_missing)}
 
 
 class SaveManager:
@@ -121,12 +142,12 @@ class SaveManager:
             WHERE system_id=? AND location_type='planet'
             ORDER BY location_id
             LIMIT 1;
-            """,
+            """ ,
             (system_id,),
         ).fetchone()
         if not loc_row:
             loc_row = conn.execute(
-                "SELECT location_id FROM locations WHERE system_id=? ORDER BY location_id LIMIT 1;",
+                "SELECT location_id FROM locations WHERE system_id=? ORDER BY location_id LIMIT 1;" ,
                 (system_id,),
             ).fetchone()
         if not loc_row:
@@ -154,7 +175,7 @@ class SaveManager:
 
         # Validate location and ownership
         loc_row = conn.execute(
-            "SELECT system_id, location_type FROM locations WHERE location_id=?;",
+            "SELECT system_id, location_type FROM locations WHERE location_id=?;" ,
             (loc_id,),
         ).fetchone()
         if not loc_row:
@@ -166,13 +187,13 @@ class SaveManager:
                 WHERE system_id=? AND location_type='planet'
                 ORDER BY location_id
                 LIMIT 1;
-                """,
+                """ ,
                 (sys_id,),
             ).fetchone()
             if repl:
                 return sys_id, int(repl[0])
             repl = conn.execute(
-                "SELECT location_id FROM locations WHERE system_id=? ORDER BY location_id LIMIT 1;",
+                "SELECT location_id FROM locations WHERE system_id=? ORDER BY location_id LIMIT 1;" ,
                 (sys_id,),
             ).fetchone()
             if repl:
@@ -188,13 +209,13 @@ class SaveManager:
                 WHERE system_id=? AND location_type='planet'
                 ORDER BY location_id
                 LIMIT 1;
-                """,
+                """ ,
                 (sys_id,),
             ).fetchone()
             if repl:
                 return sys_id, int(repl[0])
             repl = conn.execute(
-                "SELECT location_id FROM locations WHERE system_id=? ORDER BY location_id LIMIT 1;",
+                "SELECT location_id FROM locations WHERE system_id=? ORDER BY location_id LIMIT 1;" ,
                 (sys_id,),
             ).fetchone()
             if repl:
@@ -229,8 +250,11 @@ class SaveManager:
         dest.mkdir(parents=True)
 
         db_path = dest / "game.db"
-        conn = sqlite3.connect(db_path)
+        conn = sqlite3.connect(db_path, detect_types=sqlite3.PARSE_DECLTYPES)
         try:
+            conn.row_factory = sqlite3.Row
+            _apply_pragmas(conn)
+
             # Create schema & seed fresh universe
             schema_path = Path(__file__).resolve().parents[1] / "data" / "schema.sql"
             with open(schema_path, "r", encoding="utf-8") as f:
@@ -238,6 +262,12 @@ class SaveManager:
 
             seed_module.seed(conn)
             conn.commit()
+
+            # Assign deterministic icon paths to systems and locations
+            try:
+                _ = bake_icon_paths(conn, only_missing=True)
+            except Exception:
+                pass
 
             # Determine starting system/location
             system_id, location_id = cls._validate_and_coerce_start(conn, start_ids)
@@ -267,7 +297,7 @@ class SaveManager:
                         current_player_location_id
                     )
                     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-                    """,
+                    """ ,
                     (
                         commander_name or "Captain",
                         1000,
@@ -289,7 +319,7 @@ class SaveManager:
                            current_player_system_id=?,
                            current_player_location_id=?
                      WHERE id=1;
-                    """,
+                    """ ,
                     (commander_name or "Captain", system_id, location_id),
                 )
 
@@ -298,13 +328,14 @@ class SaveManager:
         finally:
             conn.close()
 
-        # Write meta
+        # Write meta (enable DB-only icons by default)
         now = datetime.utcnow().isoformat()
         meta = SaveMetadata(
             save_name=dest.name,
             commander_name=commander_name,
             created_iso=now,
             last_played_iso=now,
+            db_icons_only=True,
         )
         write_meta(dest / "meta.json", meta)
 
@@ -331,10 +362,28 @@ class SaveManager:
         if not cls._active_save_dir:
             return
         conn = db.get_connection()
-        conn.commit()
 
+        # Read meta to decide behavior
         meta_path = cls._active_save_dir / "meta.json"
         meta = read_meta(meta_path)
+
+        # Always try to fill missing first
+        try:
+            _ = bake_icon_paths(conn, only_missing=True)
+        except Exception:
+            pass
+
+        # If strict mode, auto force-fill any gaps and skip at render time (renderers read the flag)
+        if meta and getattr(meta, "db_icons_only", False):
+            missing = _count_missing_icons(conn)
+            if (missing.get("systems", 0) > 0) or (missing.get("locations", 0) > 0):
+                try:
+                    _ = bake_icon_paths(conn, only_missing=False)
+                except Exception:
+                    pass
+
+        conn.commit()
+
         if meta:
             meta.last_played_iso = datetime.utcnow().isoformat()
             write_meta(meta_path, meta)
@@ -392,7 +441,12 @@ class SaveManager:
         if not save_dir.is_dir():
             raise NotADirectoryError("Target for deletion is not a directory.")
 
-        shutil.rmtree(save_dir)
-
+        # Close DB if deleting the active save
         if cls._active_save_dir == save_dir:
+            try:
+                db.close_active_connection()
+            except Exception:
+                pass
             cls._active_save_dir = None
+
+        shutil.rmtree(save_dir)
