@@ -126,7 +126,6 @@ class StatusSheet(QWidget):
         self.lbl_location = QLabel("Location: —")
         self.lbl_credits = QLabel("Credits: —")
         self.lbl_ship = QLabel("Active Ship: —")
-        self.lbl_ship_status = QLabel("Ship Status: —")
         self.lbl_jump = QLabel("Jump Range: 0.0 ly")
 
         # Gauges (decimals: fuel/energy 2dp; others integer)
@@ -150,7 +149,6 @@ class StatusSheet(QWidget):
         top.addWidget(self.lbl_location, row, 0, 1, 2); row += 1
         top.addWidget(self.lbl_credits, row, 0, 1, 2); row += 1
         top.addWidget(self.lbl_ship, row, 0, 1, 2); row += 1
-        top.addWidget(self.lbl_ship_status, row, 0, 1, 2); row += 1
         top.addWidget(self.lbl_jump, row, 0, 1, 2); row += 1
 
         root.addLayout(top)
@@ -206,10 +204,6 @@ class StatusSheet(QWidget):
 
         # Ship name (legacy key retained; safe if missing)
         self.lbl_ship.setText(f"Active Ship: {snapshot.get('ship_name','—')}")
-
-        # Ship status: prefer new 'status', then legacy 'ship_state'
-        ship_status = snapshot.get('status') or snapshot.get('ship_state') or '—'
-        self.lbl_ship_status.setText(f"Ship Status: {ship_status}")
 
         # Gauges (use floats for fuel/energy to keep smooth)
         self.g_hull.set_values(_as_int(snapshot.get("hull", 0)), _as_int(snapshot.get("hull_max", 1), 1))

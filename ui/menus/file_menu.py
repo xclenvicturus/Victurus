@@ -183,8 +183,17 @@ def _on_new_game(win):
                         win._ensure_status_dock()
                     except Exception:
                         pass
+                # Also ensure actions dock is created
+                if hasattr(win, "_ensure_actions_dock"):
+                    try:
+                        win._ensure_actions_dock()
+                    except Exception:
+                        pass
                 if getattr(win, "status_panel", None):
                     win.status_panel.refresh()
+                # Also refresh actions panel to update contextual buttons
+                if getattr(win, "actions_panel", None):
+                    win.actions_panel.refresh()
             except Exception:
                 pass
 
@@ -260,9 +269,26 @@ def _on_save_as(win):
             QMessageBox.critical(win, "Save As Failed", str(e))
 
 
+# Global flag to prevent multiple concurrent load dialogs
+_load_dialog_open = False
+
 def _on_load(win):
+    from game_controller.log_config import get_ui_logger
+    logger = get_ui_logger('file_menu')
+    
+    global _load_dialog_open
+    
+    # Prevent multiple dialogs from opening simultaneously
+    if _load_dialog_open:
+        logger.debug("Load dialog already open, ignoring request")
+        return
+    
     try:
+        _load_dialog_open = True
+        logger.debug("Load game button pressed - creating dialog")
         dlg = LoadGameDialog(win)
+        logger.debug("Load game dialog created, executing...")
+        
         if dlg.exec() == QDialog.DialogCode.Accepted:
             save_path = dlg.get_selected_save_path()
             if save_path:
@@ -321,8 +347,20 @@ def _on_load(win):
                             win._ensure_status_dock()
                         except Exception:
                             pass
+                    # Also ensure actions dock is created
+                    if hasattr(win, "_ensure_actions_dock"):
+                        try:
+                            win._ensure_actions_dock()
+                        except Exception:
+                            pass
                     if getattr(win, "status_panel", None):
                         win.status_panel.refresh()
+                    # Also refresh actions panel to update contextual buttons
+                    if getattr(win, "actions_panel", None):
+                        win.actions_panel.refresh()
+                    # Also refresh actions panel to update contextual buttons
+                    if getattr(win, "actions_panel", None):
+                        win.actions_panel.refresh()
                 except Exception:
                     pass
 
@@ -343,12 +381,16 @@ def _on_load(win):
                 # Update menu state to enable save/close actions
                 _update_menu_state(win)
     except Exception as e:
+        logger.error(f"Error in _on_load: {e}")
         try:
             from ui.error_handler import handle_error
             handle_error(e, "Loading game")
         except Exception:
             # Fallback to simple message box
             QMessageBox.critical(win, "Load Error", f"Failed to load game: {str(e)}")
+    finally:
+        # Always reset the flag when done
+        _load_dialog_open = False
 
 
 def _on_close_game(win):

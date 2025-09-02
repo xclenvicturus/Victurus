@@ -1,0 +1,6 @@
+2025-09-02 09:59:25 ERROR victurus.errors: Error in Loading game: name 'Qt' is not defined
+Traceback (most recent call last):
+  File "C:\Users\dusti\Documents\Victurus\ui\menus\file_menu.py", line 300, in _on_load
+    dlg.setWindowState(dlg.windowState() & ~Qt.WindowState.WindowMinimized | Qt.WindowState.WindowActive)
+                                            ^^
+NameError: name 'Qt' is not defined

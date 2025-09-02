@@ -158,6 +158,11 @@ class MainWindow(QMainWindow):
         self.status_panel: StatusSheet | None = None
         self.status_dock: QDockWidget | None = None
 
+        # ---- Actions panel is LAZY (created after new/load) ----
+        from .widgets.actions_panel import ActionsPanel
+        self.actions_panel: ActionsPanel | None = None
+        self.actions_dock: QDockWidget | None = None
+
         # ---- Status bar counters ----
         sb = QStatusBar(self)
         self.setStatusBar(sb)
@@ -355,6 +360,45 @@ class MainWindow(QMainWindow):
         # Schedule creation of log docks after event loop settles
         QTimer.singleShot(0, self._pin_status_dock_for_transition)
         self._sync_panels_menu_state()
+
+    def _ensure_actions_dock(self) -> None:
+        """Create the Actions dock lazily (first time we enter live mode)."""
+        if self.actions_dock is not None:
+            return
+        from .widgets.actions_panel import ActionsPanel
+        self.actions_panel = ActionsPanel(self)
+        dock = QDockWidget("Actions", self)
+        dock.setObjectName("dock_Actions")
+        dock.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
+        dock.setWidget(self.actions_panel)
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, dock)
+        self.actions_dock = dock
+        self._register_dock(dock)
+        
+        # Position the actions dock below the status dock
+        if self.status_dock is not None:
+            self.splitDockWidget(self.status_dock, dock, Qt.Orientation.Vertical)
+        
+        # Connect actions panel signals to handle button presses
+        self.actions_panel.action_triggered.connect(self._on_action_triggered)
+        self._sync_panels_menu_state()
+    
+    def _on_action_triggered(self, action_name: str, action_data: dict) -> None:
+        """Handle actions panel button presses"""
+        try:
+            # Log the action
+            context_type = action_data.get('context', {}).get('type', 'unknown')
+            location = action_data.get('context', {}).get('location_name', 'Unknown')
+            
+            # Add to game log
+            log_message = f"Action: {action_data.get('action_label', action_name)} at {location}"
+            self.append_log(("Quest", log_message))  # Using Quest category for actions for now
+            
+            # For now, just log to console as placeholder
+            logger.info(f"Action triggered: {action_name} in {context_type} context")
+            
+        except Exception as e:
+            logger.error(f"Error handling action {action_name}: {e}")
 
     # ---------- Legacy/global glow toggle (applies to both leaders) ----------
 
@@ -878,6 +922,12 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
 
+            # Ensure the Actions dock exists now so it's available for contextual actions
+            try:
+                self._ensure_actions_dock()
+            except Exception:
+                pass
+
             # Create Status dock lazily (first time we enter live mode)
             # legacy name replaced by _pin_status_dock_for_transition; call it here
             self._pin_status_dock_for_transition()
@@ -1323,6 +1373,8 @@ class MainWindow(QMainWindow):
         try:
             if self.status_panel:
                 self.status_panel.refresh()
+            if self.actions_panel:
+                self.actions_panel.refresh()
             self.refresh_status_counts()
             
             # Update travel progress if traveling
