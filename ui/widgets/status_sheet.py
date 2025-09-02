@@ -1,5 +1,11 @@
 
 # /ui/widgets/status_sheet.py
+"""
+Player Status Sheet Widget
+
+Displays player ship status, location, resources, and inventory information
+in a formatted grid layout within a dock widget.
+"""
 
 from __future__ import annotations
 

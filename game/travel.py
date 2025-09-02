@@ -1,4 +1,10 @@
 # /game/travel.py
+"""
+Travel System
+
+Handles player movement between systems and locations, including travel time calculations,
+fuel consumption, and travel state management.
+"""
 
 from __future__ import annotations
 
@@ -7,16 +13,24 @@ import math
 
 from data import db
 from game import player_status
+from settings import system_config as cfg
 
 # ------------------------------------------------------------------
 # Shared fuel model (single source of truth for display + flow)
+# Read from central config with safe fallbacks
 # ------------------------------------------------------------------
-# Continuous cruise model: 1 fuel per 5 AU
-FUEL_PER_AU = 1.0 / 5.0
-# Base warp rate: 2 fuel per 1 ly
-WARP_FUEL_PER_LY = 2.0
-# Warp efficiency/overhead multiplier used by TravelFlow
-WARP_FUEL_WEIGHT = 1.40
+try:
+    FUEL_PER_AU = float(getattr(cfg, "TRAVEL_FUEL_PER_AU", 1.0 / 5.0))
+except Exception:
+    FUEL_PER_AU = 1.0 / 5.0
+try:
+    WARP_FUEL_PER_LY = float(getattr(cfg, "TRAVEL_WARP_FUEL_PER_LY", 2.0))
+except Exception:
+    WARP_FUEL_PER_LY = 2.0
+try:
+    WARP_FUEL_WEIGHT = float(getattr(cfg, "TRAVEL_WARP_FUEL_WEIGHT", 1.40))
+except Exception:
+    WARP_FUEL_WEIGHT = 1.40
 
 # ---------------------------
 # Safe helpers

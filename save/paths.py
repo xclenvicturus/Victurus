@@ -1,4 +1,10 @@
 # /save/paths.py
+"""
+Save System Path Management
+
+Provides platform-independent path resolution for save directories, configuration files,
+and other game data storage locations.
+"""
 
 from __future__ import annotations
 
@@ -33,7 +39,9 @@ def get_saves_dir() -> Path:
     return p
 
 def get_ui_state_path() -> Path:
-    return get_config_dir() / "ui_windows.json"
+    # Historically this file was named ui_windows.json; switch to
+    # the simpler ui_state.json name in the Config folder per user intent.
+    return get_config_dir() / "ui_state.json"
 
 def sanitize_save_name(name: str) -> str:
     # Keep alnum, dash, underscore, space; replace others with underscore

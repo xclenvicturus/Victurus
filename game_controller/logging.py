@@ -1,4 +1,12 @@
 # /game_controller/logging.py
+"""
+Game Controller Logging System
+
+Lightweight, centralized logging utilities for Victurus.
+- Simple setup() that can log to console and/or a rotating file
+- Plain text or JSON formatting
+- A sink factory that returns Callable[[str], None] for simulator debug piping
+"""
 
 # Lightweight, centralized logging utilities for Victurus.
 # - Simple setup() that can log to console and/or a rotating file

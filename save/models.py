@@ -1,4 +1,9 @@
 # /save/models.py
+"""
+Save System Data Models
+
+Defines data structures for save game metadata and serialization.
+"""
 
 from __future__ import annotations
 from dataclasses import dataclass, asdict, fields

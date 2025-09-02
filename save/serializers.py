@@ -1,4 +1,10 @@
 # /save/serializers.py
+"""
+Save System Serialization
+
+Provides JSON serialization and deserialization utilities for save metadata
+and other game data structures.
+"""
 
 from __future__ import annotations
 import json

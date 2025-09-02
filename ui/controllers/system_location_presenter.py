@@ -7,6 +7,7 @@ import math
 from typing import Any, Dict, Iterable, List, Optional, Protocol, runtime_checkable, cast
 
 from PySide6.QtGui import QFont, QIcon
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QWidget
 
 # Prefer GIF-first pixmap helper for crisp list thumbnails
@@ -78,9 +79,11 @@ class SystemLocationPresenter:
 
     def __init__(self,
                  map_view: MapTabs | QWidget,
-                 system_panel: SystemLocationList) -> None:
+                 system_panel: SystemLocationList,
+                 travel_coordinator = None) -> None:
         self._tabs = map_view
         self._sol = system_panel
+        self._travel_coordinator = travel_coordinator
 
     # -------- public API --------
 
@@ -121,7 +124,33 @@ class SystemLocationPresenter:
                 center_sys = getattr(self._tabs, "center_system_on_system", None)
                 if callable(center_sys):
                     try:
-                        center_sys(sys_id)
+                        # Ensure the system widget knows the user has interacted so
+                        # suppression is active immediately (avoid races where the
+                        # presenter calls center before suppression is set).
+                        # (Do not mark the System widget as under user interaction here;
+                        # that would cause the presenter to defer the center request and
+                        # make list-driven centering appear to do nothing. Let the
+                        # System widget handle suppression for actual user gestures.)
+
+                        # If the system widget is suppressing auto-centers, retry
+                        # in short backoffs until the suppression clears, then
+                        # perform the center. This avoids tiny race windows where
+                        # a fixed single-shot delay is too short.
+                        system_widget = getattr(self._tabs, "system", None)
+
+                        def _defer_center(fn, sid):
+                            try:
+                                if system_widget is not None and hasattr(system_widget, "is_suppressing_auto_center") and system_widget.is_suppressing_auto_center():
+                                    QTimer.singleShot(100, lambda fn=fn, sid=sid: _defer_center(fn, sid))
+                                    return
+                                fn(int(sid))
+                            except Exception:
+                                try:
+                                    fn(int(sid))
+                                except Exception:
+                                    pass
+
+                        _defer_center(center_sys, sys_id)
                     except Exception:
                         pass
                     return
@@ -141,7 +170,30 @@ class SystemLocationPresenter:
                 center_loc = getattr(self._tabs, "center_system_on_location", None)
                 if callable(center_loc):
                     try:
-                        center_loc(loc_id)
+                        # Avoid touching the System widget's interaction/suppression
+                        # state here; calling the center helper directly should be
+                        # immediate and visible to the user.
+                        system_widget = getattr(self._tabs, "system", None)
+
+                        if system_widget is not None and hasattr(system_widget, "is_suppressing_auto_center") and system_widget.is_suppressing_auto_center():
+                            try:
+                                def _defer_center_loc(fn, lid):
+                                    try:
+                                        if system_widget is not None and hasattr(system_widget, "is_suppressing_auto_center") and system_widget.is_suppressing_auto_center():
+                                            QTimer.singleShot(100, lambda fn=fn, lid=lid: _defer_center_loc(fn, lid))
+                                            return
+                                        fn(int(lid))
+                                    except Exception:
+                                        try:
+                                            fn(int(lid))
+                                        except Exception:
+                                            pass
+
+                                _defer_center_loc(center_loc, loc_id)
+                            except Exception:
+                                center_loc(loc_id)
+                        else:
+                            center_loc(loc_id)
                     except Exception:
                         pass
                     return
@@ -168,10 +220,11 @@ class SystemLocationPresenter:
                 if system_widget and hasattr(system_widget, "load") and hasattr(system_widget, "center_on_system"):
                     try:
                         system_widget.load(system_id)
-                        system_widget.center_on_system(system_id)
+                        system_widget.center_on_system(system_id, force=True)
                     except Exception:
+                        # If immediate center fails, schedule a short retry
                         try:
-                            system_widget.center_on_entity(-system_id)
+                            QTimer.singleShot(100, lambda sid=system_id, w=system_widget: w.center_on_system(int(sid)))
                         except Exception:
                             pass
             else:
@@ -193,6 +246,9 @@ class SystemLocationPresenter:
 
     def travel_here(self, entity_id: int) -> None:
         """Relay to TravelFlow via the MainWindow, handling systems (neg ids) vs locations (pos ids)."""
+        
+        logger.debug(f"SystemLocationPresenter: travel_here({entity_id})")
+        
         try:
             mw = self._main_window()
             if mw is None:
@@ -200,13 +256,42 @@ class SystemLocationPresenter:
 
             flow: Optional[_TravelFlowLike] = getattr(mw, "travel_flow", None)
             if flow is None:
-                flow = mw._ensure_travel_flow()
+                try:
+                    # Ask the main window to ensure a travel flow exists
+                    if hasattr(mw, "_ensure_travel_flow"):
+                        mw._ensure_travel_flow()
+                except Exception:
+                    pass
+                flow = getattr(mw, "travel_flow", None)
 
-            if entity_id >= 0:
-                flow.begin("loc", int(entity_id))
+            if flow is None:
+                return
+
+            # Get the system map and start travel status tracking
+            system_widget = getattr(self._tabs, "system", None)
+            if system_widget and hasattr(system_widget, 'get_travel_status'):
+                travel_status = system_widget.get_travel_status()
+                
+                if entity_id >= 0:
+                    # Location travel
+                    travel_status.start_travel_tracking("location", int(entity_id))
+                    flow.begin("loc", int(entity_id))
+                    logger.debug(f"Started travel to location {int(entity_id)}")
+                else:
+                    # System travel (negative ID)
+                    system_id = int(-entity_id)
+                    travel_status.start_travel_tracking("star", system_id)
+                    flow.begin("star", system_id)
+                    logger.debug(f"Started travel to system {system_id}")
             else:
-                flow.begin("star", int(-entity_id))
-        except Exception:
+                # Fallback - just start travel flow without visualization
+                if entity_id >= 0:
+                    flow.begin("loc", int(entity_id))
+                else:
+                    flow.begin("star", int(-entity_id))
+                
+        except Exception as e:
+            logger.error(f"Error in travel_here: {e}")
             pass
 
     # -------- internals --------

@@ -1,4 +1,4 @@
-# Victurus — Project Structure (updated 2025-08-28)
+# Victurus — Project Structure (updated 2025-09-01)
 
 This document summarizes the repository layout and what each part is responsible for.
 
@@ -8,6 +8,9 @@ This document summarizes the repository layout and what each part is responsible
 - **Game (`game/`)** — Player snapshot, ship state, travel math, and game‑flow orchestration.
 - **Data (`data/`)** — SQLite schema, seed helpers, and the runtime DB access layer.
 - **Save (`save/`)** — Save‑game models, paths, serialization, and lifecycle management.
+- **Game Controller (`game_controller/`)** — Background simulation and new game creation.
+- **Settings (`settings/`)** — Configuration management.
+- **Tests (`tests/`)** — Test files and debugging utilities.
 - **Docs (`docs/`)** — Developer‑facing documentation.
 - **Assets (`assets/`)** — Star, planet, station, and other art assets (GIF/PNG) organized by type (e.g., `assets/planets/p01.gif`). The UI selects deterministic assets per system/location so thumbnails match the map.
 
@@ -15,6 +18,7 @@ Note: resource art lives under the plural resource folders, e.g. `assets/asteroi
 
 ## Tree
 
+```
 Victurus/
 │
 ├─ `main.py`
@@ -46,7 +50,7 @@ Victurus/
 │  │  └─ `t01.gif`
 │  ├─ stations/
 │  │  └─ `s01.gif`
-│  ├─ warpgates/
+│  ├─ warp_gates/
 │  │  └─ `w01.gif`
 │  ├─ galaxy_backgrounds/
 │  │  └─ `default.png`
@@ -55,20 +59,23 @@ Victurus/
 │
 ├─ docs/
 │  ├─ `structure.md`
-│  └─ `feature_checklist.md`
+│  ├─ `project_status.md`
+│  ├─ `ui_state_management.md`
+│  ├─ `error_handling.md`
+│  └─ `VIEW_MENU_FIX.md`
+│
+├─ tests/
+│  ├─ `README.md`
+│  ├─ `debug_crash.py`
+│  ├─ `debug_dialog_step_by_step.py`
+│  ├─ `test_error_handler.py`
+│  └─ `test_load_multiple_saves.py`
 │
 ├─ game/
 │  ├─ `player_status.py`
 │  ├─ `ship_state.py`
 │  ├─ `travel.py`
 │  └─ `travel_flow.py`
-│
-├─ save/
-│  ├─ `save_manager.py`
-│  ├─ `models.py`
-│  ├─ `paths.py`
-│  ├─ `serializers.py`
-│  └─ `icon_paths.py`
 │
 ├─ game_controller/
 │  ├─ `__init__.py`
@@ -78,10 +85,24 @@ Victurus/
 │  ├─ `sim_loop.py`
 │  └─ `sim_tasks.py`
 │
+├─ save/
+│  ├─ `save_manager.py`
+│  ├─ `models.py`
+│  ├─ `paths.py`
+│  ├─ `serializers.py`
+│  ├─ `icon_paths.py`
+│  ├─ `ui_config.py`
+│  └─ `ui_state_tracer.py`
+│
+├─ settings/
+│  └─ `system_config.py`
+│
 └─ ui/
   ├─ `__init__.py`
   ├─ `main_window.py`
   ├─ `constants.py`
+  ├─ `error_handler.py`
+  ├─ `error_utils.py`
   │
   ├─ controllers/
   │  ├─ `__init__.py`
@@ -90,35 +111,39 @@ Victurus/
   │  └─ `system_location_presenter.py`
   │
   ├─ dialogs/
+  │  ├─ `error_reporter_dialog.py`
   │  ├─ `load_game_dialog.py`
   │  ├─ `new_game_dialog.py`
   │  └─ `save_as_dialog.py`
+  │
+  ├─ maps/
+  │  ├─ `background_view.py`
+  │  ├─ `galaxy.py`
+  │  ├─ `galaxy_leadline.py`
+  │  ├─ `icons.py`
+  │  ├─ `system.py`
+  │  ├─ `system_leadline.py`
+  │  └─ `tabs.py`
   │
   ├─ menus/
   │  ├─ `file_menu.py`
   │  └─ `view_menu.py`
   │
-  ├─ maps/
-  │  ├─ `galaxy.py`
-  │  ├─ `icons.py`
-  │  ├─ `background.py`
-  │  ├─ `system.py`
-  │  ├─ `tabs.py`
-  │  ├─ `galaxy_leadline.py`
-  │  └─ `system_leadline.py`
-  │
   ├─ state/
-  │  ├─ `window_state.py`
+  │  ├─ `lead_line_prefs.py`
   │  ├─ `main_window_state.py`
-  │  └─ `lead_line_prefs.py`
+  │  ├─ `ui_state_manager.py`
+  │  └─ `window_state.py`
   │
   ├─ utils/
   │  └─ `docks.py`
   │
   └─ widgets/
     ├─ `galaxy_system_list.py`
+    ├─ `log_panel.py`
     ├─ `status_sheet.py`
     └─ `system_location_list.py`
+```
 
 ## Notes
 
@@ -150,22 +175,17 @@ Victurus/
 - User-selected icons are persisted into `locations.icon_path` so the same asset is used on subsequent loads.
 - **ui/** — UI (Qt widgets, maps, panels, menus).
 - **ui/main_window.py** — Main window, docks, and wiring for all UI components.
-- **ui/constants.py** — Centralized UI constants (sizes, fonts, asset roots).
+- **ui/constants.py** — Centralized UI constants and shared values.
+- **ui/error_handler.py** — Global error handling and crash reporting system.
+- **ui/error_utils.py** — Error handling decorators and utility functions.
 - **ui/controllers/** — UI logic controllers that mediate between widgets and game state.
-- **ui/dialogs/** — Qt dialogs (new/load/save).
-- **ui/menus/file_menu.py** — File menu actions.
-- **ui/menus/view_menu.py** — View/menu toggles.
+- **ui/dialogs/** — Qt dialogs (new/load/save/error reporting).
+- **ui/menus/file_menu.py** — File menu actions (New, Load, Save, Close Game).
+- **ui/menus/view_menu.py** — View menu toggles with Show All/Hide All functionality.
 - **ui/maps/** — Map views and infrastructure.
 - **ui/widgets/** — Reusable panels and widgets.
 
-### Recent developer utilities
 
-- `tools/test_newgame_runner.py` — Helper that creates new saves by launching the new-game bootstrap in a subprocess. It picks unique save names and enforces a configurable timeout (default 60s) to avoid orphaned/hung runs during automated tests.
-- `tools/check_resource_icons.py` — Small inspector script used during development to verify resource locations exist on `locations` and that `icon_path` values are present.
-
-These tools are intended for developer/test use and write into the user's Documents/Victurus_game/Saves directory by default.
-
----
 
 ## Brief per‑file descriptions
 
@@ -197,7 +217,18 @@ These tools are intended for developer/test use and write into the user's Docume
 ### docs/
 
 - `structure.md` — This document.
-- `feature_checklist.md` — Running checklist of implemented/planned features.
+- `project_status.md` — Running status of implemented/planned features.  
+- `ui_state_management.md` — Documentation of the UI state persistence system.
+- `error_handling.md` — Documentation of the global error handling system.
+- `VIEW_MENU_FIX.md` — Technical documentation of the View menu Show All/Hide All fix.
+
+### tests/
+
+- `README.md` — Documentation of test files and usage.
+- `debug_crash.py` — Debug script to reproduce crashes when loading games with multiple saves.
+- `debug_dialog_step_by_step.py` — Step-by-step debug tool for LoadGameDialog creation issues.
+- `test_error_handler.py` — Test suite for the global error handling system.
+- `test_load_multiple_saves.py` — Test script to verify Load Game Dialog functionality with existing saves.
 
 ### game/
 
@@ -238,14 +269,15 @@ These tools are intended for developer/test use and write into the user's Docume
 
 ### ui/dialogs/
 
+- `error_reporter_dialog.py` — Modal dialog for displaying and reporting application errors.
 - `load_game_dialog.py` — Modal for selecting and loading save slots.
 - `new_game_dialog.py` — Modal for new game name/seed selection.
 - `save_as_dialog.py` — Modal for cloning to a new save slot/name.
 
 ### ui/menus/
 
-- `file_menu.py` — File operations (New, Load, Save, Save As, Exit).
-- `view_menu.py` — View toggles and developer options.
+- `file_menu.py` — File operations (New, Load, Save, Save As, Close Game, Exit).
+- `view_menu.py` — View toggles and panel visibility controls with Show All/Hide All functionality.
 
 ### ui/maps/
 

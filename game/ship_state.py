@@ -1,4 +1,11 @@
 # /game/ship_state.py
+"""
+Ship State Management
+
+This module holds a temporary, visual-only state for the ship status panel.
+The UI reads this to override the stable DB-derived status during short phases
+like "Docking", "Entering Cruise", "Warping", etc.
+"""
 
 from __future__ import annotations
 from typing import Optional, Iterator

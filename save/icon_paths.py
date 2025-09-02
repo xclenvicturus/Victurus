@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+import random
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from data import db
@@ -139,7 +140,7 @@ def _inventory_assets() -> Dict[str, List[Path]]:
     return inv
 
 # Core: bake_icon_paths ----------------------------------------------------
-def bake_icon_paths(conn: sqlite3.Connection, *, only_missing: bool = True) -> Dict[str, int]:
+def bake_icon_paths(conn: sqlite3.Connection, *, only_missing: bool = True, seed: Optional[int] = None) -> Dict[str, int]:
     """
     Assign icon paths into the DB for systems.icon_path and locations.icon_path.
 
@@ -150,6 +151,10 @@ def bake_icon_paths(conn: sqlite3.Connection, *, only_missing: bool = True) -> D
     """
     cur = conn.cursor()
     updated = {"systems": 0, "locations": 0}
+
+    # RNG: if `seed` is provided, use deterministic behavior; otherwise use
+    # a non-deterministic RNG so new games get different images each time.
+    rng = random.Random(seed)
 
     inv = _inventory_assets()
 
@@ -163,8 +168,8 @@ def bake_icon_paths(conn: sqlite3.Connection, *, only_missing: bool = True) -> D
         else:
             sys_rows = cur.execute("SELECT system_id FROM systems ORDER BY system_id").fetchall()
         for (sys_id,) in sys_rows:
-            # deterministic but varied index
-            idx = int((int(sys_id) * 1103 + 37) % len(star_files))
+            # choose pseudo-randomly (deterministic if seed provided)
+            idx = rng.randrange(len(star_files))
             chosen = star_files[idx]
             cur.execute(
                 "UPDATE systems SET icon_path=? WHERE system_id=?",
@@ -193,14 +198,17 @@ def bake_icon_paths(conn: sqlite3.Connection, *, only_missing: bool = True) -> D
         if not files:
             return None
         used = used_indices.setdefault((sys_id, bucket), set())
-        # Seed distributes choices by system and row index, but remains deterministic
-        start = (sys_id * 2657 + row_idx * 161) % len(files)
+        # Start at a pseudo-random position and pick the first unused index
+        # to avoid duplicates within the same system. If `seed` was provided
+        # the randomness is deterministic; otherwise different runs will
+        # produce different assignments.
+        start = rng.randrange(len(files))
         for off in range(len(files)):
             idx = (start + off) % len(files)
             if idx not in used:
                 used.add(idx)
                 return files[idx]
-        # fallback if pool smaller than count; reuse deterministically
+        # fallback if pool smaller than count; reuse starting index
         return files[start % len(files)]
 
     for row_idx, (loc_id, sys_id, loc_type, resource_type) in enumerate(loc_rows):

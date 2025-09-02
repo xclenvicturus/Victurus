@@ -30,10 +30,14 @@ except Exception:  # pragma: no cover
     QSvgRenderer = None  # type: ignore
 
 import hashlib
+from settings import system_config as cfg
 
 # ---------- constants ----------
 
-ICON_SIZE_VARIANCE_MAX = 0.50
+try:
+    ICON_SIZE_VARIANCE_MAX = float(getattr(cfg, "ICON_SIZE_VARIANCE_MAX", 0.50))
+except Exception:
+    ICON_SIZE_VARIANCE_MAX = 0.50
 
 RASTER_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".webp"}
 GIF_EXTS    = {".gif"}
@@ -245,36 +249,103 @@ class AnimatedGifItem(QGraphicsPixmapItem):
         self._const_offset = (-sw / 2.0, -sh / 2.0)
 
     def _on_frame(self, _frame_idx: int) -> None:
+        # The QMovie may still emit after the Python wrapper's underlying
+        # C++ graphics item has been deleted. Guard against RuntimeError
+        # and ensure we stop/disconnect the movie when the item is gone.
         if self._movie is None:
             return
-        pm_native = self._movie.currentPixmap()
-        if pm_native.isNull():
+
+        try:
+            pm_native = self._movie.currentPixmap()
+            if pm_native.isNull():
+                return
+
+            self._ensure_geometry(pm_native)
+
+            size = self._canvas_size or pm_native.size()
+            canvas = QImage(int(size.width()), int(size.height()), QImage.Format.Format_ARGB32_Premultiplied)
+            canvas.fill(Qt.GlobalColor.transparent)
+
+            base_rect = self._movie.frameRect()
+            tl = base_rect.topLeft()
+            p = QPainter(canvas)
+            p.drawPixmap(QPoint(tl.x(), tl.y()), pm_native)
+            p.end()
+
+            pm_canvas = QPixmap.fromImage(canvas)
+            pm_scaled = pm_canvas.scaled(
+                int(self._scaled_w or pm_canvas.width()),
+                int(self._scaled_h or pm_canvas.height()),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+
+            try:
+                # setPixmap/setOffset call into the C++ object may raise
+                # RuntimeError if the underlying C++ object was already
+                # deleted; catch that and tear down the movie gracefully.
+                self.setPixmap(pm_scaled)
+                if self._const_offset is not None:
+                    self.setOffset(self._const_offset[0], self._const_offset[1])
+                self._apply_scale()
+            except RuntimeError:
+                # Disconnect and stop the movie to avoid further signals.
+                mv = getattr(self, "_movie", None)
+                try:
+                    if mv is not None:
+                        mv.frameChanged.disconnect(self._on_frame)
+                except Exception:
+                    pass
+                try:
+                    if mv is not None:
+                        mv.stop()
+                except Exception:
+                    pass
+                self._movie = None
+                return
+        except Exception:
+            # Swallow unexpected errors from the rendering path; don't
+            # let animations crash the whole app.
             return
 
-        self._ensure_geometry(pm_native)
+    def itemChange(self, change, value):
+        # Detect removal from the scene so we can stop the QMovie before
+        # the QGraphicsPixmapItem is deleted by Qt (which would make
+        # subsequent frameChanged signals unsafe).
+        try:
+            # When Qt removes the item from the scene, value is set to None.
+            # Use that signal as our cue to stop the QMovie and disconnect
+            # the slot. Avoid referring to the GraphicsItem enum directly to
+            # keep static analyzers happy.
+            if value is None:
+                mv = getattr(self, "_movie", None)
+                if mv is not None:
+                    try:
+                        mv.frameChanged.disconnect(self._on_frame)
+                    except Exception:
+                        pass
+                    try:
+                        mv.stop()
+                    except Exception:
+                        pass
+                    self._movie = None
+        except Exception:
+            pass
+        return super().itemChange(change, value)
 
-        size = self._canvas_size or pm_native.size()
-        canvas = QImage(int(size.width()), int(size.height()), QImage.Format.Format_ARGB32_Premultiplied)
-        canvas.fill(Qt.GlobalColor.transparent)
-
-        base_rect = self._movie.frameRect()
-        tl = base_rect.topLeft()
-        p = QPainter(canvas)
-        p.drawPixmap(QPoint(tl.x(), tl.y()), pm_native)
-        p.end()
-
-        pm_canvas = QPixmap.fromImage(canvas)
-        pm_scaled = pm_canvas.scaled(
-            int(self._scaled_w or pm_canvas.width()),
-            int(self._scaled_h or pm_canvas.height()),
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
-        )
-
-        self.setPixmap(pm_scaled)
-        if self._const_offset is not None:
-            self.setOffset(self._const_offset[0], self._const_offset[1])
-        self._apply_scale()
+    def __del__(self):
+        # Defensive cleanup in case Python/C++ teardown ordering hits us.
+        mv = getattr(self, "_movie", None)
+        if mv is not None:
+            try:
+                mv.frameChanged.disconnect(self._on_frame)
+            except Exception:
+                pass
+            try:
+                mv.stop()
+            except Exception:
+                pass
+            self._movie = None
 
     def _apply_scale(self) -> None:
         tr = self._view.transform()

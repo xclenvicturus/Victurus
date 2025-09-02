@@ -1,4 +1,10 @@
 # /game_controller/config.py
+"""
+Game Controller Configuration
+
+Centralized configuration for Victurus game controller system. Values are environment-driven,
+with safe defaults. Import and use wherever needed.
+"""
 
 # Centralized configuration for Victurus. Values are environment-driven,
 # with safe defaults. Import and use wherever needed.

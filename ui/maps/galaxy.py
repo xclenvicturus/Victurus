@@ -1,4 +1,11 @@
 # /ui/maps/galaxy.py
+"""
+Galaxy Map Display System
+
+Handles the visual display and interaction for the galaxy map, including
+system positioning, background rendering, user interaction handling,
+and travel path visualization.
+"""
 
 from __future__ import annotations
 
@@ -18,7 +25,12 @@ from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from data import db
 from .background_view import BackgroundView
 from .icons import list_gifs, pm_from_path_or_kind, randomized_px
+from .travel_visualization import TravelVisualization, PathRenderer
+from .simple_travel_vis import SimpleTravelStatus
+from ..widgets.travel_status_overlay import TravelStatusOverlay
 from game_controller.sim_loop import universe_sim
+import logging
+logger = logging.getLogger(__name__)
 
 ASSETS_ROOT  = Path(__file__).resolve().parents[2] / "assets"
 GAL_BG_DIR   = ASSETS_ROOT / "galaxy_backgrounds"
@@ -98,6 +110,16 @@ class GalaxyMapWidget(BackgroundView):
         self._star_gifs: List[Path] = list_gifs(STARS_DIR)
         if not self._star_gifs:
             self.logMessage.emit("WARNING: No star GIFs found in /assets/stars; using placeholders.")
+
+        # Travel visualization components - lines disabled, using overlay system instead
+        # self._travel_viz = TravelVisualization()
+        # self._path_renderer = PathRenderer(self._travel_viz, show_progress_dot=False, coordinate_system="galaxy")
+        # self._path_renderer.set_scene(self._scene)
+        
+        # Travel status overlay
+        self._travel_status = SimpleTravelStatus()
+        self._travel_overlay = TravelStatusOverlay(self)
+        self._travel_status.travel_status_changed.connect(self._travel_overlay.set_travel_info)
 
         universe_sim.ensure_running()
         universe_sim.set_visible_system(None)
@@ -226,3 +248,34 @@ class GalaxyMapWidget(BackgroundView):
         rect = it.mapToScene(it.boundingRect()).boundingRect()
         self.centerOn(rect.center())
         universe_sim.set_visible_system(None)
+        
+    # ---------- Travel Visualization ----------
+    def show_travel_path(self, dest_type: str, dest_id: int) -> bool:
+        """
+        Display travel path to destination and return True if path was calculated.
+        NOTE: Line-based travel visualization disabled - using overlay system instead.
+        """
+        # Travel path visualization is now handled by overlay system
+        return True
+            
+    def hide_travel_path(self) -> None:
+        """Clear/hide the current travel path visualization"""
+        # Travel path visualization disabled - using overlay system instead
+        pass
+        
+    def update_travel_progress(self, progress: float) -> None:
+        """
+        Update travel progress along the current path.
+        NOTE: Progress is now handled automatically by SimpleTravelStatus
+        """
+        # Travel progress is handled by overlay system
+        pass
+        
+    def get_travel_visualization(self):
+        """Get the travel visualization instance for external updates"""
+        # Travel visualization disabled - using overlay system instead
+        return None
+    
+    def get_travel_status(self) -> SimpleTravelStatus:
+        """Get the travel status instance for external connections"""
+        return self._travel_status

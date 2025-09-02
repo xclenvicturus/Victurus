@@ -1,4 +1,10 @@
 # /ui/utils/docks.py
+"""
+Dock Widget Utilities
+
+Helper functions for creating and managing dock widgets with state persistence
+and visibility change handling.
+"""
 
 from __future__ import annotations
 

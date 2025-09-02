@@ -1,4 +1,10 @@
 # /ui/widgets/system_location_list.py
+"""
+System Location List Widget
+
+Provides filterable, sortable lists of system locations (planets, stations, etc.)
+with search functionality, category filtering, and integration with the system map display.
+"""
 
 from __future__ import annotations
 
@@ -35,8 +41,10 @@ except Exception:  # pragma: no cover
     persist_location_icon = None  # type: ignore
     persist_system_icon = None  # type: ignore
 
+from settings import system_config as cfg
+
 # -------- Helpers (duplicated for independence) --------
-_LY_TO_AU = 63241.0  # Approximate astronomical units in one light-year
+_LY_TO_AU = float(getattr(cfg, "LY_TO_AU", 63241.0))  # Approximate astronomical units in one light-year
 
 
 def _norm(s: Optional[str]) -> str:
@@ -266,7 +274,7 @@ class SystemLocationList(QWidget):
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(6, 6, 6, 6)
         main_layout.setSpacing(6)
-        main_layout.addWidget(QLabel(title))
+        # Title is provided by the dock header; avoid duplicating it inside the widget
         main_layout.addWidget(self.category)
         # Removed: sort dropdown from UI
         main_layout.addWidget(self.search)

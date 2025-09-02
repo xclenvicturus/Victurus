@@ -14,6 +14,7 @@ import random
 from typing import List, Optional
 
 from PySide6.QtCore import QTimer, Qt, QPoint
+from settings import system_config as cfg
 from PySide6.QtGui import QBrush, QColor, QImage, QLinearGradient, QPainter, QPixmap
 from PySide6.QtWidgets import QGraphicsScene, QGraphicsView
 
@@ -38,17 +39,61 @@ class BackgroundView(QGraphicsView):
         except Exception:
             pass
 
-        # Keep scrollbars hidden and disable interactions (we navigate via lists)
+        # Keep scrollbars hidden. Allow interactions so users can pan the view.
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.setDragMode(QGraphicsView.DragMode.NoDrag)
-        self.setInteractive(False)
+        # Use ScrollHandDrag so click-dragging pans the view (hand tool).
+        # Use getattr/hasattr to avoid static-analysis warnings about enum attributes
+        try:
+            dm = getattr(QGraphicsView, "DragMode", None)
+            if dm is not None and hasattr(dm, "ScrollHandDrag"):
+                self.setDragMode(getattr(dm, "ScrollHandDrag"))
+            else:
+                # Older runtimes may expose the enum directly on the class
+                mode = getattr(QGraphicsView, "ScrollHandDrag", None)
+                if mode is not None:
+                    self.setDragMode(mode)
+        except Exception:
+            pass
+        # Allow item/view interaction (needed for panning and event delivery)
+        self.setInteractive(True)
+
+        # Ensure the default cursor is inherited (arrow) while hovering;
+        # unset any explicit cursors on the view and viewport so the widget
+        # can inherit the platform default. Dragging will switch to a closed-hand.
+        try:
+            try:
+                self.unsetCursor()
+            except Exception:
+                pass
+            try:
+                vp = self.viewport()
+                if vp is not None:
+                    try:
+                        vp.unsetCursor()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+        # Use AnchorUnderMouse so incremental scale() calls keep the point
+        # under the cursor fixed. We apply scale changes incrementally in
+        # `_apply_unit_scale` so the anchor is effective for user-driven zooms.
+        try:
+            self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+        except Exception:
+            pass
 
         # Cheaper update policy is fine now that starfield is cached (no per-frame re-draw loop).
         self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.BoundingRectViewportUpdate)
 
         # Unit scale: logical unit -> pixels (used by children when laying out)
-        self._unit_px = 10.0
+        try:
+            self._unit_px = float(getattr(cfg, "VIEW_UNIT_PX", 10.0))
+        except Exception:
+            self._unit_px = 10.0
 
         # Background image cache and mode
         self._bg_pixmap: Optional[QPixmap] = None
@@ -60,11 +105,20 @@ class BackgroundView(QGraphicsView):
         self._star_timer: Optional[QTimer] = None  # kept for API compatibility; unused now
         self._star_time = 0.0  # kept for API compatibility
 
-        # Cached starfield tiles & parameters
-        self._sf_layers: List[QPixmap] = []                 # one pixmap per parallax layer
-        self._sf_tile_px: int = 512                         # logical tile size (px)
-        self._sf_parallax: List[float] = [0.20, 0.45, 0.85] # slow -> fast layer factors
-        self._sf_density: List[int] = [140, 90, 55]         # stars-per-tile per layer
+        # Cached starfield tiles & parameters (configurable)
+        self._sf_layers: List[QPixmap] = []
+        try:
+            self._sf_tile_px: int = int(getattr(cfg, "STARFIELD_TILE_PX", 512))
+        except Exception:
+            self._sf_tile_px = 512
+        try:
+            self._sf_parallax: List[float] = list(getattr(cfg, "STARFIELD_PARALLAX", [0.20, 0.45, 0.85]))
+        except Exception:
+            self._sf_parallax = [0.20, 0.45, 0.85]
+        try:
+            self._sf_density: List[int] = list(getattr(cfg, "STARFIELD_DENSITY", [140, 90, 55]))
+        except Exception:
+            self._sf_density = [140, 90, 55]
         try:
             self._sf_dpr: float = float(self.devicePixelRatioF())
         except Exception:
@@ -98,8 +152,29 @@ class BackgroundView(QGraphicsView):
         self._unit_px = float(scale)
 
     def _apply_unit_scale(self) -> None:
-        self.resetTransform()
-        self.scale(self._unit_px, self._unit_px)
+        # Apply an incremental scale so the final scale equals _unit_px while
+        # allowing the view's transformation anchor (AnchorUnderMouse) to
+        # take effect. Compute current uniform scale from the transform and
+        # scale by the ratio.
+        try:
+            tr = self.transform()
+            cur = float(tr.m11()) if tr is not None else 1.0
+            # Avoid degenerate current scale
+            if abs(cur) < 1e-12:
+                cur = 1.0
+            factor = float(self._unit_px) / cur
+            # If factor is effectively 1, do nothing
+            if abs(factor - 1.0) < 1e-9:
+                return
+            # Use scale() so the transformation anchor is respected
+            self.scale(factor, factor)
+        except Exception:
+            # Fallback to previous behavior if transform inspection fails
+            try:
+                self.resetTransform()
+                self.scale(self._unit_px, self._unit_px)
+            except Exception:
+                pass
 
     # ---------- Starfield (tiled) ----------
     def enable_starfield(self, enabled: bool) -> None:
@@ -236,10 +311,127 @@ class BackgroundView(QGraphicsView):
                 self._regen_starfield_tiles()
         super().resizeEvent(ev)
 
-    def mousePressEvent(self, ev) -> None: ev.ignore()
-    def mouseMoveEvent(self, ev) -> None: ev.ignore()
-    def mouseReleaseEvent(self, ev) -> None: ev.ignore()
-    def wheelEvent(self, ev) -> None: ev.ignore()
+    def mousePressEvent(self, ev) -> None:
+        # Forward to base so drag/pan behavior works
+        try:
+            # When the user presses to begin a potential pan, show the
+            # grab/closed-hand cursor to indicate dragging. Default hover
+            # stays as the normal pointer until press.
+            try:
+                left_btn = getattr(Qt, "LeftButton", None)
+                closed_cur = getattr(Qt, "ClosedHandCursor", None)
+                if left_btn is not None and ev.button() == left_btn and closed_cur is not None:
+                    try:
+                        self.setCursor(closed_cur)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            super().mousePressEvent(ev)
+        except Exception:
+            try:
+                ev.ignore()
+            except Exception:
+                pass
+
+    def mouseMoveEvent(self, ev) -> None:
+        try:
+            # If the user is holding a button while moving, keep the
+            # closed-hand cursor; otherwise ensure the normal arrow cursor
+            # is shown while hovering.
+            try:
+                buttons = getattr(ev, "buttons", lambda: 0)()
+                closed_cur = getattr(Qt, "ClosedHandCursor", None)
+                if buttons:
+                    # button held -> dragging (cursor kept as closed hand)
+                    if closed_cur is not None:
+                        try:
+                            self.setCursor(closed_cur)
+                        except Exception:
+                            pass
+                        try:
+                            vp = self.viewport()
+                            if vp is not None:
+                                vp.setCursor(closed_cur)
+                        except Exception:
+                            pass
+                else:
+                    # No buttons -> restore default/inherited cursor so the
+                    # hand doesn't stick after a pan.
+                    try:
+                        self.unsetCursor()
+                    except Exception:
+                        pass
+                    try:
+                        vp = self.viewport()
+                        if vp is not None:
+                            try:
+                                vp.unsetCursor()
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            super().mouseMoveEvent(ev)
+        except Exception:
+            try:
+                ev.ignore()
+            except Exception:
+                pass
+
+    def mouseReleaseEvent(self, ev) -> None:
+        try:
+            # Restore normal pointer on release
+            try:
+                try:
+                    self.unsetCursor()
+                except Exception:
+                    pass
+                try:
+                    vp = self.viewport()
+                    if vp is not None:
+                        try:
+                            vp.unsetCursor()
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+            except Exception:
+                pass
+            super().mouseReleaseEvent(ev)
+        except Exception:
+            try:
+                ev.ignore()
+            except Exception:
+                pass
+
+    def enterEvent(self, ev) -> None:
+        """Ensure the arrow cursor is shown when the mouse enters the view."""
+        try:
+            try:
+                self.unsetCursor()
+            except Exception:
+                pass
+            try:
+                vp = self.viewport()
+                if vp is not None:
+                    try:
+                        vp.unsetCursor()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        except Exception:
+            pass
+        try:
+            super().enterEvent(ev)
+        except Exception:
+            pass
+
+    def wheelEvent(self, ev) -> None:
+        # Keep zoom disabled per recent UX decision
+        ev.ignore()
 
     # ---------- Toggle animations ----------
     def set_animations_enabled(self, enabled: bool) -> None:

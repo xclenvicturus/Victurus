@@ -1,4 +1,10 @@
 # /ui/widgets/galaxy_system_list.py
+"""
+Galaxy System List Widget
+
+Provides filterable, sortable lists of galaxy systems with search functionality,
+category filtering, and integration with the galaxy map display system.
+"""
 
 from __future__ import annotations
 
@@ -8,6 +14,7 @@ import re
 from game import player_status
 
 from PySide6.QtCore import QPoint, QEvent, Qt, Signal, QPointF
+from settings import system_config as cfg
 from PySide6.QtGui import QFont, QIcon, QColor, QBrush, QAction, QCursor
 from PySide6.QtWidgets import (
     QComboBox,
@@ -28,7 +35,7 @@ except Exception:  # pragma: no cover
     pm_from_path_or_kind = None  # type: ignore
 
 # -------- Helpers (duplicated for independence) --------
-_LY_TO_AU = 63241.0  # Approximate astronomical units in one light-year
+_LY_TO_AU = float(getattr(cfg, "LY_TO_AU", 63241.0))  # Approximate astronomical units in one light-year
 
 
 def _norm(s: Optional[str]) -> str:
@@ -263,7 +270,7 @@ class GalaxySystemList(QWidget):
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(6, 6, 6, 6)
         main_layout.setSpacing(6)
-        main_layout.addWidget(QLabel(title))
+        # Title is provided by the dock header; avoid duplicating it inside the widget
         # Removed: category & sort dropdowns from UI
         main_layout.addWidget(self.search)
         main_layout.addWidget(self.tree, 1)

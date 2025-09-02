@@ -1,0 +1,6 @@
+2025-09-01 23:46:38 INFO travel.system_map: Current player location_id = 793
+2025-09-01 23:46:38 INFO travel.system_map: Destination type = loc, id = 1631
+2025-09-01 23:46:38 INFO travel.system_map: Travel path: from -173.8, -536.6 to 1097.3, 1268.6
+2025-09-01 23:46:38 DEBUG travel.system_map: Available positions in _drawpos: [-139, 790, 793, 796, 797, 798, 800, 1631, 1632, 1633, 1634, 791, 792, 794, 795, 799, 801, 802, 1297, 1630]
+2025-09-01 23:46:38 INFO travel.system_map: Calling travel visualization calculate_path(loc, 1631)
+2025-09-01 23:46:38 WARNING travel.system_map: Travel visualization returned None, using fallback simple path

@@ -1,4 +1,9 @@
 # /ui/constants.py
+"""
+UI Constants and Shared Values
+
+Contains small shared constants and sentinel values used across the UI system.
+"""
 
 # Small shared constants used by UI helpers
 

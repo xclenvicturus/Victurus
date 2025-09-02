@@ -17,6 +17,7 @@ from typing import Optional
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QTabWidget
+from PySide6.QtCore import QTimer
 
 from data import db
 from ui.maps.galaxy import GalaxyMapWidget
@@ -102,7 +103,34 @@ class MapTabs(QWidget):
         try:
             if getattr(self.system, "_system_id", None) != int(system_id):
                 self.system.load(int(system_id))
-            self.system.center_on_system(int(system_id))
+            # If the user is actively interacting with the map, the System
+            # widget may be suppressing external centering. Defer the center
+            # call slightly so the user's zoom/pan isn't overridden.
+            try:
+                def _deferred_center_sys(sid: int) -> None:
+                    try:
+                        sys_widget = getattr(self, "system", None)
+                        if sys_widget is not None and hasattr(sys_widget, "is_suppressing_auto_center") and sys_widget.is_suppressing_auto_center():
+                            # retry shortly until suppression clears
+                            QTimer.singleShot(100, lambda: _deferred_center_sys(sid))
+                            return
+                        # perform the real center
+                        try:
+                            self.system.center_on_system(int(sid), force=True)
+                        except Exception:
+                            pass
+                    except Exception:
+                        try:
+                            self.system.center_on_system(int(sid))
+                        except Exception:
+                            pass
+
+                _deferred_center_sys(int(system_id))
+            except Exception:
+                try:
+                    self.system.center_on_system(int(system_id))
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -110,7 +138,15 @@ class MapTabs(QWidget):
         try:
             # IMPORTANT: do NOT reload to player's system here.
             # We are already viewing a specific system in the System view; just center there.
-            self.system.center_on_location(int(location_id))
+            # Call the System widget immediately (force) so the System list behaves like the
+            # Galaxy list which centers immediately on user clicks.
+            try:
+                self.system.center_on_location(int(location_id), force=True)
+            except Exception:
+                try:
+                    self.system.center_on_location(int(location_id))
+                except Exception:
+                    pass
         except Exception:
             pass
 

@@ -77,9 +77,11 @@ class GalaxyLocationPresenter:
 
     def __init__(self,
                  map_view: MapTabs | QWidget,
-                 galaxy_panel: GalaxySystemList) -> None:
+                 galaxy_panel: GalaxySystemList,
+                 travel_coordinator = None) -> None:
         self._tabs = map_view
         self._gal = galaxy_panel
+        self._travel_coordinator = travel_coordinator
 
     # -------- public API --------
 
@@ -194,8 +196,22 @@ class GalaxyLocationPresenter:
             if flow is None:
                 flow = mw._ensure_travel_flow()
 
-            flow.begin("star", int(-entity_id))
-        except Exception:
+            # Start travel to system
+            system_id = int(-entity_id)
+            
+            # Get the galaxy map and start travel status tracking
+            galaxy_widget = getattr(self._tabs, "galaxy", None)
+            if galaxy_widget and hasattr(galaxy_widget, 'get_travel_status'):
+                travel_status = galaxy_widget.get_travel_status()
+                travel_status.start_travel_tracking("star", system_id)
+            
+            # Begin actual travel
+            flow.begin("star", system_id)
+            
+        except Exception as e:
+            from game_controller.log_config import get_ui_logger
+            logger = get_ui_logger('galaxy_presenter')
+            logger.error(f"Error in travel_here: {e}")
             pass
 
     # -------- internals --------

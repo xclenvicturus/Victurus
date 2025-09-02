@@ -1,4 +1,10 @@
 # /ui/menus/view_menu.py
+"""
+View Menu System
+
+Handles panel visibility controls, including Show All/Hide All functionality
+for docks, log panels, and other UI components with proper state synchronization.
+"""
 
 from __future__ import annotations
 
@@ -21,7 +27,6 @@ class _MainWindowLike(Protocol):
     location_panel: Optional[QWidget]
     # actions set up by this module
     act_panel_status: Optional[QAction]
-    act_panel_log: Optional[QAction]
     act_panel_location_galaxy: Optional[QAction]
     act_panel_location_system: Optional[QAction]
     act_panel_location: Optional[QAction]
@@ -69,16 +74,29 @@ def sync_panels_menu_state(win: _MainWindowLike) -> None:
         finally:
             act.blockSignals(False)
 
-    # Log dock
-    act = getattr(win, "act_panel_log", None)
-    dock = getattr(win, "log_dock", None)
-    if isinstance(act, QAction):
-        try:
-            act.blockSignals(True)
-            act.setEnabled(isinstance(dock, QDockWidget))
-            act.setChecked(_checked_visible(dock))
-        finally:
-            act.blockSignals(False)
+    # Per-category log actions (if installed by install_view_menu_extras)
+    try:
+        act_map = getattr(win, "_act_log_categories", None)
+        if isinstance(act_map, dict):
+            for cat, action in act_map.items():
+                try:
+                    action.blockSignals(True)
+                    # find corresponding dock in window._log_docks (created lazily)
+                    dock = None
+                    try:
+                        dock = getattr(win, "_log_docks", {}).get(cat)
+                    except Exception:
+                        dock = None
+                    # Keep enabled even if dock doesn't exist yet - it will be created
+                    action.setEnabled(True)
+                    action.setChecked(_checked_visible(dock))
+                finally:
+                    try:
+                        action.blockSignals(False)
+                    except Exception:
+                        pass
+    except Exception:
+        pass
 
     # Galaxy list (top)
     act = getattr(win, "act_panel_location_galaxy", None)
@@ -125,6 +143,79 @@ def install_view_menu_extras(win: _MainWindowLike, prefs: Any) -> None:
         color/width/glow controls.
     """
     view_menu = _ensure_view_menu(win)
+
+    # Add debug/error menu items
+    view_menu.addSeparator()
+    
+    # Error logs menu
+    debug_menu = QMenu("Debug", view_menu)
+    view_menu.addMenu(debug_menu)
+    
+    def _open_log_folder():
+        """Open the logs folder in the file explorer"""
+        try:
+            import os
+            import subprocess
+            import platform
+            from pathlib import Path
+            
+            log_dir = Path(__file__).resolve().parents[2] / "logs"
+            log_dir.mkdir(exist_ok=True)
+            
+            system = platform.system()
+            if system == "Windows":
+                os.startfile(log_dir)
+            elif system == "Darwin":  # macOS
+                subprocess.run(["open", str(log_dir)])
+            else:  # Linux and others
+                subprocess.run(["xdg-open", str(log_dir)])
+        except Exception as e:
+            from ui.error_handler import handle_error
+            handle_error(e, "Opening log folder")
+    
+    def _trigger_test_error():
+        """Trigger a test error to verify error handling"""
+        from ui.error_handler import handle_error
+        test_error = RuntimeError("This is a test error to verify the error reporting system works correctly.")
+        handle_error(test_error, "Test error from Debug menu")
+    
+    def _show_system_info():
+        """Show system information dialog"""
+        try:
+            from PySide6.QtWidgets import QMessageBox
+            import platform
+            import sys
+            
+            info_text = f"""System Information:
+            
+Python Version: {sys.version}
+Platform: {platform.platform()}
+System: {platform.system()} {platform.release()}
+Architecture: {platform.architecture()[0]}
+Machine: {platform.machine()}
+Processor: {platform.processor()}
+
+PySide6 Version: {getattr(__import__('PySide6'), '__version__', 'Unknown')}
+Application: Victurus"""
+            
+            QMessageBox.information(cast(QWidget, win), "System Information", info_text)
+        except Exception as e:
+            from ui.error_handler import handle_error
+            handle_error(e, "Showing system information")
+    
+    act_logs = QAction("Open Log Folder", debug_menu)
+    act_logs.triggered.connect(_open_log_folder)
+    debug_menu.addAction(act_logs)
+    
+    act_test_error = QAction("Test Error Handler", debug_menu)
+    act_test_error.triggered.connect(_trigger_test_error)
+    debug_menu.addAction(act_test_error)
+    
+    act_system_info = QAction("System Information", debug_menu)
+    act_system_info.triggered.connect(_show_system_info)
+    debug_menu.addAction(act_system_info)
+    
+    view_menu.addSeparator()
 
     # ---------- Optional: separate per-line submenus ----------
     def _maybe_bool(obj: Any, default: bool = True) -> bool:
@@ -182,11 +273,31 @@ def install_view_menu_extras(win: _MainWindowLike, prefs: Any) -> None:
     def _toggle(getter: Callable[[], Optional[QWidget]]):
         def _fn(visible: bool):
             w = getter()
-            if isinstance(w, QWidget):
-                try:
-                    w.setVisible(bool(visible))
-                except Exception:
-                    pass
+            # If the widget is inside a QDockWidget, toggle the dock instead
+            try:
+                if isinstance(w, QWidget):
+                    # prefer parent dock if present
+                    parent = getattr(w, 'parent', None)
+                    dock = None
+                    try:
+                        # some widgets may expose parent() method
+                        p = w.parent() if callable(getattr(w, 'parent', None)) else None
+                        if isinstance(p, QDockWidget):
+                            dock = p
+                    except Exception:
+                        dock = None
+                    if isinstance(dock, QDockWidget):
+                        try:
+                            dock.setVisible(bool(visible))
+                        except Exception:
+                            pass
+                    else:
+                        try:
+                            w.setVisible(bool(visible))
+                        except Exception:
+                            pass
+            except Exception:
+                pass
             sync_panels_menu_state(win)
         return _fn
 
@@ -200,15 +311,50 @@ def install_view_menu_extras(win: _MainWindowLike, prefs: Any) -> None:
     panels.addAction(act_p_status)
     win.act_panel_status = act_p_status
 
-    # Log dock
-    act_p_log = QAction("Log", panels)
-    act_p_log.setCheckable(True)
-    ld = getattr(win, "log_dock", None)
-    act_p_log.setEnabled(isinstance(ld, QDockWidget))
-    act_p_log.setChecked(_checked_visible(ld))
-    act_p_log.toggled.connect(_toggle(lambda: getattr(win, "log_dock", None)))
-    panels.addAction(act_p_log)
-    win.act_panel_log = act_p_log
+    # Logs submenu: one toggle per log category (if available)
+    from ui.state.window_state import update_window_data
+    logs_menu = QMenu("Logs", panels)
+    panels.addMenu(logs_menu)
+
+    # Known categories; if MainWindow created log docks, they will be present in win._log_docks
+    log_categories = ["All", "Combat", "Trade", "Dialogue", "Reputation", "Loot", "Quest"]
+    for cat in log_categories:
+        obj_name = f"dock_Log_{cat}"
+        act = QAction(cat, logs_menu)
+        act.setCheckable(True)
+        dock = None
+        try:
+            dock = getattr(win, "_log_docks", {}).get(cat)
+        except Exception:
+            dock = None
+        # Enable by default - docks will be created when game starts
+        act.setEnabled(True)
+        act.setChecked(_checked_visible(dock))
+
+        def make_toggle(dock_name, category, window=win):
+            def _fn(visible: bool):
+                try:
+                    dct = None
+                    try:
+                        dct = getattr(window, "_log_docks", {}).get(category)
+                    except Exception:
+                        dct = None
+                    if isinstance(dct, QDockWidget):
+                        dct.setVisible(bool(visible))
+                    # Persist global config so this applies across saves
+                    try:
+                        # This call is user-driven (menu toggle); persist explicitly
+                        from ui.state.window_state import user_update_window_data
+                        user_update_window_data("MainWindow", {"dock_visibility": {dock_name: bool(visible)}})
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+                sync_panels_menu_state(window)
+            return _fn
+
+        act.toggled.connect(make_toggle(obj_name, cat))
+        logs_menu.addAction(act)
 
     # Galaxy list (top)
     act_p_gal = QAction("Galaxy List", panels)
@@ -237,34 +383,82 @@ def install_view_menu_extras(win: _MainWindowLike, prefs: Any) -> None:
     panels.addAction(act_p_loc)
     win.act_panel_location = act_p_loc
 
+    # Keep a mapping of per-category log actions on the window so
+    # sync_panels_menu_state can update them when log docks are created.
+    try:
+        # store as { category: QAction } under a private attribute
+        setattr(win, "_act_log_categories", {})
+        for a in logs_menu.actions():
+            # action text is the category name
+            try:
+                txt = a.text()
+                if isinstance(txt, str) and txt in log_categories:
+                    getattr(win, "_act_log_categories")[txt] = a
+            except Exception:
+                pass
+    except Exception:
+        pass
+
     panels.addSeparator()
 
     # Show/Hide all
+    def _show_all():
+        # Show main panels
+        _toggle(lambda: getattr(win, "status_dock", None))(True)
+        _toggle(lambda: getattr(win, "location_panel_galaxy", None))(True)
+        _toggle(lambda: getattr(win, "location_panel_system", None))(True)
+        _toggle(lambda: getattr(win, "location_panel", None))(True)  # legacy
+        
+        # Show all log docks
+        try:
+            act_log_map = getattr(win, "_act_log_categories", {})
+            for cat, action in act_log_map.items():
+                try:
+                    # Trigger the toggle for this log category
+                    if isinstance(action, QAction) and action.isCheckable():
+                        action.blockSignals(True)
+                        action.setChecked(True)
+                        action.blockSignals(False)
+                        action.toggled.emit(True)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def _hide_all():
+        # Hide main panels
+        _toggle(lambda: getattr(win, "status_dock", None))(False)
+        _toggle(lambda: getattr(win, "location_panel_galaxy", None))(False)
+        _toggle(lambda: getattr(win, "location_panel_system", None))(False)
+        _toggle(lambda: getattr(win, "location_panel", None))(False)  # legacy
+        
+        # Hide all log docks
+        try:
+            act_log_map = getattr(win, "_act_log_categories", {})
+            for cat, action in act_log_map.items():
+                try:
+                    # Trigger the toggle for this log category
+                    if isinstance(action, QAction) and action.isCheckable():
+                        action.blockSignals(True)
+                        action.setChecked(False)
+                        action.blockSignals(False)
+                        action.toggled.emit(False)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
     act_show_all = QAction("Show All", panels)
-    act_show_all.triggered.connect(lambda: [
-        _toggle(lambda: getattr(win, "status_dock", None))(True),
-        _toggle(lambda: getattr(win, "log_dock", None))(True),
-        _toggle(lambda: getattr(win, "location_panel_galaxy", None))(True),
-        _toggle(lambda: getattr(win, "location_panel_system", None))(True),
-        _toggle(lambda: getattr(win, "location_panel", None))(True),  # legacy
-    ])
+    act_show_all.triggered.connect(_show_all)
     panels.addAction(act_show_all)
 
     act_hide_all = QAction("Hide All", panels)
-    act_hide_all.triggered.connect(lambda: [
-        _toggle(lambda: getattr(win, "status_dock", None))(False),
-        _toggle(lambda: getattr(win, "log_dock", None))(False),
-        _toggle(lambda: getattr(win, "location_panel_galaxy", None))(False),
-        _toggle(lambda: getattr(win, "location_panel_system", None))(False),
-        _toggle(lambda: getattr(win, "location_panel", None))(False),  # legacy
-    ])
+    act_hide_all.triggered.connect(_hide_all)
     panels.addAction(act_hide_all)
 
     # Keep actions in sync with actual dock visibility
     if isinstance(sd, QDockWidget) and hasattr(sd, "visibilityChanged"):
         sd.visibilityChanged.connect(lambda _vis: sync_panels_menu_state(win))
-    if isinstance(ld, QDockWidget) and hasattr(ld, "visibilityChanged"):
-        ld.visibilityChanged.connect(lambda _vis: sync_panels_menu_state(win))
 
     # Initial sync
     sync_panels_menu_state(win)

@@ -9,17 +9,43 @@ from PySide6.QtCore import QObject, QTimer, Signal, QElapsedTimer
 from game import travel
 from game import player_status
 from data import db  # for system-name fallbacks
+from settings import system_config as cfg
 
-# ---- Timing knobs (unchanged) ----
-PHASE_WRAP_MS    = 5000   # fixed 5s for all enter/leave phases
-CRUISE_MS_PER_AU = 500    # ms per AU
-WARP_MS_PER_LY   = 500    # ms per LY
-DRIP_STEP_MS     = 10     # ms cadence for progress ticks
+# Read travel tunables from central config
+try:
+    PHASE_WRAP_MS = int(getattr(cfg, "TRAVEL_PHASE_WRAP_MS", 5000))
+except Exception:
+    PHASE_WRAP_MS = 5000
+try:
+    CRUISE_MS_PER_AU = int(getattr(cfg, "TRAVEL_CRUISE_MS_PER_AU", 3000))  # Increased from 500ms to 3000ms per AU
+except Exception:
+    CRUISE_MS_PER_AU = 3000  # Increased from 500ms to 3000ms per AU
+try:
+    WARP_MS_PER_LY = int(getattr(cfg, "TRAVEL_WARP_MS_PER_LY", 500))
+except Exception:
+    WARP_MS_PER_LY = 500
+try:
+    DRIP_STEP_MS = int(getattr(cfg, "TRAVEL_DRIP_STEP_MS", 10))
+except Exception:
+    DRIP_STEP_MS = 10
 
-# ---- Fuel weights / constants (import shared rates from travel) ----
-WRAP_FUEL_WEIGHT   = 2.00
-CRUISE_FUEL_WEIGHT = 1.00
-from game.travel import FUEL_PER_AU, WARP_FUEL_PER_LY, WARP_FUEL_WEIGHT  # single source of truth
+try:
+    WRAP_FUEL_WEIGHT = float(getattr(cfg, "TRAVEL_WRAP_FUEL_WEIGHT", 2.00))
+except Exception:
+    WRAP_FUEL_WEIGHT = 2.00
+try:
+    CRUISE_FUEL_WEIGHT = float(getattr(cfg, "TRAVEL_CRUISE_FUEL_WEIGHT", 1.00))
+except Exception:
+    CRUISE_FUEL_WEIGHT = 1.00
+
+# Import shared fuel model constants from config
+try:
+    from settings.system_config import TRAVEL_FUEL_PER_AU as FUEL_PER_AU
+    from settings.system_config import TRAVEL_WARP_FUEL_PER_LY as WARP_FUEL_PER_LY
+    from settings.system_config import TRAVEL_WARP_FUEL_WEIGHT as WARP_FUEL_WEIGHT
+except Exception:
+    # Fallbacks in case config isn't available
+    from game.travel import FUEL_PER_AU, WARP_FUEL_PER_LY, WARP_FUEL_WEIGHT  # type: ignore
 
 def _ms_for_cruise(au: float) -> int:
     """Return a duration that is >=1 ms when AU > 0, else 0."""
