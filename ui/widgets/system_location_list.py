@@ -390,25 +390,14 @@ class SystemLocationList(QWidget):
         if isinstance(val, int):
             self.hovered.emit(val)
 
-    # @warn_on_exception("System location item click")
     def _on_item_clicked(self, item: QTreeWidgetItem):
-        from game_controller.log_config import get_ui_logger
-        logger = get_ui_logger('system_location_list')
-        logger.info("System location item clicked")
         val = item.data(0, Qt.ItemDataRole.UserRole)
-        logger.info(f"Item data: {val}")
         if isinstance(val, int):
-            logger.info(f"Emitting clicked signal with value: {val}")
             self.clicked.emit(val)
 
-    # @warn_on_exception("System location item double click")
     def _on_item_double_clicked(self, item: QTreeWidgetItem):
-        from game_controller.log_config import get_ui_logger
-        logger = get_ui_logger('system_location_list')
-        logger.info("System location item double clicked")
         val = item.data(0, Qt.ItemDataRole.UserRole)
         if isinstance(val, int):
-            logger.info(f"Emitting doubleClicked signal with value: {val}")
             self.doubleClicked.emit(val)
 
     @warn_on_exception("System location header click")

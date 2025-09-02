@@ -56,8 +56,6 @@ class TravelStatusOverlay(QWidget):
         self._update_timer = QTimer()
         self._update_timer.timeout.connect(self._update_ship_status)
         self._update_timer.start(1000)  # Update every second
-        
-        logger.debug("Travel status overlay initialized")
     
     def set_travel_info(self, travel_info: Dict) -> None:
         """Update travel information"""

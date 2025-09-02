@@ -346,32 +346,14 @@ class GalaxySystemList(QWidget):
         if isinstance(val, int):
             self.hovered.emit(val)
 
-    # @warn_on_exception("Galaxy system item click")
     def _on_item_clicked(self, item: QTreeWidgetItem):
-        from game_controller.log_config import get_ui_logger
-        logger = get_ui_logger('galaxy_system_list')
-        logger.info("Galaxy system item clicked")
-        
-        # Also add debug for the tree widget state
-        logger.info(f"Tree widget enabled: {self.tree.isEnabled()}")
-        logger.info(f"Tree widget visible: {self.tree.isVisible()}")
-        logger.info(f"Tree selection mode: {self.tree.selectionMode()}")
-        
         val = item.data(0, Qt.ItemDataRole.UserRole)
-        logger.info(f"Item data: {val}")
-        logger.info(f"Item flags: {item.flags()}")
         if isinstance(val, int):
-            logger.info(f"Emitting clicked signal with value: {val}")
             self.clicked.emit(val)
 
-    # @warn_on_exception("Galaxy system item double click")
     def _on_item_double_clicked(self, item: QTreeWidgetItem):
-        from game_controller.log_config import get_ui_logger
-        logger = get_ui_logger('galaxy_system_list')
-        logger.info("Galaxy system item double clicked")
         val = item.data(0, Qt.ItemDataRole.UserRole)
         if isinstance(val, int):
-            logger.info(f"Emitting doubleClicked signal with value: {val}")
             self.doubleClicked.emit(val)
 
     @warn_on_exception("Galaxy system header click")

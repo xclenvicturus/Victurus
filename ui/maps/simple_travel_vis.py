@@ -44,7 +44,6 @@ class SimpleTravelStatus(QObject):
         self._travel_flow = travel_flow
         if travel_flow:
             travel_flow.progressTick.connect(self._on_progress_tick)
-            logger.debug("Connected to TravelFlow progress ticks")
     
     def start_travel_tracking(self, dest_type: str, dest_id: int) -> bool:
         """

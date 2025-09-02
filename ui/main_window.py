@@ -631,8 +631,8 @@ class MainWindow(QMainWindow):
 
             # Wire signals
             panel_galaxy.refreshRequested.connect(lambda: self.presenter_galaxy and self.presenter_galaxy.refresh())
-            panel_galaxy.clicked.connect(lambda eid: (logger.info(f"Galaxy panel clicked signal received: {eid}"), self.presenter_galaxy and self.presenter_galaxy.focus(eid)))
-            panel_galaxy.doubleClicked.connect(lambda eid: (logger.info(f"Galaxy panel doubleClicked signal received: {eid}"), self.presenter_galaxy and self.presenter_galaxy.open(eid)))
+            panel_galaxy.clicked.connect(lambda eid: self.presenter_galaxy and self.presenter_galaxy.focus(eid))
+            panel_galaxy.doubleClicked.connect(lambda eid: self.presenter_galaxy and self.presenter_galaxy.open(eid))
             panel_galaxy.travelHere.connect(lambda eid: self.presenter_galaxy and self.presenter_galaxy.travel_here(eid))
 
             try:
@@ -677,8 +677,8 @@ class MainWindow(QMainWindow):
                 pass
 
             panel_system.refreshRequested.connect(lambda: self.presenter_system and self.presenter_system.refresh())
-            panel_system.clicked.connect(lambda eid: (logger.info(f"System panel clicked signal received: {eid}"), self.presenter_system and self.presenter_system.focus(eid)))
-            panel_system.doubleClicked.connect(lambda eid: (logger.info(f"System panel doubleClicked signal received: {eid}"), self.presenter_system and self.presenter_system.open(eid)))
+            panel_system.clicked.connect(lambda eid: self.presenter_system and self.presenter_system.focus(eid))
+            panel_system.doubleClicked.connect(lambda eid: self.presenter_system and self.presenter_system.open(eid))
             panel_system.travelHere.connect(lambda eid: self.presenter_system and self.presenter_system.travel_here(eid))
 
             try:
@@ -1042,14 +1042,11 @@ class MainWindow(QMainWindow):
     # ---------- Travel plumbing ----------
 
     def _ensure_travel_flow(self):
-        logger.debug(f"_ensure_travel_flow called - current travel_flow: {self.travel_flow}")
         if self.travel_flow is None:
             from game.travel_flow import TravelFlow  # local import avoids cycles
             self.travel_flow = TravelFlow(on_arrival=self._on_player_moved, log=self.append_log)
-            logger.debug(f"Created new travel_flow: {self.travel_flow}")
             try:
                 self.travel_flow.progressTick.connect(self._safe_refresh_status)
-                logger.debug(f"Connected travel_flow progressTick to _safe_refresh_status")
             except Exception as e:
                 logger.error(f"Failed to connect progressTick: {e}")
                 pass
@@ -1066,23 +1063,15 @@ class MainWindow(QMainWindow):
             galaxy_widget = getattr(map_view, 'galaxy', None)
             system_widget = getattr(map_view, 'system', None)
             
-            logger.debug(f"Setting up travel status tracking")
-            logger.debug(f"Galaxy widget: {galaxy_widget}")
-            logger.debug(f"System widget: {system_widget}")
-            
             # Connect travel flow to both map travel status trackers
             if self.travel_flow:
                 if galaxy_widget and hasattr(galaxy_widget, 'get_travel_status'):
                     galaxy_status = galaxy_widget.get_travel_status()
                     galaxy_status.set_travel_flow(self.travel_flow)
-                    logger.debug("Connected galaxy travel status to travel flow")
                 
                 if system_widget and hasattr(system_widget, 'get_travel_status'):
                     system_status = system_widget.get_travel_status()
                     system_status.set_travel_flow(self.travel_flow)
-                    logger.debug("Connected system travel status to travel flow")
-            
-            logger.debug("Travel status setup complete")
             
         except Exception as e:
             logger.error(f"Failed to setup travel status: {e}")
@@ -1348,12 +1337,7 @@ class MainWindow(QMainWindow):
             is_cruise_stage = ship_state in cruise_stages
             is_traveling = is_warp_stage or is_cruise_stage
             
-            # Debug: Always log the ship state to see what we're getting
             current_time = __import__('time').time()
-            if not hasattr(self, '_last_debug_time') or current_time - self._last_debug_time > 1.0:
-                stage_type = "WARP" if is_warp_stage else ("CRUISE" if is_cruise_stage else "OTHER")
-                logger.debug(f"Ship state: '{ship_state}' (traveling: {is_traveling}, type: {stage_type})")
-                self._last_debug_time = current_time
             
             # Initialize global progress session tracker (persists between travels)
             if not hasattr(self, '_travel_session'):
