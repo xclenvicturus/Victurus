@@ -7,6 +7,10 @@ import threading
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
+from game_controller.log_config import get_system_logger
+
+logger = get_system_logger('database')
+
 ROOT = Path(__file__).resolve().parents[1]
 DB_DIR = ROOT / "database"
 DB_PATH = DB_DIR / "game.db"

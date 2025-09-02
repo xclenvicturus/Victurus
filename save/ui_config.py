@@ -3,14 +3,14 @@ from __future__ import annotations
 from typing import Callable, Dict, Any, Optional, Type, Any as TypingAny, cast
 from pathlib import Path
 import json
-import logging
 
 from PySide6.QtCore import QTimer
 
 from ui.state.window_state import _load_state as _load_global_ui_state
 from save.paths import get_ui_state_path
+from game_controller.log_config import get_system_logger
 
-log = logging.getLogger(__name__)
+logger = get_system_logger('ui_config')
 
 # Provider installed by the UI (usually MainWindow._collect_ui_state)
 _UI_STATE_PROVIDER: Optional[Callable[[], Dict[str, Any]]] = None
@@ -130,7 +130,7 @@ def ensure_global_ui_state_present(save_dir: Path) -> None:
                         tmp.write_text(json.dumps(glob, indent=2), encoding="utf-8")
                         tmp.replace(p_glob)
                     except Exception:
-                        log.exception("Failed to persist merged global UI state to %s", p_glob)
+                        logger.exception("Failed to persist merged global UI state to %s", p_glob)
     except Exception:
         pass
 
@@ -188,6 +188,6 @@ def persist_provider_snapshot() -> None:
             tmp.write_text(json.dumps(out, indent=2), encoding="utf-8")
             tmp.replace(p_glob)
         except Exception:
-            log.exception("Failed to persist provider snapshot to %s", p_glob)
+            logger.exception("Failed to persist provider snapshot to %s", p_glob)
     except Exception:
         pass

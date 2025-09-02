@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-import logging
 import sqlite3
 import random
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from data import db
+from game_controller.log_config import get_system_logger
 
 # Configure a module-level logger (caller can override handlers/level)
-log = logging.getLogger(__name__)
+logger = get_system_logger('icon_paths')
 
 # Project assets root is ../assets relative to this file (project root / assets)
 # save/icon_paths.py is located at <repo>/save/, so parents[1] is repo root.
@@ -177,7 +177,7 @@ def bake_icon_paths(conn: sqlite3.Connection, *, only_missing: bool = True, seed
             )
             updated["systems"] += 1
     else:
-        log.warning("No star images found under %s", ASSETS_ROOT / _KIND_TO_FOLDER["stars"])
+        logger.warning("No star images found under %s", ASSETS_ROOT / _KIND_TO_FOLDER["stars"])
 
     # ----- Locations -----
     if only_missing:

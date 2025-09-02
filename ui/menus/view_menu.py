@@ -87,8 +87,8 @@ def sync_panels_menu_state(win: _MainWindowLike) -> None:
                         dock = getattr(win, "_log_docks", {}).get(cat)
                     except Exception:
                         dock = None
-                    # Keep enabled even if dock doesn't exist yet - it will be created
-                    action.setEnabled(True)
+                    # Disable if dock doesn't exist yet (consistent with other panels)
+                    action.setEnabled(isinstance(dock, QDockWidget))
                     action.setChecked(_checked_visible(dock))
                 finally:
                     try:

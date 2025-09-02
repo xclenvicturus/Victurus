@@ -27,12 +27,12 @@ from .paths import get_saves_dir, save_folder_for, sanitize_save_name, get_ui_st
 from ui.state.window_state import update_window_data, _load_state as _load_global_ui_state
 from ui.state.window_state import suspend_writes as _suspend_window_state_writes, resume_writes as _resume_window_state_writes
 from .ui_state_tracer import append_event
-import logging
+from game_controller.log_config import get_system_logger
 import inspect
+
+logger = get_system_logger('save_manager')
 import traceback
 
-# Module logger
-log = logging.getLogger(__name__)
 from .serializers import write_meta, read_meta
 from .models import SaveMetadata
 from save.icon_paths import bake_icon_paths
@@ -76,9 +76,9 @@ class SaveManager:
         _UI_STATE_PROVIDER = fn
         try:
             caller = inspect.stack()[1]
-            log.debug("Installed UI state provider %s (requested by %s:%s)", fn, caller.filename, caller.lineno)
+            logger.debug("Installed UI state provider %s (requested by %s:%s)", fn, caller.filename, caller.lineno)
         except Exception:
-            log.debug("Installed UI state provider %s", fn)
+            logger.debug("Installed UI state provider %s", fn)
 
     @classmethod
     def _ui_state_path(cls, save_dir: Path) -> Path:
@@ -97,14 +97,14 @@ class SaveManager:
             # Quietly skip writes while a restore operation is in progress
             try:
                 caller = inspect.stack()[1]
-                log.debug("write_ui_state skipped (suspended) requested by %s:%s", caller.filename, caller.lineno)
+                logger.debug("write_ui_state skipped (suspended) requested by %s:%s", caller.filename, caller.lineno)
             except Exception:
-                log.debug("write_ui_state skipped (suspended)")
+                logger.debug("write_ui_state skipped (suspended)")
             return
         # Log the immediate requester for diagnostics
         try:
             caller = inspect.stack()[1]
-            log.debug("write_ui_state requested by %s:%s", caller.filename, caller.lineno)
+            logger.debug("write_ui_state requested by %s:%s", caller.filename, caller.lineno)
         except Exception:
             pass
 
@@ -117,7 +117,7 @@ class SaveManager:
                     cls._qt_ui_write_timer = None
                     cls._thread_ui_write_timer = None
                 if cls._suspend_ui_writes:
-                    log.debug("UI-state flush aborted: suspend flag set")
+                    logger.debug("UI-state flush aborted: suspend flag set")
                     return
                 # Temporarily suspend window_state writes while performing the
                 # flush so programmatic persistence/mirroring doesn't itself
@@ -140,12 +140,12 @@ class SaveManager:
                             keys = sorted(list(data.keys())) if isinstance(data, dict) else []
                         except Exception:
                             keys = []
-                        log.debug("Persisting UI state (MainWindow), keys=%s: %s", keys, data)
+                        logger.debug("Persisting UI state (MainWindow), keys=%s: %s", keys, data)
                         # If suspicious keys are present, emit a stack trace for diagnosis
                         interesting = set(keys) & {"galaxy_col_widths", "system_col_widths", "central_splitter_sizes"}
                         if interesting:
                             stack = ''.join(traceback.format_stack(limit=10))
-                            log.debug("Persist flush stack (interesting keys=%s):\n%s", list(interesting), stack)
+                            logger.debug("Persist flush stack (interesting keys=%s):\n%s", list(interesting), stack)
                     except Exception:
                         pass
 
@@ -174,13 +174,13 @@ class SaveManager:
                             try:
                                 per_path.parent.mkdir(parents=True, exist_ok=True)
                                 per_path.write_text(json.dumps({"MainWindow": data}, indent=2), encoding="utf-8")
-                                log.debug("Wrote per-save UI state to %s", per_path)
+                                logger.debug("Wrote per-save UI state to %s", per_path)
                                 append_event("wrote_per_save", str(per_path))
                             except Exception:
-                                log.exception("Failed writing per-save UI state to %s", per_path)
+                                logger.exception("Failed writing per-save UI state to %s", per_path)
                         else:
                             # No target save available; skip global write to avoid overwriting user config
-                            log.debug("Skipping UI state write: global config exists and no target save_dir provided")
+                            logger.debug("Skipping UI state write: global config exists and no target save_dir provided")
                     else:
                         # Global file missing: persist to global via update_window_data
                         try:
@@ -202,7 +202,7 @@ class SaveManager:
                         if isinstance(vis, dict):
                             for obj_name, is_open in vis.items():
                                 try:
-                                    log.debug("Mirroring dock open flag for %s = %s", obj_name, bool(is_open))
+                                    logger.debug("Mirroring dock open flag for %s = %s", obj_name, bool(is_open))
                                     # Only write per-dock entries to the global file if
                                     # it doesn't exist yet. If global exists, avoid
                                     # touching it; per-save file already contains
@@ -276,21 +276,21 @@ class SaveManager:
                         pass
                     qt_timer.timeout.connect(lambda sd=save_dir: _flush(sd))
                     cls._qt_ui_write_timer = qt_timer
-                    log.debug("Scheduling UI-state flush on Qt event loop in %.3fs", cls._UI_WRITE_DEBOUNCE_SECONDS)
+                    logger.debug("Scheduling UI-state flush on Qt event loop in %.3fs", cls._UI_WRITE_DEBOUNCE_SECONDS)
                     qt_timer.start(int(cls._UI_WRITE_DEBOUNCE_SECONDS * 1000))
                 except Exception:
                     # Fall back to threading.Timer if Qt scheduling fails
                     t = threading.Timer(cls._UI_WRITE_DEBOUNCE_SECONDS, lambda: _flush(save_dir))
                     t.daemon = True
                     cls._thread_ui_write_timer = t
-                    log.debug("Scheduling UI-state flush in %.3fs (threading fallback)", cls._UI_WRITE_DEBOUNCE_SECONDS)
+                    logger.debug("Scheduling UI-state flush in %.3fs (threading fallback)", cls._UI_WRITE_DEBOUNCE_SECONDS)
                     t.start()
             else:
                 # No Qt available: use threading.Timer as before
                 t = threading.Timer(cls._UI_WRITE_DEBOUNCE_SECONDS, lambda: _flush(save_dir))
                 t.daemon = True
                 cls._thread_ui_write_timer = t
-                log.debug("Scheduling UI-state flush in %.3fs", cls._UI_WRITE_DEBOUNCE_SECONDS)
+                logger.debug("Scheduling UI-state flush in %.3fs", cls._UI_WRITE_DEBOUNCE_SECONDS)
                 t.start()
         except Exception:
             # If timer scheduling fails for any reason, fall back to immediate write
@@ -375,12 +375,12 @@ class SaveManager:
                     try:
                         pglob = get_ui_state_path()
                         msg = f"Loaded UI state from global config (MainWindow) at: {pglob}"
-                        log.info(msg)
+                        logger.info(msg)
                         # DEBUG: show top-level keys present in the MainWindow entry
-                        log.debug("Global MainWindow UI state keys: %s", sorted(list(mw.keys())))
+                        logger.debug("Global MainWindow UI state keys: %s", sorted(list(mw.keys())))
                     except Exception:
                         msg = "Loaded UI state from global config (MainWindow)"
-                        log.info(msg)
+                        logger.info(msg)
                     # Merge legacy per-dock entries (dock_* -> {open: bool}) into
                     # MainWindow.dock_visibility for backward compatibility. This
                     # ensures older files that stored per-dock "open" flags are
@@ -407,7 +407,7 @@ class SaveManager:
                         pass
                     return mw
         except Exception as e:
-            log.exception("Failed to read global UI state: %s", e)
+            logger.exception("Failed to read global UI state: %s", e)
             pass
         return None
 
@@ -748,7 +748,7 @@ class SaveManager:
             has_content = False
 
         if not has_content:
-            log.debug("Skipping creation of global UI state: no snapshot data available yet")
+            logger.debug("Skipping creation of global UI state: no snapshot data available yet")
             try:
                 _resume_window_state_writes()
             except Exception:
@@ -759,9 +759,9 @@ class SaveManager:
         try:
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text(json.dumps(out, indent=2), encoding="utf-8")
-            log.debug("Created global UI state at %s; keys=%s", p, sorted(list(out.keys())))
+            logger.debug("Created global UI state at %s; keys=%s", p, sorted(list(out.keys())))
         except Exception:
-            log.debug("Failed to create global UI state at %s", p)
+            logger.debug("Failed to create global UI state at %s", p)
         finally:
             try:
                 _resume_window_state_writes()
@@ -832,7 +832,7 @@ class SaveManager:
                 except Exception:
                     pass
 
-                log.debug("Created global UI state via provider at %s", p_glob)
+                logger.debug("Created global UI state via provider at %s", p_glob)
 
                 # If the snapshot looks incomplete (e.g. only geometry),
                 # try one more time after a short delay on the Qt event loop
@@ -967,9 +967,9 @@ class SaveManager:
                 tmp = p_glob.with_suffix(p_glob.suffix + ".tmp")
                 tmp.write_text(json.dumps(glob, indent=2), encoding="utf-8")
                 tmp.replace(p_glob)
-                log.debug("Persisted merged global UI state to %s", p_glob)
+                logger.debug("Persisted merged global UI state to %s", p_glob)
             except Exception:
-                log.exception("Failed to persist merged global UI state to %s", p_glob)
+                logger.exception("Failed to persist merged global UI state to %s", p_glob)
         except Exception:
             pass
 

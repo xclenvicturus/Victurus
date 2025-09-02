@@ -13,6 +13,8 @@ from datetime import datetime
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton, QPlainTextEdit
 
+from ui.error_utils import warn_on_exception
+
 
 class LogPanel(QWidget):
     """A small log panel with search and copy controls.
@@ -84,6 +86,7 @@ class LogPanel(QWidget):
         except Exception:
             pass
 
+    @warn_on_exception("Log panel copy all")
     def copy_all(self) -> None:
         try:
             from PySide6.QtWidgets import QApplication
@@ -93,6 +96,7 @@ class LogPanel(QWidget):
         except Exception:
             pass
 
+    @warn_on_exception("Log panel clear")
     def clear(self) -> None:
         try:
             self._entries = []

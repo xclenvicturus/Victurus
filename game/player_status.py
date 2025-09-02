@@ -6,6 +6,9 @@ from typing import Dict, Any, Optional, cast, Iterable
 
 from data import db
 from game import ship_state
+from game_controller.log_config import get_game_logger
+
+logger = get_game_logger('player_status')
 
 # In-memory UI hints controlled by travel_flow
 _TRANSIENT_LOCATION: Optional[str] = None

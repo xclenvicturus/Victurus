@@ -16,9 +16,9 @@ from ui.state import window_state as _ws
 from PySide6.QtCore import QTimer
 from ui.dialogs.save_as_dialog import SaveAsDialog
 from ui.dialogs.load_game_dialog import LoadGameDialog
-import logging
+from game_controller.log_config import get_ui_logger
 
-log = logging.getLogger(__name__)
+logger = get_ui_logger('file_menu')
 
 # NEW: background simulator + player system lookup
 from game_controller.sim_loop import universe_sim
@@ -90,7 +90,7 @@ def _on_new_game(win):
                     try:
                         # Prefer per-save UI state; fall back to global MainWindow entry
                         ui_state = SaveManager.read_ui_state_for_active() or (_ws._load_state() or {}).get('MainWindow') or {}
-                        log.debug("file_menu: loaded ui_state for save=%s keys=%s", getattr(SaveManager.active_save_dir(), 'name', None), list(ui_state.keys()) if isinstance(ui_state, dict) else None)
+                        logger.debug("file_menu: loaded ui_state for save=%s keys=%s", getattr(SaveManager.active_save_dir(), 'name', None), list(ui_state.keys()) if isinstance(ui_state, dict) else None)
                         if ui_state:
                             try:
                                 # Mark as restoring so internal handlers avoid persisting
@@ -101,11 +101,11 @@ def _on_new_game(win):
                                 from save.ui_state_tracer import append_event
                                 append_event("file_menu_apply_ui_state", f"keys={','.join(sorted(list(ui_state.keys()))) if isinstance(ui_state, dict) else ''}")
                                 win._restore_ui_state(ui_state)
-                                log.debug("file_menu: applied ui_state to window %s", getattr(win, 'WIN_ID', 'MainWindow'))
+                                logger.debug("file_menu: applied ui_state to window %s", getattr(win, 'WIN_ID', 'MainWindow'))
                             except Exception:
-                                log.exception("file_menu: failed applying ui_state to window")
+                                logger.exception("file_menu: failed applying ui_state to window")
                     except Exception:
-                        log.exception("file_menu: error while loading/applying ui_state")
+                        logger.exception("file_menu: error while loading/applying ui_state")
                 finally:
                     # Resume writes after a short delay so programmatic layout settles
                     try:
@@ -135,7 +135,7 @@ def _on_new_game(win):
                 try:
                     # For new games, load the global UI state since there's no per-save state yet
                     ui_state = (_ws._load_state() or {}).get('MainWindow') or {}
-                    log.debug("file_menu: loaded ui_state for new game keys=%s", list(ui_state.keys()) if isinstance(ui_state, dict) else None)
+                    logger.debug("file_menu: loaded ui_state for new game keys=%s", list(ui_state.keys()) if isinstance(ui_state, dict) else None)
                     if ui_state:
                         try:
                             # Mark as restoring so internal handlers avoid persisting
@@ -146,11 +146,11 @@ def _on_new_game(win):
                             from save.ui_state_tracer import append_event
                             append_event("file_menu_apply_ui_state_new_game", f"keys={','.join(sorted(list(ui_state.keys()))) if isinstance(ui_state, dict) else ''}")
                             win._restore_ui_state(ui_state)
-                            log.debug("file_menu: applied ui_state to new game window %s", getattr(win, 'WIN_ID', 'MainWindow'))
+                            logger.debug("file_menu: applied ui_state to new game window %s", getattr(win, 'WIN_ID', 'MainWindow'))
                         except Exception:
-                            log.exception("file_menu: failed applying ui_state to new game window")
+                            logger.exception("file_menu: failed applying ui_state to new game window")
                 except Exception:
-                    log.exception("file_menu: error while loading/applying ui_state for new game")
+                    logger.exception("file_menu: error while loading/applying ui_state for new game")
                 finally:
                     # Resume writes after a short delay so programmatic layout settles
                     try:

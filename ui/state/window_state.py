@@ -15,11 +15,11 @@ from typing import Dict, Any, Optional
 from PySide6.QtCore import QByteArray
 
 from save.paths import get_ui_state_path
-import logging
 import inspect
 from save.ui_state_tracer import append_event
+from game_controller.log_config import get_ui_logger
 
-log = logging.getLogger(__name__)
+logger = get_ui_logger('window_state')
 
 
 # ---------- file i/o helpers ----------

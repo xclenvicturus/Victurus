@@ -631,8 +631,8 @@ class MainWindow(QMainWindow):
 
             # Wire signals
             panel_galaxy.refreshRequested.connect(lambda: self.presenter_galaxy and self.presenter_galaxy.refresh())
-            panel_galaxy.clicked.connect(lambda eid: self.presenter_galaxy and self.presenter_galaxy.focus(eid))
-            panel_galaxy.doubleClicked.connect(lambda eid: self.presenter_galaxy and self.presenter_galaxy.open(eid))
+            panel_galaxy.clicked.connect(lambda eid: (logger.info(f"Galaxy panel clicked signal received: {eid}"), self.presenter_galaxy and self.presenter_galaxy.focus(eid)))
+            panel_galaxy.doubleClicked.connect(lambda eid: (logger.info(f"Galaxy panel doubleClicked signal received: {eid}"), self.presenter_galaxy and self.presenter_galaxy.open(eid)))
             panel_galaxy.travelHere.connect(lambda eid: self.presenter_galaxy and self.presenter_galaxy.travel_here(eid))
 
             try:
@@ -677,8 +677,8 @@ class MainWindow(QMainWindow):
                 pass
 
             panel_system.refreshRequested.connect(lambda: self.presenter_system and self.presenter_system.refresh())
-            panel_system.clicked.connect(lambda eid: self.presenter_system and self.presenter_system.focus(eid))
-            panel_system.doubleClicked.connect(lambda eid: self.presenter_system and self.presenter_system.open(eid))
+            panel_system.clicked.connect(lambda eid: (logger.info(f"System panel clicked signal received: {eid}"), self.presenter_system and self.presenter_system.focus(eid)))
+            panel_system.doubleClicked.connect(lambda eid: (logger.info(f"System panel doubleClicked signal received: {eid}"), self.presenter_system and self.presenter_system.open(eid)))
             panel_system.travelHere.connect(lambda eid: self.presenter_system and self.presenter_system.travel_here(eid))
 
             try:
@@ -1007,9 +1007,6 @@ class MainWindow(QMainWindow):
         # Restore the full dock layout from saved state before resuming saves
         # This ensures docks are positioned correctly instead of using defaults
         try:
-            import logging
-            logger = logging.getLogger(__name__)
-            
             main_state = self._ui_state.get_main_window_state()
             dock_layout = main_state.get("dock_layout", {})
             
@@ -1036,7 +1033,7 @@ class MainWindow(QMainWindow):
                             logger.warning("Failed to restore layout for dock %s: %s", dock_name, e)
         except Exception as e:
             import logging
-            logging.getLogger(__name__).error("Failed to restore dock layout: %s", e)
+            logger.error("Failed to restore dock layout: %s", e)
         
         # Resume UI state saves after initialization is complete
         # Use a timer to ensure all initialization has finished
@@ -1510,9 +1507,6 @@ class MainWindow(QMainWindow):
         docks so saved geometry takes effect for lazily-created docks.
         Also applies Qt native state restoration after docks are created.
         """
-        import logging
-        logger = logging.getLogger(__name__)
-        
         try:
             # First, try to restore Qt's native state if we have it and haven't done so yet
             pending_qt_state = getattr(self, '_pending_qt_state', None)
@@ -1820,9 +1814,6 @@ class MainWindow(QMainWindow):
         return state
 
     def _restore_ui_state(self, state: Dict[str, Any]) -> None:
-        import logging
-        logger = logging.getLogger(__name__)
-        
         try:
             append_event("restore_start", f"has_keys={','.join(sorted(list(state.keys()))) if isinstance(state, dict) else ''}")
             # Prefer human-readable numeric geometry if available

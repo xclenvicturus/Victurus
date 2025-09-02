@@ -124,7 +124,8 @@ def main() -> int:
     # Initialize UI state system - check for config file and create defaults if needed
     config_existed = initialize_ui_state()
     if not config_existed:
-        logging.getLogger(__name__).info("Created new UI state configuration with defaults")
+        from game_controller.log_config import get_system_logger
+        get_system_logger('startup').info("Created new UI state configuration with defaults")
     
     try:
         win = MainWindow()

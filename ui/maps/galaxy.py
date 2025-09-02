@@ -29,8 +29,9 @@ from .travel_visualization import TravelVisualization, PathRenderer
 from .simple_travel_vis import SimpleTravelStatus
 from ..widgets.travel_status_overlay import TravelStatusOverlay
 from game_controller.sim_loop import universe_sim
-import logging
-logger = logging.getLogger(__name__)
+from game_controller.log_config import get_ui_logger
+
+logger = get_ui_logger('galaxy_map')
 
 ASSETS_ROOT  = Path(__file__).resolve().parents[2] / "assets"
 GAL_BG_DIR   = ASSETS_ROOT / "galaxy_backgrounds"

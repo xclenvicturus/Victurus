@@ -7,6 +7,8 @@ from typing import Dict, List, Optional, Iterable, Any, Protocol, runtime_checka
 from PySide6.QtGui import QFont, QIcon
 from PySide6.QtWidgets import QWidget
 
+from ui.error_utils import catch_and_log, ErrorContext
+
 # Prefer GIF-first pixmap helper for crisp list thumbnails
 try:
     from ui.maps.icons import pm_from_path_or_kind  # type: ignore
@@ -181,6 +183,7 @@ class GalaxyLocationPresenter:
         except Exception:
             pass
 
+    @catch_and_log("Galaxy location travel")
     def travel_here(self, entity_id: int) -> None:
         """Relay to TravelFlow via the MainWindow for systems (neg ids)."""
         try:

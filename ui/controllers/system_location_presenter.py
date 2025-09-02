@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import math
 from typing import Any, Dict, Iterable, List, Optional, Protocol, runtime_checkable, cast
 
@@ -17,8 +16,9 @@ except Exception:  # pragma: no cover
     pm_from_path_or_kind = None  # type: ignore
 
 from data import db
+from game_controller.log_config import get_ui_logger
 
-logger = logging.getLogger(__name__)
+logger = get_ui_logger('system_location_presenter')
 
 # travel planner is optional; we fall back gracefully when it isn't present
 try:
@@ -167,6 +167,16 @@ class SystemLocationPresenter:
                 return
             else:
                 loc_id = int(entity_id)
+                # For single-click (focus), use non-locking center
+                system_widget = getattr(self._tabs, "system", None)
+                if system_widget and hasattr(system_widget, "center_on_location_no_lock"):
+                    try:
+                        system_widget.center_on_location_no_lock(loc_id, force=True)
+                    except Exception:
+                        pass
+                    return
+                
+                # Fallback to the helper method if the new method doesn't exist
                 center_loc = getattr(self._tabs, "center_system_on_location", None)
                 if callable(center_loc):
                     try:
@@ -197,7 +207,12 @@ class SystemLocationPresenter:
                     except Exception:
                         pass
                     return
-                if system_widget is not None and hasattr(system_widget, "center_on_entity"):
+                if system_widget is not None and hasattr(system_widget, "center_on_location_no_lock"):
+                    try:
+                        system_widget.center_on_location_no_lock(loc_id)
+                    except Exception:
+                        pass
+                elif system_widget is not None and hasattr(system_widget, "center_on_entity"):
                     try:
                         system_widget.center_on_entity(loc_id)
                     except Exception:
@@ -228,7 +243,12 @@ class SystemLocationPresenter:
                         except Exception:
                             pass
             else:
-                if system_widget and hasattr(system_widget, "center_on_entity"):
+                if system_widget and hasattr(system_widget, "lock_center_to_location"):
+                    try:
+                        system_widget.lock_center_to_location(int(entity_id))
+                    except Exception:
+                        pass
+                elif system_widget and hasattr(system_widget, "center_on_entity"):
                     try:
                         system_widget.center_on_entity(int(entity_id))
                     except Exception:

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import logging
 from pathlib import Path
 from typing import Dict, Any, Optional, Callable
 from datetime import datetime
@@ -12,8 +11,9 @@ from PySide6.QtCore import QTimer, QObject, Signal
 from PySide6.QtWidgets import QApplication
 
 from save.paths import get_ui_state_path
+from game_controller.log_config import get_ui_logger
 
-log = logging.getLogger(__name__)
+logger = get_ui_logger('ui_state_manager')
 
 
 class UIStateManager(QObject):
@@ -118,12 +118,12 @@ class UIStateManager(QObject):
         file_existed = self._config_path.exists()
         
         if not file_existed:
-            log.info("UI state file not found, creating with defaults: %s", self._config_path)
+            logger.info("UI state file not found, creating with defaults: %s", self._config_path)
             self._create_default_config()
         
         self._load_from_disk()
         
-        log.info("UI state initialized from: %s (existed: %s)", self._config_path, file_existed)
+        logger.info("UI state initialized from: %s (existed: %s)", self._config_path, file_existed)
         return file_existed
     
     def _create_default_config(self) -> None:
@@ -136,10 +136,10 @@ class UIStateManager(QObject):
                 json.dump(default_state, f, indent=2)
             
             self._state = default_state
-            log.info("Created default UI state configuration")
+            logger.info("Created default UI state configuration")
             
         except Exception as e:
-            log.error("Failed to create default UI state config: %s", e)
+            logger.error("Failed to create default UI state config: %s", e)
             self._state = self.get_default_state()
     
     def _load_from_disk(self) -> None:
@@ -155,7 +155,7 @@ class UIStateManager(QObject):
                 loaded_state = json.load(f)
             
             if not isinstance(loaded_state, dict):
-                log.warning("Invalid UI state format, using defaults")
+                logger.warning("Invalid UI state format, using defaults")
                 self._state = self.get_default_state()
                 return
             
@@ -166,7 +166,7 @@ class UIStateManager(QObject):
             self.stateLoaded.emit()
             
         except Exception as e:
-            log.error("Failed to load UI state, using defaults: %s", e)
+            logger.error("Failed to load UI state, using defaults: %s", e)
             self._state = self.get_default_state()
         finally:
             self._loading = False
@@ -222,7 +222,7 @@ class UIStateManager(QObject):
             self.stateSaved.emit()
             
         except Exception as e:
-            log.error("Failed to save UI state: %s", e)
+            logger.error("Failed to save UI state: %s", e)
     
     def get_window_state(self, window_id: str) -> Dict[str, Any]:
         """Get state for a specific window/panel"""

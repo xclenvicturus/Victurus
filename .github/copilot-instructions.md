@@ -16,25 +16,67 @@
 - **`data/`**: Database layer with thread-safe connection management
 - **`save/`**: Save/load orchestration with metadata and UI state
 
-## Critical Logging Requirement
+## MANDATORY Logging & Error Handling
 
-**ALWAYS use the centralized logging system - never use print() statements:**
+### 🚨 CRITICAL: Logging System Requirements (ZERO EXCEPTIONS)
+
+**NEVER use print() statements - ALWAYS use centralized logging:**
 
 ```python
 from game_controller.log_config import get_travel_logger, get_ui_logger, get_game_logger, get_system_logger
 
-# Choose appropriate logger for component type:
-logger = get_travel_logger('path_calculation')     # travel_debug.log
-logger = get_ui_logger('system_map')              # ui_debug.log  
-logger = get_game_logger('simulation')            # game_debug.log
-logger = get_system_logger('database')           # system_debug.log
+# REQUIRED: Choose appropriate logger for component type:
+logger = get_travel_logger('module_name')     # Routes to travel_debug.log
+logger = get_ui_logger('widget_name')         # Routes to ui_debug.log  
+logger = get_game_logger('component_name')    # Routes to game_debug.log
+logger = get_system_logger('service_name')    # Routes to system_debug.log
 
 # Log levels automatically route to error.log and warning.log
-logger.debug("Debug information")
-logger.info("Important events")  
-logger.warning("Non-critical issues")
-logger.error("Critical errors")
+logger.debug("Debug information")    # For development debugging
+logger.info("Important events")      # For tracking system behavior
+logger.warning("Non-critical issues") # Auto-routes to warning.log
+logger.error("Critical errors")      # Auto-routes to error.log
 ```
+
+### 🛡️ REQUIRED: Error Handling Patterns
+
+**Every Qt slot and critical function MUST have error protection:**
+
+```python
+from ui.error_handler import catch_and_log, warn_on_exception, ErrorContext
+
+# FOR CRITICAL FUNCTIONS (travel, save, database operations):
+@catch_and_log("Travel system")
+def initiate_travel(self, destination):
+    # Function implementation
+    pass
+
+# FOR UI SLOTS (non-critical operations):
+@warn_on_exception("UI update")
+def on_button_clicked(self):
+    # Function implementation  
+    pass
+
+# FOR COMPLEX ERROR SCENARIOS:
+with ErrorContext("Complex operation description"):
+    # Multi-step operation
+    pass
+```
+
+### 📋 Logger Selection Rules (STRICTLY ENFORCED)
+
+| Component Type | Logger Function | Log File | Use For |
+|---|---|---|---|
+| **Travel/Navigation** | `get_travel_logger()` | `travel_debug.log` | Path calculation, fuel, obstacles |
+| **UI Widgets** | `get_ui_logger()` | `ui_debug.log` | Widget updates, user interactions |
+| **Game Logic** | `get_game_logger()` | `game_debug.log` | Business rules, player state |
+| **System/Database** | `get_system_logger()` | `system_debug.log` | DB operations, saves, configuration |
+
+### ❌ FORBIDDEN PRACTICES
+- `print()` statements (use logger instead)
+- `logging.getLogger()` (use centralized system)
+- Unprotected Qt slots (add error decorators)
+- Silent exception swallowing (log all errors)
 
 ## Key Patterns
 
@@ -69,11 +111,30 @@ icon_path = planet_imgs[entity_id % len(planet_imgs)]
 - **System maps**: Use `_drawpos` dictionary for orbital tracking
 - **Travel visualization**: Scene coordinates for graphics items, viewport coordinates for overlays
 
-### Error Handling
+### Error Handling & Logging Integration
 ```python
+# REQUIRED: Install global error handler in main_window.py
 from ui.error_handler import install_error_handler
-# Global exception capture with user-friendly reporting
-# Decorator pattern for Qt slot protection
+install_error_handler()
+
+# MANDATORY: Add error decorators to ALL Qt slots
+from ui.error_handler import catch_and_log, warn_on_exception
+
+@catch_and_log("Critical operation name")
+def critical_function(self):
+    """For functions that MUST complete (travel, save, database)"""
+    pass
+
+@warn_on_exception("UI operation name") 
+def ui_slot_function(self):
+    """For UI updates that can fail gracefully"""
+    pass
+
+# REQUIRED: Use ErrorContext for complex operations
+from ui.error_handler import ErrorContext
+with ErrorContext("Multi-step operation description"):
+    # Complex operation with multiple failure points
+    pass
 ```
 
 ## Development Workflows

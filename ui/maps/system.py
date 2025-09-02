@@ -1229,6 +1229,31 @@ class SystemMapWidget(BackgroundView):
         except Exception:
             pass
 
+    def center_on_location_no_lock(self, location_id: int, force: bool = False) -> None:
+        """Center on a location without locking the camera to follow it."""
+        try:
+            # Respect temporary suppression unless forced
+            if not force:
+                if getattr(self, "_user_interaction_active", False):
+                    return
+                now = time.monotonic()
+                sup = float(getattr(self, "_suppress_auto_center_until", 0.0))
+                if now < sup:
+                    return
+
+            # Find the item and center on it
+            item = self._items.get(location_id)
+            if not item:
+                return
+
+            # Center on the item without setting up a lock
+            rect = item.mapToScene(item.boundingRect()).boundingRect()
+            center_pt = rect.center()
+            self.centerOn(center_pt)
+            
+        except Exception:
+            pass
+
     def unlock_center(self) -> None:
         """Clear any active center lock so the view no longer follows an entity."""
         try:

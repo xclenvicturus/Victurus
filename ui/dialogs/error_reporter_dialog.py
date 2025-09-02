@@ -21,6 +21,10 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QFont, QClipboard
 
+from game_controller.log_config import get_system_logger
+
+logger = get_system_logger('error_dialog')
+
 class ErrorReporterDialog(QDialog):
     """
     Dialog for displaying detailed error information with copy functionality.
@@ -256,7 +260,7 @@ def show_error_dialog(exception_info: tuple, context: str = "", parent=None):
         dialog.show()  # Non-blocking show
         return dialog
     except Exception as e:
-        # Fallback if the error dialog itself fails
-        print(f"Error showing error dialog: {e}")
-        print(f"Original error: {exception_info[1]}")
+        # Fallback if the error dialog itself fails - use logger as backup
+        logger.error(f"Error showing error dialog: {e}", exc_info=True)
+        logger.error(f"Original error: {exception_info[1]}")
         return None
