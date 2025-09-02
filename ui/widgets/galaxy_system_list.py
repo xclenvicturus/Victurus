@@ -575,13 +575,37 @@ class GalaxySystemList(QWidget):
         )
 
     def current_hover_item(self) -> Optional[QTreeWidgetItem]:
-        vp = self.tree.viewport()
-        local_pos = vp.mapFromGlobal(QCursor.pos())
-        if not vp.rect().contains(local_pos):
+        """Get the tree item currently under the cursor"""
+        try:
+            # Check if tree widget still exists and is valid
+            if not self.tree or not hasattr(self.tree, 'viewport'):
+                return None
+            
+            vp = self.tree.viewport()
+            if not vp:
+                return None
+                
+            local_pos = vp.mapFromGlobal(QCursor.pos())
+            if not vp.rect().contains(local_pos):
+                return None
+            return self.tree.itemAt(local_pos)
+        except RuntimeError:
+            # Qt object has been deleted
             return None
-        return self.tree.itemAt(local_pos)
 
     def cursor_inside_viewport(self) -> bool:
-        vp = self.tree.viewport()
-        local_pos = vp.mapFromGlobal(QCursor.pos())
-        return vp.rect().contains(local_pos)
+        """Check if cursor is inside the tree widget viewport"""
+        try:
+            # Check if tree widget still exists and is valid
+            if not self.tree or not hasattr(self.tree, 'viewport'):
+                return False
+            
+            vp = self.tree.viewport()
+            if not vp:
+                return False
+                
+            local_pos = vp.mapFromGlobal(QCursor.pos())
+            return vp.rect().contains(local_pos)
+        except RuntimeError:
+            # Qt object has been deleted
+            return False

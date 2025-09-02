@@ -3118,3 +3118,391 @@
 2025-09-02 10:00:53 DEBUG ui.actions_panel: Actions panel context updated: station
 2025-09-02 10:00:55 DEBUG ui.file_menu: Load game button pressed - creating dialog
 2025-09-02 10:00:55 DEBUG ui.file_menu: Load game dialog created, executing...
+2025-09-02 10:07:40 DEBUG ui.file_menu: Load game button pressed - creating dialog
+2025-09-02 10:07:40 DEBUG ui.file_menu: Load game dialog created, executing...
+2025-09-02 10:07:43 DEBUG ui.actions_panel: Actions panel context updated: station
+2025-09-02 10:08:15 DEBUG ui.file_menu: Load game button pressed - creating dialog
+2025-09-02 10:08:15 DEBUG ui.file_menu: Load game dialog created, executing...
+2025-09-02 10:08:18 DEBUG ui.actions_panel: Actions panel context updated: station
+2025-09-02 10:08:53 DEBUG ui.file_menu: Load game button pressed - creating dialog
+2025-09-02 10:08:53 DEBUG ui.file_menu: Load game dialog created, executing...
+2025-09-02 10:08:56 DEBUG ui.actions_panel: Actions panel context updated: station
+2025-09-02 10:12:25 DEBUG ui.file_menu: Load game button pressed - creating dialog
+2025-09-02 10:12:25 DEBUG ui.file_menu: Load game dialog created, executing...
+2025-09-02 10:12:27 DEBUG ui.actions_panel: Actions panel context updated: station
+2025-09-02 10:17:53 DEBUG ui.file_menu: Load game button pressed - creating dialog
+2025-09-02 10:17:53 DEBUG ui.file_menu: Load game dialog created, executing...
+2025-09-02 10:17:55 DEBUG ui.actions_panel: Actions panel context updated: station
+2025-09-02 10:20:19 DEBUG ui.file_menu: Load game button pressed - creating dialog
+2025-09-02 10:20:19 DEBUG ui.file_menu: Load game dialog created, executing...
+2025-09-02 10:20:22 DEBUG ui.actions_panel: Actions panel context updated: station
+2025-09-02 10:23:52 DEBUG ui.file_menu: Load game button pressed - creating dialog
+2025-09-02 10:23:52 DEBUG ui.file_menu: Load game dialog created, executing...
+2025-09-02 10:23:55 DEBUG ui.actions_panel: Actions panel context updated: station
+2025-09-02 10:27:20 DEBUG ui.file_menu: Load game button pressed - creating dialog
+2025-09-02 10:27:20 DEBUG ui.file_menu: Load game dialog created, executing...
+2025-09-02 10:27:22 DEBUG ui.actions_panel: Actions panel context updated: station
+2025-09-02 10:30:47 DEBUG ui.file_menu: Load game button pressed - creating dialog
+2025-09-02 10:30:47 DEBUG ui.file_menu: Load game dialog created, executing...
+2025-09-02 10:30:49 DEBUG ui.actions_panel: Actions panel context updated: station
+2025-09-02 10:33:26 DEBUG ui.main_window: Setting up idle state
+2025-09-02 10:34:15 DEBUG ui.file_menu: Load game button pressed - creating dialog
+2025-09-02 10:34:15 DEBUG ui.file_menu: Load game dialog created, executing...
+2025-09-02 10:34:17 DEBUG ui.actions_panel: Actions panel context updated: station
+2025-09-02 10:34:21 DEBUG ui.main_window: Setting up idle state
+2025-09-02 10:34:21 DEBUG ui.main_window: Clearing map view reference
+2025-09-02 10:34:21 DEBUG ui.main_window: Clearing central splitter reference
+2025-09-02 10:35:20 DEBUG ui.main_window: Setting up idle state
+2025-09-02 10:36:30 DEBUG ui.file_menu: Load game button pressed - creating dialog
+2025-09-02 10:36:30 DEBUG ui.file_menu: Load game dialog created, executing...
+2025-09-02 10:36:33 DEBUG ui.actions_panel: Actions panel context updated: station
+2025-09-02 10:36:36 DEBUG ui.main_window: Setting up idle state
+2025-09-02 10:36:36 DEBUG ui.main_window: Clearing map view reference
+2025-09-02 10:36:36 DEBUG ui.main_window: Clearing central splitter reference
+2025-09-02 10:37:25 DEBUG ui.main_window: Setting up idle state
+2025-09-02 10:37:45 DEBUG ui.file_menu: Load game button pressed - creating dialog
+2025-09-02 10:37:45 DEBUG ui.file_menu: Load game dialog created, executing...
+2025-09-02 10:37:47 DEBUG ui.actions_panel: Actions panel context updated: station
+2025-09-02 10:37:50 DEBUG ui.main_window: Setting up idle state
+2025-09-02 10:37:50 DEBUG ui.main_window: Explicitly clearing MapTabs widget
+2025-09-02 10:37:50 DEBUG ui.main_window: Clearing tab widget contents
+2025-09-02 10:37:50 DEBUG ui.main_window: Clearing central splitter reference
+2025-09-02 10:38:26 DEBUG ui.main_window: Setting up idle state
+2025-09-02 10:38:29 DEBUG ui.file_menu: Load game button pressed - creating dialog
+2025-09-02 10:38:29 DEBUG ui.file_menu: Load game dialog created, executing...
+2025-09-02 10:39:05 DEBUG ui.main_window: Setting up idle state
+2025-09-02 10:40:01 DEBUG ui.main_window: Setting up idle state
+2025-09-02 10:40:01 DEBUG ui.main_window: Idle state setup complete
+2025-09-02 10:40:28 DEBUG ui.file_menu: Load game button pressed - creating dialog
+2025-09-02 10:40:28 DEBUG ui.file_menu: Load game dialog created, executing...
+2025-09-02 10:40:31 DEBUG ui.actions_panel: Actions panel context updated: station
+2025-09-02 10:41:14 DEBUG ui.main_window: Setting up idle state
+2025-09-02 10:41:14 DEBUG ui.main_window: Explicitly clearing MapTabs widget
+2025-09-02 10:41:14 DEBUG ui.main_window: Clearing tab widget contents
+2025-09-02 10:41:14 DEBUG ui.main_window: Clearing central splitter reference
+2025-09-02 10:41:24 DEBUG ui.main_window: Setting up idle state
+2025-09-02 10:41:24 DEBUG ui.main_window: Idle state setup complete
+2025-09-02 10:41:26 DEBUG ui.file_menu: Load game button pressed - creating dialog
+2025-09-02 10:41:26 DEBUG ui.file_menu: Load game dialog created, executing...
+2025-09-02 10:41:28 DEBUG ui.actions_panel: Actions panel context updated: station
+2025-09-02 10:41:31 DEBUG ui.main_window: Setting up idle state
+2025-09-02 10:41:31 DEBUG ui.main_window: Explicitly clearing MapTabs widget
+2025-09-02 10:41:31 DEBUG ui.main_window: Clearing tab widget contents
+2025-09-02 10:41:31 DEBUG ui.main_window: Clearing central splitter reference
+2025-09-02 10:42:05 DEBUG ui.main_window: Setting up idle state
+2025-09-02 10:42:05 DEBUG ui.main_window: Idle state setup complete
+2025-09-02 10:42:37 DEBUG ui.main_window: Setting up idle state
+2025-09-02 10:42:37 DEBUG ui.main_window: Created new idle label
+2025-09-02 10:42:37 DEBUG ui.main_window: Configured idle label text and styling
+2025-09-02 10:42:37 DEBUG ui.main_window: Set central widget to idle label: <PySide6.QtWidgets.QLabel(0x1a0c393ade0) at 0x000001A0C632A2C0>
+2025-09-02 10:42:37 DEBUG ui.main_window: Idle state setup complete
+2025-09-02 10:42:37 DEBUG ui.main_window: Central widget after setup: <PySide6.QtWidgets.QLabel(0x1a0c393ade0) at 0x000001A0C632A2C0> (is idle label: True)
+2025-09-02 10:43:26 DEBUG ui.file_menu: Load game button pressed - creating dialog
+2025-09-02 10:43:26 DEBUG ui.file_menu: Load game dialog created, executing...
+2025-09-02 10:43:28 DEBUG ui.actions_panel: Actions panel context updated: station
+2025-09-02 10:43:37 DEBUG ui.main_window: Setting up idle state
+2025-09-02 10:43:37 DEBUG ui.main_window: Explicitly clearing MapTabs widget
+2025-09-02 10:43:37 DEBUG ui.main_window: Clearing tab widget contents
+2025-09-02 10:43:37 DEBUG ui.main_window: Clearing central splitter reference
+2025-09-02 10:43:37 DEBUG ui.main_window: Reusing existing idle label
+2025-09-02 10:45:12 DEBUG ui.main_window: Setting up idle state
+2025-09-02 10:45:12 DEBUG ui.main_window: Created new idle label
+2025-09-02 10:45:12 DEBUG ui.main_window: Configured idle label text and styling
+2025-09-02 10:45:12 DEBUG ui.main_window: Set central widget to idle label: <PySide6.QtWidgets.QLabel(0x197493497d0) at 0x000001974BCB22C0>
+2025-09-02 10:45:12 DEBUG ui.main_window: Idle state setup complete
+2025-09-02 10:45:12 DEBUG ui.main_window: Central widget after setup: <PySide6.QtWidgets.QLabel(0x197493497d0) at 0x000001974BCB22C0> (is idle label: True)
+2025-09-02 10:45:28 DEBUG ui.file_menu: Load game button pressed - creating dialog
+2025-09-02 10:45:28 DEBUG ui.file_menu: Load game dialog created, executing...
+2025-09-02 10:45:31 DEBUG ui.actions_panel: Actions panel context updated: station
+2025-09-02 10:45:35 DEBUG ui.main_window: Setting up idle state
+2025-09-02 10:45:35 DEBUG ui.main_window: Explicitly clearing MapTabs widget
+2025-09-02 10:45:35 DEBUG ui.main_window: Clearing tab widget contents
+2025-09-02 10:45:35 DEBUG ui.main_window: Clearing central splitter reference
+2025-09-02 10:45:35 DEBUG ui.main_window: Reusing existing idle label
+2025-09-02 10:46:08 DEBUG ui.main_window: Setting up idle state
+2025-09-02 10:46:08 DEBUG ui.main_window: Created new idle label
+2025-09-02 10:46:08 DEBUG ui.main_window: Configured idle label text and styling
+2025-09-02 10:46:08 DEBUG ui.main_window: Set central widget to idle label: <PySide6.QtWidgets.QLabel(0x2235c9d1c80) at 0x000002235F32F6C0>
+2025-09-02 10:46:08 DEBUG ui.main_window: Idle state setup complete
+2025-09-02 10:46:08 DEBUG ui.main_window: Central widget after setup: <PySide6.QtWidgets.QLabel(0x2235c9d1c80) at 0x000002235F32F6C0> (is idle label: True)
+2025-09-02 10:46:42 DEBUG ui.file_menu: Load game button pressed - creating dialog
+2025-09-02 10:46:42 DEBUG ui.file_menu: Load game dialog created, executing...
+2025-09-02 10:46:45 DEBUG ui.actions_panel: Actions panel context updated: station
+2025-09-02 10:46:49 DEBUG ui.main_window: Setting up idle state
+2025-09-02 10:46:49 DEBUG ui.main_window: Explicitly clearing MapTabs widget
+2025-09-02 10:46:49 DEBUG ui.main_window: Clearing tab widget contents
+2025-09-02 10:46:49 DEBUG ui.main_window: Clearing central splitter reference
+2025-09-02 10:46:49 DEBUG ui.main_window: Reusing existing idle label
+2025-09-02 10:50:34 DEBUG ui.main_window: Setting up idle state
+2025-09-02 10:50:34 DEBUG ui.main_window: Created new idle label
+2025-09-02 10:50:34 DEBUG ui.main_window: Configured idle label text and styling
+2025-09-02 10:50:34 DEBUG ui.main_window: Set central widget to idle label: <PySide6.QtWidgets.QLabel(0x291a6204f50) at 0x00000291A8A34280>
+2025-09-02 10:50:34 DEBUG ui.main_window: Idle state setup complete
+2025-09-02 10:50:34 DEBUG ui.main_window: Central widget after setup: <PySide6.QtWidgets.QLabel(0x291a6204f50) at 0x00000291A8A34280> (is idle label: True)
+2025-09-02 10:50:44 DEBUG ui.file_menu: Load game button pressed - creating dialog
+2025-09-02 10:50:44 DEBUG ui.file_menu: Load game dialog created, executing...
+2025-09-02 10:50:47 DEBUG ui.actions_panel: Actions panel context updated: station
+2025-09-02 10:50:52 DEBUG ui.main_window: Setting up idle state
+2025-09-02 10:50:52 DEBUG ui.main_window: Explicitly clearing MapTabs widget
+2025-09-02 10:50:52 DEBUG ui.main_window: Clearing tab widget contents
+2025-09-02 10:50:52 DEBUG ui.main_window: Clearing central splitter reference
+2025-09-02 10:50:52 DEBUG ui.main_window: Reusing existing idle label
+2025-09-02 10:52:50 DEBUG ui.main_window: Setting up idle state
+2025-09-02 10:52:50 DEBUG ui.main_window: Created new idle label
+2025-09-02 10:52:50 DEBUG ui.main_window: Configured idle label text and styling
+2025-09-02 10:52:50 DEBUG ui.main_window: Set central widget to idle label: <PySide6.QtWidgets.QLabel(0x17c282d9170) at 0x0000017C2AB0ABC0>
+2025-09-02 10:52:50 DEBUG ui.main_window: Idle state setup complete
+2025-09-02 10:52:50 DEBUG ui.main_window: Central widget after setup: <PySide6.QtWidgets.QLabel(0x17c282d9170) at 0x0000017C2AB0ABC0> (is idle label: True)
+2025-09-02 10:52:50 DEBUG ui.main_window: Idle label geometry: x=0, y=0, w=640, h=480
+2025-09-02 10:52:50 DEBUG ui.main_window: Idle label visible: False
+2025-09-02 10:52:50 DEBUG ui.main_window: Idle label text: 'No game loaded.
+Use File → New Game or Load Game to begin.'
+2025-09-02 10:52:50 DEBUG ui.main_window: Main window geometry: PySide6.QtCore.QRect(0, 0, 640, 480)
+2025-09-02 10:53:08 DEBUG ui.main_window: Setting up idle state
+2025-09-02 10:53:08 DEBUG ui.main_window: Created new idle label
+2025-09-02 10:53:08 DEBUG ui.main_window: Configured idle label text and styling
+2025-09-02 10:53:08 DEBUG ui.main_window: Set central widget to idle label: <PySide6.QtWidgets.QLabel(0x19e0f8028b0) at 0x0000019E11F872C0>
+2025-09-02 10:53:08 DEBUG ui.main_window: Idle state setup complete
+2025-09-02 10:53:08 DEBUG ui.main_window: Central widget after setup: <PySide6.QtWidgets.QLabel(0x19e0f8028b0) at 0x0000019E11F872C0> (is idle label: True)
+2025-09-02 10:53:08 DEBUG ui.main_window: Idle label geometry: x=0, y=0, w=640, h=480
+2025-09-02 10:53:08 DEBUG ui.main_window: Idle label visible: False
+2025-09-02 10:53:08 DEBUG ui.main_window: Idle label text: 'No game loaded.
+Use File → New Game or Load Game to begin.'
+2025-09-02 10:53:08 DEBUG ui.main_window: Main window geometry: PySide6.QtCore.QRect(0, 0, 640, 480)
+2025-09-02 10:53:14 DEBUG ui.file_menu: Load game button pressed - creating dialog
+2025-09-02 10:53:14 DEBUG ui.file_menu: Load game dialog created, executing...
+2025-09-02 10:53:17 DEBUG ui.actions_panel: Actions panel context updated: station
+2025-09-02 10:53:20 DEBUG ui.main_window: Setting up idle state
+2025-09-02 10:53:20 DEBUG ui.main_window: Explicitly clearing MapTabs widget
+2025-09-02 10:53:20 DEBUG ui.main_window: Clearing tab widget contents
+2025-09-02 10:53:20 DEBUG ui.main_window: Clearing central splitter reference
+2025-09-02 10:53:20 DEBUG ui.main_window: Reusing existing idle label
+2025-09-02 10:54:19 DEBUG ui.main_window: Setting up idle state
+2025-09-02 10:54:19 DEBUG ui.main_window: Created new idle label
+2025-09-02 10:54:19 DEBUG ui.main_window: Configured idle label text and styling
+2025-09-02 10:54:19 DEBUG ui.main_window: Set central widget to idle label: <PySide6.QtWidgets.QLabel(0x1a94b0d96d0) at 0x000001A94D86CBC0>
+2025-09-02 10:54:19 DEBUG ui.main_window: Idle state setup complete
+2025-09-02 10:54:19 DEBUG ui.main_window: Central widget after setup: <PySide6.QtWidgets.QLabel(0x1a94b0d96d0) at 0x000001A94D86CBC0> (is idle label: True)
+2025-09-02 10:54:19 DEBUG ui.main_window: Idle label geometry: x=0, y=0, w=640, h=480
+2025-09-02 10:54:19 DEBUG ui.main_window: Idle label visible (after show): False
+2025-09-02 10:54:19 DEBUG ui.main_window: Idle label text: 'No game loaded.
+Use File → New Game or Load Game to begin.'
+2025-09-02 10:54:19 DEBUG ui.main_window: Main window geometry: PySide6.QtCore.QRect(0, 0, 640, 480)
+2025-09-02 10:54:19 DEBUG ui.main_window: Actual central widget: <PySide6.QtWidgets.QLabel(0x1a94b0d96d0) at 0x000001A94D86CBC0> (is idle label: True)
+2025-09-02 12:14:30 DEBUG ui.file_menu: Load game button pressed - creating dialog
+2025-09-02 12:14:30 DEBUG ui.file_menu: Load game dialog created, executing...
+2025-09-02 12:14:32 DEBUG ui.actions_panel: Actions panel context updated: station
+2025-09-02 12:14:35 DEBUG ui.main_window: Setting up idle state
+2025-09-02 12:14:35 DEBUG ui.main_window: Explicitly clearing MapTabs widget
+2025-09-02 12:14:35 DEBUG ui.main_window: Clearing tab widget contents
+2025-09-02 12:14:35 DEBUG ui.main_window: Clearing central splitter reference
+2025-09-02 12:14:35 DEBUG ui.main_window: Reusing existing idle label
+2025-09-02 12:17:19 DEBUG ui.main_window: Setting up idle state
+2025-09-02 12:17:19 DEBUG ui.main_window: Temporarily hiding all dock widgets
+2025-09-02 12:17:19 DEBUG ui.main_window: Created new idle label
+2025-09-02 12:17:19 DEBUG ui.main_window: Configured idle label text and styling
+2025-09-02 12:17:19 DEBUG ui.main_window: Set central widget to idle label: <PySide6.QtWidgets.QLabel(0x2b2d37644c0) at 0x000002B2D5C5E280>
+2025-09-02 12:17:19 DEBUG ui.main_window: Idle state setup complete
+2025-09-02 12:17:19 DEBUG ui.main_window: Central widget after setup: <PySide6.QtWidgets.QLabel(0x2b2d37644c0) at 0x000002B2D5C5E280> (is idle label: True)
+2025-09-02 12:17:19 DEBUG ui.main_window: Idle label geometry: x=0, y=0, w=640, h=480
+2025-09-02 12:17:19 DEBUG ui.main_window: Idle label visible (after show): False
+2025-09-02 12:17:19 DEBUG ui.main_window: Idle label text: 'No game loaded.
+Use File → New Game or Load Game to begin.'
+2025-09-02 12:17:19 DEBUG ui.main_window: Main window geometry: PySide6.QtCore.QRect(0, 0, 640, 480)
+2025-09-02 12:17:19 DEBUG ui.main_window: Actual central widget: <PySide6.QtWidgets.QLabel(0x2b2d37644c0) at 0x000002B2D5C5E280> (is idle label: True)
+2025-09-02 12:17:38 DEBUG ui.file_menu: Load game button pressed - creating dialog
+2025-09-02 12:17:38 DEBUG ui.file_menu: Load game dialog created, executing...
+2025-09-02 12:17:40 DEBUG ui.actions_panel: Actions panel context updated: station
+2025-09-02 12:17:45 DEBUG ui.main_window: Setting up idle state
+2025-09-02 12:17:45 DEBUG ui.main_window: Temporarily hiding all dock widgets
+2025-09-02 12:17:45 DEBUG ui.main_window: Hidden dock: dock_Panel_Galaxy
+2025-09-02 12:17:45 DEBUG ui.main_window: Hidden dock: dock_Panel_System
+2025-09-02 12:17:45 DEBUG ui.main_window: Hidden dock: dock_Status
+2025-09-02 12:17:45 DEBUG ui.main_window: Hidden dock: dock_Actions
+2025-09-02 12:17:45 DEBUG ui.main_window: Hidden dock: dock_Log_All
+2025-09-02 12:17:45 DEBUG ui.main_window: Hidden dock: dock_Log_Combat
+2025-09-02 12:17:45 DEBUG ui.main_window: Hidden dock: dock_Log_Trade
+2025-09-02 12:17:45 DEBUG ui.main_window: Hidden dock: dock_Log_Dialogue
+2025-09-02 12:17:45 DEBUG ui.main_window: Hidden dock: dock_Log_Reputation
+2025-09-02 12:17:45 DEBUG ui.main_window: Hidden dock: dock_Log_Loot
+2025-09-02 12:17:45 DEBUG ui.main_window: Hidden dock: dock_Log_Quest
+2025-09-02 12:17:45 DEBUG ui.main_window: Explicitly clearing MapTabs widget
+2025-09-02 12:17:45 DEBUG ui.main_window: Clearing tab widget contents
+2025-09-02 12:17:45 DEBUG ui.main_window: Clearing central splitter reference
+2025-09-02 12:17:45 DEBUG ui.main_window: Reusing existing idle label
+2025-09-02 12:18:41 DEBUG ui.main_window: Setting up idle state
+2025-09-02 12:18:41 DEBUG ui.main_window: Temporarily hiding all dock widgets
+2025-09-02 12:18:41 DEBUG ui.main_window: Creating new idle label (forcing fresh widget)
+2025-09-02 12:18:41 DEBUG ui.main_window: Configured idle label text and styling
+2025-09-02 12:18:41 DEBUG ui.main_window: Set central widget to idle label: <PySide6.QtWidgets.QLabel(0x179a2f36c40) at 0x00000179A59B1300>
+2025-09-02 12:18:41 DEBUG ui.main_window: Idle state setup complete
+2025-09-02 12:18:41 DEBUG ui.main_window: Central widget after setup: <PySide6.QtWidgets.QLabel(0x179a2f36c40) at 0x00000179A59B1300> (is idle label: True)
+2025-09-02 12:18:41 DEBUG ui.main_window: Idle label geometry: x=0, y=0, w=469, h=200
+2025-09-02 12:18:41 DEBUG ui.main_window: Idle label visible (after show): True
+2025-09-02 12:18:41 DEBUG ui.main_window: Idle label text: 'No game loaded.
+Use File → New Game or Load Game to begin.'
+2025-09-02 12:18:41 DEBUG ui.main_window: Main window geometry: PySide6.QtCore.QRect(1400, 456, 469, 200)
+2025-09-02 12:18:41 DEBUG ui.main_window: Actual central widget: <PySide6.QtWidgets.QLabel(0x179a2f36c40) at 0x00000179A59B1300> (is idle label: True)
+2025-09-02 12:19:03 DEBUG ui.file_menu: Load game button pressed - creating dialog
+2025-09-02 12:19:03 DEBUG ui.file_menu: Load game dialog created, executing...
+2025-09-02 12:19:06 DEBUG ui.actions_panel: Actions panel context updated: station
+2025-09-02 12:19:09 DEBUG ui.main_window: Setting up idle state
+2025-09-02 12:19:09 DEBUG ui.main_window: Temporarily hiding all dock widgets
+2025-09-02 12:19:09 DEBUG ui.main_window: Hidden dock: dock_Panel_Galaxy
+2025-09-02 12:19:09 DEBUG ui.main_window: Hidden dock: dock_Panel_System
+2025-09-02 12:19:09 DEBUG ui.main_window: Hidden dock: dock_Status
+2025-09-02 12:19:09 DEBUG ui.main_window: Hidden dock: dock_Actions
+2025-09-02 12:19:09 DEBUG ui.main_window: Hidden dock: dock_Log_All
+2025-09-02 12:19:09 DEBUG ui.main_window: Hidden dock: dock_Log_Combat
+2025-09-02 12:19:09 DEBUG ui.main_window: Hidden dock: dock_Log_Trade
+2025-09-02 12:19:09 DEBUG ui.main_window: Hidden dock: dock_Log_Dialogue
+2025-09-02 12:19:09 DEBUG ui.main_window: Hidden dock: dock_Log_Reputation
+2025-09-02 12:19:09 DEBUG ui.main_window: Hidden dock: dock_Log_Loot
+2025-09-02 12:19:09 DEBUG ui.main_window: Hidden dock: dock_Log_Quest
+2025-09-02 12:19:09 DEBUG ui.main_window: Explicitly clearing MapTabs widget
+2025-09-02 12:19:09 DEBUG ui.main_window: Clearing tab widget contents
+2025-09-02 12:19:09 DEBUG ui.main_window: Clearing central splitter reference
+2025-09-02 12:19:09 DEBUG ui.main_window: Creating new idle label (forcing fresh widget)
+2025-09-02 12:19:09 DEBUG ui.main_window: Configured idle label text and styling
+2025-09-02 12:19:09 DEBUG ui.main_window: Deleting old central widget: <class 'PySide6.QtWidgets.QSplitter'>
+2025-09-02 12:19:09 DEBUG ui.main_window: Set central widget to idle label: <PySide6.QtWidgets.QLabel(0x179bcb80c60) at 0x00000179A60D5AC0>
+2025-09-02 12:19:09 DEBUG ui.main_window: Idle state setup complete
+2025-09-02 12:19:09 DEBUG ui.main_window: Central widget after setup: <PySide6.QtWidgets.QLabel(0x179bcb80c60) at 0x00000179A60D5AC0> (is idle label: True)
+2025-09-02 12:19:09 DEBUG ui.main_window: Idle label geometry: x=0, y=33, w=3440, h=1315
+2025-09-02 12:19:09 DEBUG ui.main_window: Idle label visible (after show): True
+2025-09-02 12:19:09 DEBUG ui.main_window: Idle label text: 'No game loaded.
+Use File → New Game or Load Game to begin.'
+2025-09-02 12:19:09 DEBUG ui.main_window: Main window geometry: PySide6.QtCore.QRect(0, 23, 3440, 1369)
+2025-09-02 12:19:09 DEBUG ui.main_window: Actual central widget: <PySide6.QtWidgets.QLabel(0x179bcb80c60) at 0x00000179A60D5AC0> (is idle label: True)
+2025-09-02 12:19:32 DEBUG ui.main_window: Setting up idle state
+2025-09-02 12:19:32 DEBUG ui.main_window: Temporarily hiding all dock widgets
+2025-09-02 12:19:32 DEBUG ui.main_window: Creating new idle label (forcing fresh widget)
+2025-09-02 12:19:32 DEBUG ui.main_window: Configured idle label text and styling
+2025-09-02 12:19:32 DEBUG ui.main_window: Set central widget to idle label: <PySide6.QtWidgets.QLabel(0x244aaf46620) at 0x00000244AD6F7F80>
+2025-09-02 12:19:32 DEBUG ui.main_window: Idle state setup complete
+2025-09-02 12:19:32 DEBUG ui.main_window: Central widget after setup: <PySide6.QtWidgets.QLabel(0x244aaf46620) at 0x00000244AD6F7F80> (is idle label: True)
+2025-09-02 12:19:32 DEBUG ui.main_window: Idle label geometry: x=0, y=0, w=469, h=200
+2025-09-02 12:19:32 DEBUG ui.main_window: Idle label visible (after show): True
+2025-09-02 12:19:32 DEBUG ui.main_window: Idle label text: 'No game loaded.
+Use File → New Game or Load Game to begin.'
+2025-09-02 12:19:32 DEBUG ui.main_window: Main window geometry: PySide6.QtCore.QRect(1400, 456, 469, 200)
+2025-09-02 12:19:32 DEBUG ui.main_window: Actual central widget: <PySide6.QtWidgets.QLabel(0x244aaf46620) at 0x00000244AD6F7F80> (is idle label: True)
+2025-09-02 12:19:43 DEBUG ui.file_menu: file_menu: loaded ui_state for new game keys=['main_geometry', 'dock_visibility', 'dock_layout', 'central_splitter_sizes', 'map_tab_index', 'galaxy_col_widths', 'system_col_widths', 'galaxy_category_index', 'system_category_index', 'galaxy_sort_text', 'system_sort_text', 'galaxy_search', 'system_search', 'galaxy_leader_color', 'galaxy_leader_width', 'galaxy_leader_glow', 'system_leader_color', 'system_leader_width', 'system_leader_glow', 'open', 'main_state_b64', 'galaxy_list_visible', 'system_list_visible', 'dock_order']
+2025-09-02 12:19:43 DEBUG ui.file_menu: file_menu: applied ui_state to new game window MainWindow
+2025-09-02 12:19:44 DEBUG ui.actions_panel: Actions panel context updated: space
+2025-09-02 12:19:57 DEBUG ui.main_window: Setting up idle state
+2025-09-02 12:19:57 DEBUG ui.main_window: Temporarily hiding all dock widgets
+2025-09-02 12:19:57 DEBUG ui.main_window: Hidden dock: dock_Panel_Galaxy
+2025-09-02 12:19:57 DEBUG ui.main_window: Hidden dock: dock_Panel_System
+2025-09-02 12:19:57 DEBUG ui.main_window: Hidden dock: dock_Status
+2025-09-02 12:19:57 DEBUG ui.main_window: Hidden dock: dock_Actions
+2025-09-02 12:19:57 DEBUG ui.main_window: Hidden dock: dock_Log_All
+2025-09-02 12:19:57 DEBUG ui.main_window: Hidden dock: dock_Log_Combat
+2025-09-02 12:19:57 DEBUG ui.main_window: Hidden dock: dock_Log_Trade
+2025-09-02 12:19:57 DEBUG ui.main_window: Hidden dock: dock_Log_Dialogue
+2025-09-02 12:19:57 DEBUG ui.main_window: Hidden dock: dock_Log_Reputation
+2025-09-02 12:19:57 DEBUG ui.main_window: Hidden dock: dock_Log_Loot
+2025-09-02 12:19:57 DEBUG ui.main_window: Hidden dock: dock_Log_Quest
+2025-09-02 12:19:57 DEBUG ui.main_window: Explicitly clearing MapTabs widget
+2025-09-02 12:19:57 DEBUG ui.main_window: Clearing tab widget contents
+2025-09-02 12:19:57 DEBUG ui.main_window: Clearing central splitter reference
+2025-09-02 12:19:57 DEBUG ui.main_window: Creating new idle label (forcing fresh widget)
+2025-09-02 12:19:57 DEBUG ui.main_window: Configured idle label text and styling
+2025-09-02 12:19:57 DEBUG ui.main_window: Deleting old central widget: <class 'PySide6.QtWidgets.QSplitter'>
+2025-09-02 12:19:57 DEBUG ui.main_window: Set central widget to idle label: <PySide6.QtWidgets.QLabel(0x244b0b8b710) at 0x00000244B0725600>
+2025-09-02 12:19:57 DEBUG ui.main_window: Idle state setup complete
+2025-09-02 12:19:57 DEBUG ui.main_window: Central widget after setup: <PySide6.QtWidgets.QLabel(0x244b0b8b710) at 0x00000244B0725600> (is idle label: True)
+2025-09-02 12:19:57 DEBUG ui.main_window: Idle label geometry: x=0, y=33, w=3440, h=1315
+2025-09-02 12:19:57 DEBUG ui.main_window: Idle label visible (after show): True
+2025-09-02 12:19:57 DEBUG ui.main_window: Idle label text: 'No game loaded.
+Use File → New Game or Load Game to begin.'
+2025-09-02 12:19:57 DEBUG ui.main_window: Main window geometry: PySide6.QtCore.QRect(0, 23, 3440, 1369)
+2025-09-02 12:19:57 DEBUG ui.main_window: Actual central widget: <PySide6.QtWidgets.QLabel(0x244b0b8b710) at 0x00000244B0725600> (is idle label: True)
+2025-09-02 12:23:51 DEBUG ui.main_window: Setting up idle state
+2025-09-02 12:23:51 DEBUG ui.main_window: Temporarily hiding all dock widgets
+2025-09-02 12:23:51 DEBUG ui.main_window: Creating new idle label (forcing fresh widget)
+2025-09-02 12:23:51 DEBUG ui.main_window: Configured idle label text and styling
+2025-09-02 12:23:51 DEBUG ui.main_window: Set central widget to idle label: <PySide6.QtWidgets.QLabel(0x2b88a487da0) at 0x000002B88CE42F80>
+2025-09-02 12:23:51 DEBUG ui.main_window: Idle state setup complete
+2025-09-02 12:23:51 DEBUG ui.main_window: Central widget after setup: <PySide6.QtWidgets.QLabel(0x2b88a487da0) at 0x000002B88CE42F80> (is idle label: True)
+2025-09-02 12:23:51 DEBUG ui.main_window: Idle label geometry: x=0, y=0, w=469, h=200
+2025-09-02 12:23:51 DEBUG ui.main_window: Idle label visible (after show): True
+2025-09-02 12:23:51 DEBUG ui.main_window: Idle label text: 'No game loaded.
+Use File → New Game or Load Game to begin.'
+2025-09-02 12:23:51 DEBUG ui.main_window: Main window geometry: PySide6.QtCore.QRect(1400, 456, 469, 200)
+2025-09-02 12:23:51 DEBUG ui.main_window: Actual central widget: <PySide6.QtWidgets.QLabel(0x2b88a487da0) at 0x000002B88CE42F80> (is idle label: True)
+2025-09-02 12:25:11 DEBUG ui.file_menu: Load game button pressed - creating dialog
+2025-09-02 12:25:11 DEBUG ui.file_menu: Load game dialog created, executing...
+2025-09-02 12:25:15 DEBUG ui.actions_panel: Actions panel context updated: space
+2025-09-02 12:25:40 DEBUG ui.main_window: Setting up idle state
+2025-09-02 12:25:40 DEBUG ui.main_window: Temporarily hiding all dock widgets
+2025-09-02 12:25:40 DEBUG ui.main_window: Hidden dock: dock_Panel_Galaxy
+2025-09-02 12:25:40 DEBUG ui.main_window: Hidden dock: dock_Panel_System
+2025-09-02 12:25:40 DEBUG ui.main_window: Hidden dock: dock_Status
+2025-09-02 12:25:40 DEBUG ui.main_window: Hidden dock: dock_Actions
+2025-09-02 12:25:40 DEBUG ui.main_window: Hidden dock: dock_Log_All
+2025-09-02 12:25:40 DEBUG ui.main_window: Hidden dock: dock_Log_Combat
+2025-09-02 12:25:40 DEBUG ui.main_window: Hidden dock: dock_Log_Trade
+2025-09-02 12:25:40 DEBUG ui.main_window: Hidden dock: dock_Log_Dialogue
+2025-09-02 12:25:40 DEBUG ui.main_window: Hidden dock: dock_Log_Reputation
+2025-09-02 12:25:40 DEBUG ui.main_window: Hidden dock: dock_Log_Loot
+2025-09-02 12:25:40 DEBUG ui.main_window: Hidden dock: dock_Log_Quest
+2025-09-02 12:25:40 DEBUG ui.main_window: Explicitly clearing MapTabs widget
+2025-09-02 12:25:40 DEBUG ui.main_window: Clearing tab widget contents
+2025-09-02 12:25:40 DEBUG ui.main_window: Clearing central splitter reference
+2025-09-02 12:25:40 DEBUG ui.main_window: Creating new idle label (forcing fresh widget)
+2025-09-02 12:25:40 DEBUG ui.main_window: Configured idle label text and styling
+2025-09-02 12:25:40 DEBUG ui.main_window: Deleting old central widget: <class 'PySide6.QtWidgets.QSplitter'>
+2025-09-02 12:25:40 DEBUG ui.main_window: Set central widget to idle label: <PySide6.QtWidgets.QLabel(0x2b8a3f5df50) at 0x000002B88D4DB840>
+2025-09-02 12:25:40 DEBUG ui.main_window: Idle state setup complete
+2025-09-02 12:25:40 DEBUG ui.main_window: Central widget after setup: <PySide6.QtWidgets.QLabel(0x2b8a3f5df50) at 0x000002B88D4DB840> (is idle label: True)
+2025-09-02 12:25:40 DEBUG ui.main_window: Idle label geometry: x=0, y=33, w=3440, h=1315
+2025-09-02 12:25:40 DEBUG ui.main_window: Idle label visible (after show): True
+2025-09-02 12:25:40 DEBUG ui.main_window: Idle label text: 'No game loaded.
+Use File → New Game or Load Game to begin.'
+2025-09-02 12:25:40 DEBUG ui.main_window: Main window geometry: PySide6.QtCore.QRect(0, 23, 3440, 1369)
+2025-09-02 12:25:40 DEBUG ui.main_window: Actual central widget: <PySide6.QtWidgets.QLabel(0x2b8a3f5df50) at 0x000002B88D4DB840> (is idle label: True)
+2025-09-02 12:28:13 DEBUG ui.main_window: Setting up idle state
+2025-09-02 12:28:13 DEBUG ui.main_window: Temporarily hiding all dock widgets
+2025-09-02 12:28:13 DEBUG ui.main_window: Creating new idle label (forcing fresh widget)
+2025-09-02 12:28:13 DEBUG ui.main_window: Configured idle label text and styling
+2025-09-02 12:28:13 DEBUG ui.main_window: Set central widget to idle label: <PySide6.QtWidgets.QLabel(0x229c25c0760) at 0x00000229C5750480>
+2025-09-02 12:28:13 DEBUG ui.main_window: Idle state setup complete
+2025-09-02 12:28:13 DEBUG ui.main_window: Central widget after setup: <PySide6.QtWidgets.QLabel(0x229c25c0760) at 0x00000229C5750480> (is idle label: True)
+2025-09-02 12:28:13 DEBUG ui.main_window: Idle label geometry: x=0, y=0, w=469, h=200
+2025-09-02 12:28:13 DEBUG ui.main_window: Idle label visible (after show): True
+2025-09-02 12:28:13 DEBUG ui.main_window: Idle label text: 'No game loaded.
+Use File → New Game or Load Game to begin.'
+2025-09-02 12:28:13 DEBUG ui.main_window: Main window geometry: PySide6.QtCore.QRect(1400, 456, 469, 200)
+2025-09-02 12:28:13 DEBUG ui.main_window: Actual central widget: <PySide6.QtWidgets.QLabel(0x229c25c0760) at 0x00000229C5750480> (is idle label: True)
+2025-09-02 12:31:47 DEBUG ui.file_menu: Load game button pressed - creating dialog
+2025-09-02 12:31:47 DEBUG ui.file_menu: Load game dialog created, executing...
+2025-09-02 12:31:49 DEBUG ui.actions_panel: Actions panel context updated: space
+2025-09-02 12:32:13 DEBUG ui.main_window: Setting up idle state
+2025-09-02 12:32:13 DEBUG ui.main_window: Temporarily hiding all dock widgets
+2025-09-02 12:32:13 DEBUG ui.main_window: Hidden dock: dock_Panel_Galaxy
+2025-09-02 12:32:13 DEBUG ui.main_window: Hidden dock: dock_Panel_System
+2025-09-02 12:32:13 DEBUG ui.main_window: Hidden dock: dock_Status
+2025-09-02 12:32:13 DEBUG ui.main_window: Hidden dock: dock_Actions
+2025-09-02 12:32:13 DEBUG ui.main_window: Hidden dock: dock_Log_All
+2025-09-02 12:32:13 DEBUG ui.main_window: Hidden dock: dock_Log_Combat
+2025-09-02 12:32:13 DEBUG ui.main_window: Hidden dock: dock_Log_Trade
+2025-09-02 12:32:13 DEBUG ui.main_window: Hidden dock: dock_Log_Dialogue
+2025-09-02 12:32:13 DEBUG ui.main_window: Hidden dock: dock_Log_Reputation
+2025-09-02 12:32:13 DEBUG ui.main_window: Hidden dock: dock_Log_Loot
+2025-09-02 12:32:13 DEBUG ui.main_window: Hidden dock: dock_Log_Quest
+2025-09-02 12:32:13 DEBUG ui.main_window: Explicitly clearing MapTabs widget
+2025-09-02 12:32:13 DEBUG ui.main_window: Clearing tab widget contents
+2025-09-02 12:32:13 DEBUG ui.main_window: Clearing central splitter reference
+2025-09-02 12:32:13 DEBUG ui.main_window: Creating new idle label (forcing fresh widget)
+2025-09-02 12:32:13 DEBUG ui.main_window: Configured idle label text and styling
+2025-09-02 12:32:13 DEBUG ui.main_window: Deleting old central widget: <class 'PySide6.QtWidgets.QSplitter'>
+2025-09-02 12:32:13 DEBUG ui.main_window: Set central widget to idle label: <PySide6.QtWidgets.QLabel(0x229c883d1d0) at 0x00000229C57F0A00>
+2025-09-02 12:32:13 DEBUG ui.main_window: Idle state setup complete
+2025-09-02 12:32:13 DEBUG ui.main_window: Central widget after setup: <PySide6.QtWidgets.QLabel(0x229c883d1d0) at 0x00000229C57F0A00> (is idle label: True)
+2025-09-02 12:32:13 DEBUG ui.main_window: Idle label geometry: x=0, y=33, w=3440, h=1315
+2025-09-02 12:32:13 DEBUG ui.main_window: Idle label visible (after show): True
+2025-09-02 12:32:13 DEBUG ui.main_window: Idle label text: 'No game loaded.
+Use File → New Game or Load Game to begin.'
+2025-09-02 12:32:13 DEBUG ui.main_window: Main window geometry: PySide6.QtCore.QRect(0, 23, 3440, 1369)
+2025-09-02 12:32:13 DEBUG ui.main_window: Actual central widget: <PySide6.QtWidgets.QLabel(0x229c883d1d0) at 0x00000229C57F0A00> (is idle label: True)

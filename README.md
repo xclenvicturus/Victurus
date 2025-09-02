@@ -6,12 +6,14 @@ A space exploration and trading game built with Python and PySide6/Qt.
 
 Victurus is a space trading simulation game featuring:
 - **Galaxy exploration** with multiple star systems and planets
+- **Contextual actions interface** that adapts to your location (Station/Planet/Space)
 - **Resource management** including mining and trading
 - **Ship status tracking** with fuel, cargo, and location management  
 - **Save/load game system** with multiple save slot support
 - **Dynamic UI** with dockable panels and customizable layout
 - **Real-time simulation** background processing
 - **Travel visualization** with overlay-based progress tracking
+- **Complete game state management** with proper cleanup and restoration
 
 ## Requirements
 
@@ -56,22 +58,27 @@ See `docs/structure.md` for detailed information about the codebase organization
 ### Implemented
 - ✅ **Galaxy/System Maps** - Visual navigation interface with travel visualization
 - ✅ **Travel System** - Multi-phase travel with progress overlay and realistic timing
+- ✅ **Actions Panel** - Context-aware action buttons that adapt to player location
 - ✅ **Save/Load System** - Multiple save slots with metadata
 - ✅ **UI State Persistence** - Window layouts and panel configurations
+- ✅ **Close Game Functionality** - Complete cleanup and state restoration
 - ✅ **Error Handling** - Comprehensive crash reporting and recovery
+- ✅ **Widget Lifecycle Management** - Qt object protection against crashes
 - ✅ **Resource Management** - Asteroid fields, gas clouds, ice fields, crystal veins
 - ✅ **Dynamic Asset System** - Unique visual assets per system/location
 - ✅ **Logging System** - Centralized logging with component-specific debug files
 
 ### Menu System
 - ✅ **File Menu** - New Game, Load Game, Save Game, Save As, Close Game
-- ✅ **View Menu** - Panel visibility controls with Show All/Hide All
+- ✅ **View Menu** - Panel visibility controls with Show All/Hide All functionality
 
 ### UI Components  
-- ✅ **Dockable Panels** - Status, logs, location lists
+- ✅ **Dockable Panels** - Status, logs, location lists, contextual actions
 - ✅ **Travel Overlay** - Real-time progress tracking with status display
+- ✅ **Actions Panel** - Location-aware buttons (Repair/Refuel at stations, Land/Mine on planets, Travel/Jump in space)
 - ✅ **Log System** - Categorized game logs (Combat, Trade, Dialogue, etc.)
 - ✅ **Location Lists** - Filterable/sortable galaxy and system views
+- ✅ **Game State Management** - Proper transitions between game loaded/no game states
 
 ## Development
 

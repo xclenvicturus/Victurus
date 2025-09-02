@@ -65,8 +65,8 @@ from .menus.view_menu import install_view_menu_extras, sync_panels_menu_state
 logger = get_ui_logger('main_window')
 
 
-def _make_map_view() -> MapTabs:
-    return MapTabs()
+def _make_map_view(parent=None) -> MapTabs:
+    return MapTabs(parent)
 
 
 class _LeaderPrefsAdapter:
@@ -136,9 +136,9 @@ class MainWindow(QMainWindow):
 
         # ---- Actions expected by view_menu protocol (predeclare) ----
         self.act_panel_status: QAction | None = None
+        self.act_panel_actions: QAction | None = None  # Add actions panel action
         self.act_panel_location_galaxy: QAction | None = None
         self.act_panel_location_system: QAction | None = None
-        self.act_panel_location: QAction | None = None
 
         # Legacy leader-line glow action (needed for protocol compatibility)
         self.act_leader_glow: QAction | None = None
@@ -146,9 +146,8 @@ class MainWindow(QMainWindow):
         self.act_galaxy_leader_glow: QAction | None = None
 
         # ---- Central placeholder while idle ----
-        self._idle_label = QLabel("No game loaded.\nUse File → New Game or Load Game to begin.")
-        self._idle_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setCentralWidget(self._idle_label)
+        self._idle_label: QLabel | None = None
+        self._setup_idle_state()
 
         # (Log docks are created lazily in _pin_status_dock_for_transition)
         # Legacy single-dock placeholder kept for compatibility
@@ -400,6 +399,160 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"Error handling action {action_name}: {e}")
 
+    def _setup_idle_state(self) -> None:
+        """Set up or restore the idle 'no game loaded' state with consistent styling"""
+        from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import QLabel
+        from game_controller.log_config import get_ui_logger
+        
+        logger = get_ui_logger('main_window')
+        logger.debug("Setting up idle state")
+        
+        # Get the current central widget before replacing it
+        current_central = self.centralWidget()
+        
+        # If we have a MapTabs widget, explicitly clear it before deletion
+        if hasattr(self, '_map_view') and self._map_view:
+            logger.debug("Explicitly clearing MapTabs widget")
+            try:
+                # Clear the tabs first
+                if hasattr(self._map_view, 'tabs') and self._map_view.tabs:
+                    logger.debug("Clearing tab widget contents")
+                    self._map_view.tabs.clear()  # Remove all tabs
+                    
+                # Hide the MapTabs widget
+                self._map_view.hide()
+                
+                # Mark for deletion
+                self._map_view.deleteLater()
+                
+            except Exception as e:
+                logger.error(f"Error clearing MapTabs: {e}")
+            finally:
+                self._map_view = None
+            
+        # Clear central splitter reference if it exists  
+        if hasattr(self, '_central_splitter') and self._central_splitter:
+            logger.debug("Clearing central splitter reference")
+            try:
+                # Hide the splitter
+                self._central_splitter.hide()
+                # Mark for deletion
+                self._central_splitter.deleteLater()
+            except Exception as e:
+                logger.error(f"Error clearing central splitter: {e}")
+            finally:
+                self._central_splitter = None
+        
+        # Create or update the idle label - ALWAYS create a new one to avoid widget issues
+        logger.debug("Creating new idle label (forcing fresh widget)")
+        self._idle_label = QLabel()
+        
+        # Set the consistent text and styling
+        self._idle_label.setText("No game loaded.\nUse File → New Game or Load Game to begin.")
+        self._idle_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        # Add consistent styling with background color to make it visible
+        self._idle_label.setStyleSheet("""
+            QLabel {
+                font-size: 16px;
+                font-weight: bold;
+                color: #ffffff;
+                background-color: #1e1e1e;
+                padding: 40px;
+                border: 2px solid #555555;
+                margin: 20px;
+            }
+        """)
+        
+        # Make sure the label is properly sized
+        self._idle_label.setMinimumSize(400, 200)
+        self._idle_label.resize(600, 300)  # Force explicit size
+        logger.debug("Configured idle label text and styling")
+        
+        # Now delete the old central widget if it was different and still exists
+        if current_central and current_central != self._idle_label:
+            logger.debug(f"Deleting old central widget: {type(current_central)}")
+            try:
+                current_central.hide()
+                current_central.deleteLater()
+            except Exception as e:
+                logger.error(f"Error deleting old central widget: {e}")
+        
+        # Set as central widget FIRST, then make visible
+        self.setCentralWidget(self._idle_label)
+        logger.debug(f"Set central widget to idle label: {self._idle_label}")
+        
+        # Try different visibility approaches
+        self._idle_label.setHidden(False)  # Try setHidden instead of setVisible
+        self._idle_label.show()
+        self._idle_label.setVisible(True)
+        self._idle_label.showNormal()
+        
+        # Force the main window to be visible too
+        self.show()
+        self.showNormal()
+                
+        # Force an update to make sure the UI refreshes
+        self.update()
+        
+        # Ensure it's visible and properly styled - do this AFTER setting as central widget
+        self._idle_label.show()
+        self._idle_label.raise_()
+        
+        # Make sure the MainWindow itself is properly refreshed
+        self.repaint()
+        
+        logger.debug("Idle state setup complete")
+        
+        # Verify the central widget is actually set
+        current_after = self.centralWidget()
+        logger.debug(f"Central widget after setup: {current_after} (is idle label: {current_after is self._idle_label})")
+        
+        # Check widget geometry and visibility
+        if self._idle_label:
+            geometry = self._idle_label.geometry()
+            logger.debug(f"Idle label geometry: x={geometry.x()}, y={geometry.y()}, w={geometry.width()}, h={geometry.height()}")
+            logger.debug(f"Idle label visible (after show): {self._idle_label.isVisible()}")
+            logger.debug(f"Idle label text: '{self._idle_label.text()}'")
+            logger.debug(f"Main window geometry: {self.geometry()}")
+            
+            # Check if the label is actually the central widget
+            actual_central = self.centralWidget()
+            logger.debug(f"Actual central widget: {actual_central} (is idle label: {actual_central is self._idle_label})")
+            
+        # Force focus and activation
+        self.activateWindow()
+        self.raise_()
+
+    def _hide_game_docks(self) -> None:
+        """Hide all game-related dock widgets when closing a game"""
+        try:
+            # Hide status dock
+            if self.status_dock:
+                self.status_dock.hide()
+            
+            # Hide actions dock
+            if self.actions_dock:
+                self.actions_dock.hide()
+            
+            # Hide log docks
+            if hasattr(self, '_log_docks') and self._log_docks:
+                for dock in self._log_docks.values():
+                    if dock:
+                        dock.hide()
+            
+            # Hide location panel docks
+            if hasattr(self, '_dock_panel_galaxy') and self._dock_panel_galaxy:
+                self._dock_panel_galaxy.hide()
+            
+            if hasattr(self, '_dock_panel_system') and self._dock_panel_system:
+                self._dock_panel_system.hide()
+                
+        except Exception:
+            # Ignore any errors during dock hiding
+            pass
+
     # ---------- Legacy/global glow toggle (applies to both leaders) ----------
 
     def _toggle_leader_glow(self, enabled: bool) -> None:
@@ -507,7 +660,7 @@ class MainWindow(QMainWindow):
             central = QSplitter(Qt.Orientation.Horizontal, self)
             self._central_splitter = central
 
-            mv = _make_map_view()
+            mv = _make_map_view(central)  # Pass splitter as parent
             self._map_view = mv
             
             # Initialize travel flow before setting up visualizer

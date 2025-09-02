@@ -157,6 +157,9 @@ class GalaxyLeaderLineController(QObject):
 
         self._overlay: Optional[LeadLine] = None
         self._overlay_src: Optional[QWidget] = None  # where map coords live
+        
+        # Flag to track if this object is being destroyed
+        self._is_destroyed = False
 
         # Smooth follow timer (~60 FPS)
         self._tick = QTimer(self)
@@ -171,6 +174,16 @@ class GalaxyLeaderLineController(QObject):
         self._panel.hovered.connect(self.on_hover)
         self._panel.leftView.connect(self.on_leave)
         self._panel.anchorMoved.connect(self.refresh)
+
+    def __del__(self):
+        """Cleanup method to prevent timer callbacks after destruction"""
+        self._is_destroyed = True
+        try:
+            if hasattr(self, '_tick') and self._tick:
+                self._tick.stop()
+                self._tick.timeout.disconnect()
+        except (RuntimeError, AttributeError):
+            pass
 
     # -------- public API --------
 
@@ -299,27 +312,44 @@ class GalaxyLeaderLineController(QObject):
         self.clear()
 
     def refresh(self) -> None:
-        if not self._scope_allows_now():
-            self.clear()
-            if self._overlay:
-                self._overlay.hide()
-            return
+        """Refresh the leadline display, with protection against deleted widgets"""
+        try:
+            # Check if this object has been destroyed
+            if getattr(self, '_is_destroyed', False):
+                return
+                
+            # Check if the panel still exists and is valid
+            if not self._panel or not hasattr(self._panel, 'cursor_inside_viewport'):
+                self.clear()
+                if self._overlay:
+                    self._overlay.hide()
+                return
+                
+            if not self._scope_allows_now():
+                self.clear()
+                if self._overlay:
+                    self._overlay.hide()
+                return
 
-        inside = getattr(self._panel, "cursor_inside_viewport", None)
-        if callable(inside) and not inside():
-            self.clear()
-            if self._overlay:
-                self._overlay.hide()
-            return
+            inside = getattr(self._panel, "cursor_inside_viewport", None)
+            if callable(inside) and not inside():
+                self.clear()
+                if self._overlay:
+                    self._overlay.hide()
+                return
 
-        if self._overlay is None:
-            return
+            if self._overlay is None:
+                return
 
-        item = self._panel.current_hover_item()
-        if not isinstance(item, QTreeWidgetItem):
+            item = self._panel.current_hover_item()
+            if not isinstance(item, QTreeWidgetItem):
+                self.clear()
+                if self._overlay:
+                    self._overlay.hide()
+                return
+        except RuntimeError:
+            # Qt objects have been deleted, just clear and return
             self.clear()
-            if self._overlay:
-                self._overlay.hide()
             return
 
         data_val = item.data(0, Qt.ItemDataRole.UserRole)
@@ -460,19 +490,30 @@ class GalaxyLeaderLineController(QObject):
             self._tick.stop()
 
     def _on_tick(self) -> None:
-        if not self._scope_allows_now():
-            self.clear()
-            if self._overlay:
-                self._overlay.hide()
-            return
+        """Timer tick handler with protection against deleted widgets"""
+        try:
+            # Check if this object has been destroyed
+            if getattr(self, '_is_destroyed', False):
+                self._maybe_stop_tick()
+                return
+                
+            if not self._scope_allows_now():
+                self.clear()
+                if self._overlay:
+                    self._overlay.hide()
+                return
 
-        if self._overlay is None or self._overlay_src is None:
+            if self._overlay is None or self._overlay_src is None:
+                self._maybe_stop_tick()
+                return
+
+            inside = getattr(self._panel, "cursor_inside_viewport", None)
+            if callable(inside) and not inside():
+                self._line_active = False
+        except RuntimeError:
+            # Qt objects have been deleted, stop the timer
             self._maybe_stop_tick()
             return
-
-        inside = getattr(self._panel, "cursor_inside_viewport", None)
-        if callable(inside) and not inside():
-            self._line_active = False
             if self._overlay:
                 self._overlay.clear()
             self._maybe_stop_tick()

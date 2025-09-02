@@ -20,17 +20,16 @@ class _MainWindowLike(Protocol):
     def menuBar(self) -> QMenuBar: ...
     # docks (status may be created lazily)
     status_dock: Optional[QDockWidget]
+    actions_dock: Optional[QDockWidget]  # Add actions dock
     log_dock: Optional[QDockWidget]
     # location panels (split UI)
     location_panel_galaxy: Optional[QWidget]
     location_panel_system: Optional[QWidget]
-    # legacy single panel (optional)
-    location_panel: Optional[QWidget]
     # actions set up by this module
     act_panel_status: Optional[QAction]
+    act_panel_actions: Optional[QAction]  # Add actions panel action
     act_panel_location_galaxy: Optional[QAction]
     act_panel_location_system: Optional[QAction]
-    act_panel_location: Optional[QAction]
     # legacy global leader-line toggle
     act_leader_glow: Optional[QAction]
     # new per-line toggles (if present)
@@ -64,14 +63,32 @@ def _checked_visible(w: Optional[QWidget]) -> bool:
 
 def sync_panels_menu_state(win: _MainWindowLike) -> None:
     """Reflect actual widget visibility into the Panels submenu actions."""
+    from save.save_manager import SaveManager
+    
+    # Check if a game is currently loaded
+    has_active_game = SaveManager.active_save_dir() is not None
+    
     # Status dock (may not exist yet)
     act = getattr(win, "act_panel_status", None)
     dock = getattr(win, "status_dock", None)
     if isinstance(act, QAction):
         try:
             act.blockSignals(True)
-            act.setEnabled(isinstance(dock, QDockWidget))
-            act.setChecked(_checked_visible(dock))
+            # Disable if no game is loaded, regardless of widget existence
+            act.setEnabled(has_active_game and isinstance(dock, QDockWidget))
+            act.setChecked(_checked_visible(dock) if has_active_game else False)
+        finally:
+            act.blockSignals(False)
+
+    # Actions dock (may not exist yet)
+    act = getattr(win, "act_panel_actions", None)
+    dock = getattr(win, "actions_dock", None)
+    if isinstance(act, QAction):
+        try:
+            act.blockSignals(True)
+            # Disable if no game is loaded, regardless of widget existence
+            act.setEnabled(has_active_game and isinstance(dock, QDockWidget))
+            act.setChecked(_checked_visible(dock) if has_active_game else False)
         finally:
             act.blockSignals(False)
 
@@ -88,9 +105,9 @@ def sync_panels_menu_state(win: _MainWindowLike) -> None:
                         dock = getattr(win, "_log_docks", {}).get(cat)
                     except Exception:
                         dock = None
-                    # Disable if dock doesn't exist yet (consistent with other panels)
-                    action.setEnabled(isinstance(dock, QDockWidget))
-                    action.setChecked(_checked_visible(dock))
+                    # Disable if no game is loaded or dock doesn't exist
+                    action.setEnabled(has_active_game and isinstance(dock, QDockWidget))
+                    action.setChecked(_checked_visible(dock) if has_active_game else False)
                 finally:
                     try:
                         action.blockSignals(False)
@@ -105,8 +122,9 @@ def sync_panels_menu_state(win: _MainWindowLike) -> None:
     if isinstance(act, QAction):
         try:
             act.blockSignals(True)
-            act.setEnabled(isinstance(panel, QWidget))
-            act.setChecked(_checked_visible(panel))
+            # Disable if no game is loaded, regardless of widget existence
+            act.setEnabled(has_active_game and isinstance(panel, QWidget))
+            act.setChecked(_checked_visible(panel) if has_active_game else False)
         finally:
             act.blockSignals(False)
 
@@ -116,19 +134,9 @@ def sync_panels_menu_state(win: _MainWindowLike) -> None:
     if isinstance(act, QAction):
         try:
             act.blockSignals(True)
-            act.setEnabled(isinstance(panel, QWidget))
-            act.setChecked(_checked_visible(panel))
-        finally:
-            act.blockSignals(False)
-
-    # Legacy single list (optional)
-    act = getattr(win, "act_panel_location", None)
-    panel = getattr(win, "location_panel", None)
-    if isinstance(act, QAction):
-        try:
-            act.blockSignals(True)
-            act.setEnabled(isinstance(panel, QWidget))
-            act.setChecked(_checked_visible(panel))
+            # Disable if no game is loaded, regardless of widget existence
+            act.setEnabled(has_active_game and isinstance(panel, QWidget))
+            act.setChecked(_checked_visible(panel) if has_active_game else False)
         finally:
             act.blockSignals(False)
 
@@ -312,6 +320,16 @@ Application: Victurus"""
     panels.addAction(act_p_status)
     win.act_panel_status = act_p_status
 
+    # Actions dock (may not exist yet; action disabled until it does)
+    act_p_actions = QAction("Actions", panels)
+    act_p_actions.setCheckable(True)
+    ad = getattr(win, "actions_dock", None)
+    act_p_actions.setEnabled(isinstance(ad, QDockWidget))
+    act_p_actions.setChecked(_checked_visible(ad))
+    act_p_actions.toggled.connect(_toggle(lambda: getattr(win, "actions_dock", None)))
+    panels.addAction(act_p_actions)
+    win.act_panel_actions = act_p_actions
+
     # Logs submenu: one toggle per log category (if available)
     from ui.state.window_state import update_window_data
     logs_menu = QMenu("Logs", panels)
@@ -375,15 +393,6 @@ Application: Victurus"""
     panels.addAction(act_p_sys)
     win.act_panel_location_system = act_p_sys
 
-    # Legacy single list (optional)
-    act_p_loc = QAction("Location List (legacy)", panels)
-    act_p_loc.setCheckable(True)
-    act_p_loc.setEnabled(isinstance(getattr(win, "location_panel", None), QWidget))
-    act_p_loc.setChecked(_checked_visible(getattr(win, "location_panel", None)))
-    act_p_loc.toggled.connect(_toggle(lambda: getattr(win, "location_panel", None)))
-    panels.addAction(act_p_loc)
-    win.act_panel_location = act_p_loc
-
     # Keep a mapping of per-category log actions on the window so
     # sync_panels_menu_state can update them when log docks are created.
     try:
@@ -406,9 +415,9 @@ Application: Victurus"""
     def _show_all():
         # Show main panels
         _toggle(lambda: getattr(win, "status_dock", None))(True)
+        _toggle(lambda: getattr(win, "actions_dock", None))(True)  # Add actions dock
         _toggle(lambda: getattr(win, "location_panel_galaxy", None))(True)
         _toggle(lambda: getattr(win, "location_panel_system", None))(True)
-        _toggle(lambda: getattr(win, "location_panel", None))(True)  # legacy
         
         # Show all log docks
         try:
@@ -429,9 +438,9 @@ Application: Victurus"""
     def _hide_all():
         # Hide main panels
         _toggle(lambda: getattr(win, "status_dock", None))(False)
+        _toggle(lambda: getattr(win, "actions_dock", None))(False)  # Add actions dock
         _toggle(lambda: getattr(win, "location_panel_galaxy", None))(False)
         _toggle(lambda: getattr(win, "location_panel_system", None))(False)
-        _toggle(lambda: getattr(win, "location_panel", None))(False)  # legacy
         
         # Hide all log docks
         try:

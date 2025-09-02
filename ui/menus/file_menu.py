@@ -11,10 +11,10 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QMessageBox, QDialog
 from PySide6.QtGui import QAction
+from PySide6.QtCore import QTimer, Qt
 
 from save.save_manager import SaveManager
 from ui.state import window_state as _ws
-from PySide6.QtCore import QTimer
 from ui.dialogs.save_as_dialog import SaveAsDialog
 from ui.dialogs.load_game_dialog import LoadGameDialog
 from game_controller.log_config import get_ui_logger
@@ -523,72 +523,14 @@ def _on_close_game(win):
         
         # Reset UI state to initial idle state
         try:
-            # Ensure the idle label exists and has the correct text
-            from PySide6.QtCore import Qt
-            from PySide6.QtWidgets import QLabel
+            # Hide all game-related docks first
+            win._hide_game_docks()
             
-            # Always create a fresh idle label to ensure it works properly
-            win._idle_label = QLabel("No game loaded.\nUse File → New Game or Load Game to begin.")
-            win._idle_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            
-            # Add reasonable styling - white text for visibility on grey background
-            win._idle_label.setStyleSheet("""
-                QLabel {
-                    font-size: 14px;
-                    font-weight: normal;
-                    color: #ffffff;
-                    padding: 20px;
-                }
-            """)
-            
-            # Get the current central widget before replacing it
-            current_central = win.centralWidget()
-            
-            # Set the central widget back to the idle label first
-            win.setCentralWidget(win._idle_label)
-            
-            # Now delete the old central widget if it was different
-            if current_central and current_central != win._idle_label:
-                current_central.deleteLater()
-            
-            # Ensure the idle label is visible and properly styled
-            win._idle_label.show()
-            win._idle_label.raise_()
-            
-            # Reset game-related attributes
-            win._map_view = None
-            win._central_splitter = None
-            win._right_splitter = None
-            win.location_panel_galaxy = None
-            win.location_panel_system = None
-            win.location_panel = None
-            win.status_panel = None
-            
-            # Clear additional log-related attributes
-            if hasattr(win, '_log_entries'):
-                win._log_entries = []
-            if hasattr(win, '_log_categories'):
-                win._log_categories = None
-            
-            # Clear status bar
-            try:
-                if hasattr(win, 'lbl_systems'):
-                    win.lbl_systems.setText("Systems: —")
-                if hasattr(win, 'lbl_items'):
-                    win.lbl_items.setText("Items: —")
-                if hasattr(win, 'lbl_ships'):
-                    win.lbl_ships.setText("Ships: —")
-                if hasattr(win, 'lbl_credits'):
-                    win.lbl_credits.setText("Credits: —")
-            except Exception:
-                pass
+            # Use the centralized idle state setup method - this handles MapTabs cleanup
+            win._setup_idle_state()
             
             # Update window title to remove game name
             win.setWindowTitle("Victurus")
-            
-            # Force a repaint to ensure the idle label is displayed
-            win.update()
-            win.repaint()
             
         except Exception:
             pass
