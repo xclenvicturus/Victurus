@@ -10,6 +10,7 @@ Every Python file must start with:
 
 ```python
 # /relative/path/to/file.py
+
 """File Title
 
 Brief description of what this file does.
@@ -35,6 +36,7 @@ from __future__ import annotations
 ### Simple Utility File
 ```python
 # /ui/utils/docks.py
+
 """Dock Widget Utilities
 
 Helper functions for creating and managing dock widgets with state persistence.
@@ -49,6 +51,7 @@ from __future__ import annotations
 ### Complex System File
 ```python
 # /ui/maps/system.py
+
 """System Map Display Widget
 
 SystemMapWidget for displaying solar system layouts with interactive elements.
@@ -67,6 +70,7 @@ from __future__ import annotations
 ### Dialog File
 ```python
 # /ui/dialogs/load_game_dialog.py
+
 """Load Game Dialog
 
 Dialog for loading saved games with metadata display and management.

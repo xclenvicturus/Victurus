@@ -1,5 +1,14 @@
 # /save/ui_state_tracer.py
 
+"""UI State Debug Tracer
+
+Optional debug tracing system for UI state persistence operations.
+• Configurable tracing enable/disable via ENABLE_TRACING flag
+• Timestamped event logging to ui_state_trace.log
+• Best-effort logging with silent error handling
+• Traces UI state save/load operations for debugging
+"""
+
 from __future__ import annotations
 
 from pathlib import Path

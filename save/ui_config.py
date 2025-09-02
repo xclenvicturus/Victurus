@@ -1,5 +1,15 @@
 # /save/ui_config.py
 
+"""UI Configuration Persistence
+
+Manages UI state persistence between global and per-save configurations.
+• Provider pattern for UI state collection from main window
+• Global ui_state.json management with atomic writes
+• Per-save UI state merging and fallback handling
+• Delayed provider snapshots for lazy UI initialization
+• Window geometry, dock layouts, and panel visibility persistence
+"""
+
 from __future__ import annotations
 
 from typing import Callable, Dict, Any, Optional, Type, Any as TypingAny, cast
