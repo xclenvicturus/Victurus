@@ -1,9 +1,14 @@
 # /game_controller/sim_loop.py
 
-# Background "universe" simulator that runs off the UI thread and
-# advances all NON-visible systems, markets, ships, etc.
-# It also exposes a small publish_tick() hook the UI can call to
-# annotate what's happening during visible rendering.
+"""
+Victurus Universe Simulation Loop
+
+Background simulation system that runs off the UI thread:
+- Advances all non-visible systems, markets, and ships
+- Manages orbital mechanics and universe state
+- Provides publish_tick() hook for UI rendering coordination
+- Handles system visibility and update optimization
+"""
 
 from __future__ import annotations
 

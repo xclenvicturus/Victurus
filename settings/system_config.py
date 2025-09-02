@@ -1,11 +1,13 @@
 # /settings/system_config.py
 
-"""System-wide adjustable settings.
+"""
+Victurus System Configuration
 
-Put all user/tweakable variables here. Sections are separated by comment headers.
-Adjust values to tune visuals, spacing, and timing. Code that consumes these
-values should import from this module. Keep values primitive (int/float/bool)
-for easy serialization if you later want a UI to edit them.
+Centralized system-wide adjustable settings:
+- Visual parameters (spacing, colors, sizing)
+- Timing and performance settings
+- Map display and interaction parameters
+- User-tweakable variables for fine-tuning
 """
 
 # ---------------------------------------------------------------------------

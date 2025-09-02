@@ -1,3 +1,5 @@
+# /ui/dialogs/error_reporter_dialog.py
+
 """
 Error Reporter Dialog for Victurus
 

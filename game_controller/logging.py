@@ -1,17 +1,14 @@
 # /game_controller/logging.py
-"""
-Game Controller Logging System
 
-Lightweight, centralized logging utilities for Victurus.
-- Simple setup() that can log to console and/or a rotating file
-- Plain text or JSON formatting
-- A sink factory that returns Callable[[str], None] for simulator debug piping
 """
+Victurus Game Controller Logging System
 
-# Lightweight, centralized logging utilities for Victurus.
-# - Simple setup() that can log to console and/or a rotating file
-# - Plain text or JSON formatting
-# - A sink factory that returns Callable[[str], None] for simulator debug piping
+Lightweight, centralized logging utilities:
+- Simple setup for console and/or rotating file logging
+- Plain text or JSON formatting options
+- Debug sink factory for simulator integration
+- Legacy logging support alongside new log_config system
+"""
 
 from __future__ import annotations
 

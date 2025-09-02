@@ -1,7 +1,12 @@
-#!/usr/bin/env python3
-"""
+# /tests/test_load_multiple_saves.py
+
+"""Load Multiple Saves Test
+
 Test script to verify that loading games with multiple saves works without crashes.
-This script tests the Load Game Dialog functionality with existing saves.
+• Tests Load Game Dialog functionality with existing saves
+• Validates save metadata loading and display
+• Checks error handling with corrupted saves
+• Environment setup with high DPI configuration
 """
 
 import sys

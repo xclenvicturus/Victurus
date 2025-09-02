@@ -1,4 +1,5 @@
 # /ui/maps/system.py
+
 """
 System Map Display Widget
 

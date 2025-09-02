@@ -1,15 +1,13 @@
 # /ui/maps/tabs.py
 
 """
-ui/maps/tabs.py
-This module only owns the two map views.
+Victurus Map Tab Container
 
-MapTabs:
-- A QTabWidget with:
-    • "Galaxy"  -> GalaxyMapWidget
-    • "System"  -> SystemMapWidget
-- Convenience methods to center/refresh.
-- Auto-loads SystemMapWidget for the player's current system.
+Container widget managing galaxy and system map views:
+- QTabWidget with Galaxy and System map tabs
+- Convenience methods for centering and refreshing maps
+- Auto-loads SystemMapWidget for the player's current system
+- Coordinates between different map views
 """
 
 from __future__ import annotations

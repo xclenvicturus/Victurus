@@ -1,6 +1,12 @@
-#!/usr/bin/env python3
-"""
-Test the error handling system to make sure it works correctly.
+# /tests/test_error_handler.py
+
+"""Error Handler Test
+
+Test script to validate the error handling system functionality.
+• Tests error decorators and exception catching
+• Validates error reporter dialog display
+• Checks safe call mechanisms and context managers
+• Interactive testing with button-triggered errors
 """
 
 import sys

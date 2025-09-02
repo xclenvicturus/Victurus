@@ -1,5 +1,15 @@
 # /data/seed.py
 
+"""
+Victurus Database Seeding and Setup
+
+Handles database initialization and data seeding:
+- Creates database schema from schema.sql
+- Seeds universe data from universe_seed.json
+- Provides database reset and migration functionality
+- Manages initial game world state
+"""
+
 from __future__ import annotations
 
 import json

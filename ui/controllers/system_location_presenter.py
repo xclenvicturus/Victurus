@@ -1,5 +1,15 @@
 # /ui/controllers/system_location_presenter.py
 
+"""
+Victurus System Location Presenter
+
+Controller for system location list and map integration:
+- Populates system location list with stars, planets, moons, and stations
+- Handles single-click (center without lock) and double-click (center with lock)
+- Coordinates camera control and travel system integration
+- Manages fuel calculations and travel display data
+"""
+
 from __future__ import annotations
 
 import math

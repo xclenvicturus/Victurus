@@ -1,5 +1,14 @@
 # /ui/maps/galaxy_leadline.py
 
+"""Galaxy Map Lead Line Overlay
+
+Transparent overlay widget that draws lead lines from hover items to their entries in lists.
+• Real-time line drawing based on mouse position  
+• Viewport coordinate mapping between map and list widgets
+• Color and width customization with optional glow effects
+• Timer-based delayed display to prevent flicker
+"""
+
 from __future__ import annotations
 
 from typing import Optional, Union, Callable, Tuple, cast, Any, TYPE_CHECKING

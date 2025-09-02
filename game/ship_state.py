@@ -1,4 +1,5 @@
 # /game/ship_state.py
+
 """
 Ship State Management
 

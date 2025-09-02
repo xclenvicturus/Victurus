@@ -1,5 +1,15 @@
 # /game/player_status.py
 
+"""
+Victurus Player Status Aggregation
+
+Provides consolidated player and ship status information:
+- Player location and system data
+- Ship status and travel state
+- Current system information
+- Aggregated snapshots for UI consumption
+"""
+
 from __future__ import annotations
 
 from typing import Dict, Any, Optional, cast, Iterable

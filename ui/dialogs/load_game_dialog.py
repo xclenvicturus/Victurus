@@ -1,5 +1,15 @@
 # /ui/dialogs/load_game_dialog.py
 
+"""Load Game Dialog
+
+Dialog for loading saved games with metadata display and management.
+• Tree widget showing saves with timestamps and details
+• Load, delete, and rename functionality
+• New game creation option
+• Sortable columns for organization
+• Save validation and error handling
+"""
+
 from __future__ import annotations
 from pathlib import Path
 from typing import Optional

@@ -1,4 +1,5 @@
 # /ui/widgets/galaxy_system_list.py
+
 """
 Galaxy System List Widget
 

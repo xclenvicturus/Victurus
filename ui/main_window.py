@@ -1,5 +1,16 @@
 # /ui/main_window.py
 
+"""
+Victurus Main Application Window
+
+Central hub of the Victurus application:
+- Manages dockable UI panels and main content area
+- Coordinates map views, status displays, and control panels
+- Handles save/load operations and game state transitions
+- Integrates travel system, universe simulation, and UI state persistence
+- Provides central signal routing between UI components
+"""
+
 from __future__ import annotations
 
 from typing import Optional, List, Dict, Any, Tuple

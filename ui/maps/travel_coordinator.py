@@ -1,4 +1,5 @@
 # /ui/maps/travel_coordinator.py
+
 """
 Travel Visualization Coordinator
 
@@ -165,9 +166,10 @@ class TravelCoordinator(QObject):
                 try:
                     if self._galaxy_map:
                         viz = self._galaxy_map.get_travel_visualization()
-                        path = viz.get_current_path()
-                        if path:
-                            self._total_travel_time = path.total_time
+                        if viz:
+                            path = viz.get_current_path()
+                            if path:
+                                self._total_travel_time = path.total_time
                 except Exception as e:
                     logger.warning(f"Could not get travel time estimate: {e}")
                         

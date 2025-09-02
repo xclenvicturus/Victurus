@@ -1,3 +1,12 @@
-# ui/__init__.py
+# /ui/__init__.py
 
-# Marks "ui" as a package so imports resolve correctly.
+"""
+Victurus User Interface Package
+
+Main UI package containing all interface components:
+- Main window and application structure
+- Map widgets and visualization
+- Panels and dialogs
+- Menu systems and controls
+- State management and persistence
+"""

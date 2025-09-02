@@ -1,4 +1,5 @@
 # /ui/state/window_state.py
+
 """
 Window State Management
 

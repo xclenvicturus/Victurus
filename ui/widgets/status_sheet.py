@@ -1,5 +1,5 @@
-
 # /ui/widgets/status_sheet.py
+
 """
 Player Status Sheet Widget
 

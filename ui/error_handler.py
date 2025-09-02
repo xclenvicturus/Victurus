@@ -1,4 +1,5 @@
 # /ui/error_handler.py
+
 """
 Global Error Handler for Victurus
 

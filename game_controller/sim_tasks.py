@@ -1,7 +1,14 @@
 # /game_controller/sim_tasks.py
 
-# Worker-side tasks for the universe simulator.
-# Pure functions only: no Qt, no global mutable state shared across processes.
+"""
+Victurus Universe Simulation Tasks
+
+Worker-side tasks for the universe simulator:
+- Pure functions with no Qt or global mutable state
+- Market dynamics and economic simulation
+- Ship AI and movement patterns
+- System-level simulation tasks
+"""
 
 from __future__ import annotations
 

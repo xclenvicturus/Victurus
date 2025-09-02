@@ -1,5 +1,15 @@
 # /ui/state/ui_state_manager.py
 
+"""
+Victurus UI State Management System
+
+Manages persistent UI state across application sessions:
+- Automatic state tracking and serialization
+- Debounced writes to prevent excessive I/O
+- Integration with save system for per-save UI preferences
+- Main window geometry, dock positions, and user preferences
+"""
+
 from __future__ import annotations
 
 import json

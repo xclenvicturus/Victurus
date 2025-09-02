@@ -1,4 +1,5 @@
 # /ui/constants.py
+
 """
 UI Constants and Shared Values
 

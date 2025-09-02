@@ -1,5 +1,15 @@
 # /ui/controllers/galaxy_location_presenter.py
 
+"""
+Victurus Galaxy Location Presenter
+
+Controller for galaxy system list and map integration:
+- Populates galaxy system list with filterable/sortable data
+- Handles single-click (focus) and double-click (open) actions
+- Coordinates between galaxy map and system views
+- Manages travel integration and system loading
+"""
+
 from __future__ import annotations
 
 from typing import Dict, List, Optional, Iterable, Any, Protocol, runtime_checkable, cast

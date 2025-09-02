@@ -1,10 +1,13 @@
 
 # /ui/maps/background_view.py
 
-"""
-BackgroundView
-- background image; can be drawn in viewport ("screen") or scene space
-- Tiled starfield layers (optional, cached & DPR-aware for performance)
+"""Background View for Maps
+
+Renders background images and animated starfields for map displays.
+• Background image rendering in viewport or scene space
+• Multi-layer animated starfield with random movement
+• DPR-aware caching for performance optimization
+• Smooth parallax effects and color customization
 """
 
 from __future__ import annotations

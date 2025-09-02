@@ -1,5 +1,16 @@
 # /save/save_manager.py
 
+"""
+Victurus Save Game Management System
+
+Comprehensive save game functionality:
+- Debounced save system with automatic UI state persistence
+- Save slot management and metadata tracking
+- Database backup and restoration
+- UI state serialization and restoration
+- Thread-safe save operations
+"""
+
 from __future__ import annotations
 
 import shutil

@@ -1,6 +1,14 @@
 
 # /ui/dialogs/save_as_dialog.py
 
+"""Save As Dialog
+
+Simple dialog for getting a new save name from the user.
+• Text input with 30 character limit
+• Form layout for clean presentation
+• Dialog button box with OK/Cancel
+"""
+
 from __future__ import annotations
 from typing import Optional
 

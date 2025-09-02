@@ -1,5 +1,15 @@
 # /save/icon_paths.py
 
+"""
+Victurus Save-Specific Icon Path Management
+
+Deterministic icon assignment and baking system:
+- Maps entity IDs to consistent visual assets per save
+- Bakes icon assignments to save-specific data
+- Ensures visual consistency across sessions
+- Handles asset selection from available resources
+"""
+
 from __future__ import annotations
 
 import sqlite3

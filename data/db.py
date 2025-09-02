@@ -1,5 +1,15 @@
 # /data/db.py
 
+"""
+Victurus Database Interface
+
+Thread-safe SQLite database wrapper providing:
+- Thread-local connections with WAL mode
+- Foreign key constraint enforcement
+- CRUD operations for game entities (systems, locations, players, ships)
+- Transaction management and connection lifecycle
+"""
+
 from __future__ import annotations
 
 import sqlite3

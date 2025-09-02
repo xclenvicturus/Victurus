@@ -1,5 +1,15 @@
 # /game_controller/newgame_create.py
 
+"""
+Victurus New Game Creation System
+
+Handles creation of new game saves:
+- Initialize fresh save directory structure
+- Set up initial player and ship data
+- Configure starting location and resources
+- Integrate with save management system
+"""
+
 from __future__ import annotations
 
 from typing import Optional, Dict

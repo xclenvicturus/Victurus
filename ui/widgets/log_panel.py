@@ -1,4 +1,5 @@
 # /ui/widgets/log_panel.py
+
 """
 Log Panel Widget
 

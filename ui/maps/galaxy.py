@@ -1,4 +1,5 @@
 # /ui/maps/galaxy.py
+
 """
 Galaxy Map Display System
 

@@ -1,14 +1,15 @@
 # /game_controller/config.py
-"""
-Game Controller Configuration
 
-Centralized configuration for Victurus game controller system. Values are environment-driven,
-with safe defaults. Import and use wherever needed.
+"""
+Victurus Game Controller Configuration
+
+Centralized configuration for Victurus game controller system:
+- Environment-driven settings with safe defaults
+- Simulation timing and performance parameters
+- System behavior configuration
+- Database and logging configuration
 """
 
-# Centralized configuration for Victurus. Values are environment-driven,
-# with safe defaults. Import and use wherever needed.
-#
 # Example env:
 #   VICTURUS_TICK_HZ=2.0
 #   VICTURUS_USE_POOL=1

@@ -1,4 +1,5 @@
 # /ui/error_utils.py
+
 """
 Error handling decorators and utilities for Victurus
 

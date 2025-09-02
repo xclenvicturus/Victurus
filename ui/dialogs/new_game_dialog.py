@@ -1,5 +1,15 @@
 # /ui/dialogs/new_game_dialog.py
 
+"""New Game Creation Dialog
+
+Dialog for creating a new game with starting options loaded from database.
+• Player name input with validation
+• Faction selection from database options
+• Starting location dropdown with descriptions
+• Safe coercion helpers for robust data handling
+• Preview of selected faction/location details
+"""
+
 from __future__ import annotations
 
 from typing import Optional, Dict, List, Any

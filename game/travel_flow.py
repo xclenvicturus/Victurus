@@ -1,5 +1,15 @@
 # /game/travel_flow.py
 
+"""
+Victurus Travel Flow Management
+
+Coordinates multi-phase travel system with real-time progress tracking:
+- Manages travel phases (departure, cruise, warp, arrival)
+- Provides progress signals for UI updates
+- Handles fuel consumption and travel validation
+- Integrates with ship state and visual feedback systems
+"""
+
 from __future__ import annotations
 
 from typing import Callable, Optional, Dict, Any, List, Tuple
