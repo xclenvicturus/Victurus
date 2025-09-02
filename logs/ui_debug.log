@@ -18088,3 +18088,453 @@
 2025-09-02 01:37:54 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
 2025-09-02 01:37:56 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
 2025-09-02 01:37:57 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:38:54 DEBUG ui.travel_overlay: Travel status overlay initialized
+2025-09-02 01:38:54 DEBUG ui.travel_overlay: Travel status overlay initialized
+2025-09-02 01:38:54 DEBUG ui.main_window: _ensure_travel_flow called - current travel_flow: None
+2025-09-02 01:38:54 DEBUG ui.main_window: Created new travel_flow: <game.travel_flow.TravelFlow(0x1e7a3603830) at 0x000001E7A4BA98C0>
+2025-09-02 01:38:54 DEBUG ui.main_window: Connected travel_flow progressTick to _safe_refresh_status
+2025-09-02 01:38:54 DEBUG ui.main_window: Setting up travel status tracking
+2025-09-02 01:38:54 DEBUG ui.main_window: Galaxy widget: <ui.maps.galaxy.GalaxyMapWidget(0x1e794e5a350) at 0x000001E7955AEA80>
+2025-09-02 01:38:54 DEBUG ui.main_window: System widget: <ui.maps.system.SystemMapWidget(0x1e794e5a0b0) at 0x000001E795C11B80>
+2025-09-02 01:38:54 DEBUG ui.simple_travel_status: Connected to TravelFlow progress ticks
+2025-09-02 01:38:54 DEBUG ui.main_window: Connected galaxy travel status to travel flow
+2025-09-02 01:38:54 DEBUG ui.simple_travel_status: Connected to TravelFlow progress ticks
+2025-09-02 01:38:54 DEBUG ui.main_window: Connected system travel status to travel flow
+2025-09-02 01:38:54 DEBUG ui.main_window: Travel status setup complete
+2025-09-02 01:38:55 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:38:56 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:38:58 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:48:01 DEBUG ui.travel_overlay: Travel status overlay initialized
+2025-09-02 01:48:01 DEBUG ui.travel_overlay: Travel status overlay initialized
+2025-09-02 01:48:01 DEBUG ui.main_window: _ensure_travel_flow called - current travel_flow: None
+2025-09-02 01:48:01 DEBUG ui.main_window: Created new travel_flow: <game.travel_flow.TravelFlow(0x1db99b4f320) at 0x000001DBA94F8C80>
+2025-09-02 01:48:01 DEBUG ui.main_window: Connected travel_flow progressTick to _safe_refresh_status
+2025-09-02 01:48:01 DEBUG ui.main_window: Setting up travel status tracking
+2025-09-02 01:48:01 DEBUG ui.main_window: Galaxy widget: <ui.maps.galaxy.GalaxyMapWidget(0x1db99b33950) at 0x000001DB9A156A80>
+2025-09-02 01:48:01 DEBUG ui.main_window: System widget: <ui.maps.system.SystemMapWidget(0x1db99b339c0) at 0x000001DB9A75D800>
+2025-09-02 01:48:01 DEBUG ui.simple_travel_status: Connected to TravelFlow progress ticks
+2025-09-02 01:48:01 DEBUG ui.main_window: Connected galaxy travel status to travel flow
+2025-09-02 01:48:01 DEBUG ui.simple_travel_status: Connected to TravelFlow progress ticks
+2025-09-02 01:48:01 DEBUG ui.main_window: Connected system travel status to travel flow
+2025-09-02 01:48:01 DEBUG ui.main_window: Travel status setup complete
+2025-09-02 01:48:02 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:48:03 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:48:05 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:48:06 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:48:07 INFO ui.galaxy_system_list: Galaxy system item clicked
+2025-09-02 01:48:07 INFO ui.galaxy_system_list: Tree widget enabled: True
+2025-09-02 01:48:07 INFO ui.galaxy_system_list: Tree widget visible: True
+2025-09-02 01:48:07 INFO ui.galaxy_system_list: Tree selection mode: SelectionMode.SingleSelection
+2025-09-02 01:48:07 INFO ui.galaxy_system_list: Item data: -198
+2025-09-02 01:48:07 INFO ui.galaxy_system_list: Item flags: ItemFlag.ItemIsSelectable|ItemIsDragEnabled|ItemIsDropEnabled|ItemIsUserCheckable|ItemIsEnabled
+2025-09-02 01:48:07 INFO ui.galaxy_system_list: Emitting clicked signal with value: -198
+2025-09-02 01:48:07 INFO ui.main_window: Galaxy panel clicked signal received: -198
+2025-09-02 01:48:08 INFO ui.galaxy_system_list: Galaxy system item clicked
+2025-09-02 01:48:08 INFO ui.galaxy_system_list: Tree widget enabled: True
+2025-09-02 01:48:08 INFO ui.galaxy_system_list: Tree widget visible: True
+2025-09-02 01:48:08 INFO ui.galaxy_system_list: Tree selection mode: SelectionMode.SingleSelection
+2025-09-02 01:48:08 INFO ui.galaxy_system_list: Item data: -191
+2025-09-02 01:48:08 INFO ui.galaxy_system_list: Item flags: ItemFlag.ItemIsSelectable|ItemIsDragEnabled|ItemIsDropEnabled|ItemIsUserCheckable|ItemIsEnabled
+2025-09-02 01:48:08 INFO ui.galaxy_system_list: Emitting clicked signal with value: -191
+2025-09-02 01:48:08 INFO ui.main_window: Galaxy panel clicked signal received: -191
+2025-09-02 01:48:08 INFO ui.galaxy_system_list: Galaxy system item double clicked
+2025-09-02 01:48:08 INFO ui.galaxy_system_list: Emitting doubleClicked signal with value: -191
+2025-09-02 01:48:08 INFO ui.main_window: Galaxy panel doubleClicked signal received: -191
+2025-09-02 01:48:08 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:48:09 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:48:10 INFO ui.system_location_list: System location item clicked
+2025-09-02 01:48:10 INFO ui.system_location_list: Item data: 1747
+2025-09-02 01:48:10 INFO ui.system_location_list: Emitting clicked signal with value: 1747
+2025-09-02 01:48:10 INFO ui.main_window: System panel clicked signal received: 1747
+2025-09-02 01:48:11 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:48:12 INFO ui.system_location_list: System location item clicked
+2025-09-02 01:48:12 INFO ui.system_location_list: Item data: 1747
+2025-09-02 01:48:12 INFO ui.system_location_list: Emitting clicked signal with value: 1747
+2025-09-02 01:48:12 INFO ui.main_window: System panel clicked signal received: 1747
+2025-09-02 01:48:12 INFO ui.system_location_list: System location item double clicked
+2025-09-02 01:48:12 INFO ui.system_location_list: Emitting doubleClicked signal with value: 1747
+2025-09-02 01:48:12 INFO ui.main_window: System panel doubleClicked signal received: 1747
+2025-09-02 01:48:12 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:48:13 INFO ui.system_location_list: System location item clicked
+2025-09-02 01:48:13 INFO ui.system_location_list: Item data: 1349
+2025-09-02 01:48:13 INFO ui.system_location_list: Emitting clicked signal with value: 1349
+2025-09-02 01:48:13 INFO ui.main_window: System panel clicked signal received: 1349
+2025-09-02 01:48:14 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:48:15 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:48:16 INFO ui.system_location_list: System location item clicked
+2025-09-02 01:48:16 INFO ui.system_location_list: Item data: 1747
+2025-09-02 01:48:16 INFO ui.system_location_list: Emitting clicked signal with value: 1747
+2025-09-02 01:48:16 INFO ui.main_window: System panel clicked signal received: 1747
+2025-09-02 01:48:16 INFO ui.system_location_list: System location item clicked
+2025-09-02 01:48:16 INFO ui.system_location_list: Item data: 1123
+2025-09-02 01:48:16 INFO ui.system_location_list: Emitting clicked signal with value: 1123
+2025-09-02 01:48:16 INFO ui.main_window: System panel clicked signal received: 1123
+2025-09-02 01:48:17 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:48:18 INFO ui.system_location_list: System location item clicked
+2025-09-02 01:48:18 INFO ui.system_location_list: Item data: -191
+2025-09-02 01:48:18 INFO ui.system_location_list: Emitting clicked signal with value: -191
+2025-09-02 01:48:18 INFO ui.main_window: System panel clicked signal received: -191
+2025-09-02 01:48:19 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:48:20 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:48:20 INFO ui.system_location_list: System location item clicked
+2025-09-02 01:48:20 INFO ui.system_location_list: Item data: 1123
+2025-09-02 01:48:20 INFO ui.system_location_list: Emitting clicked signal with value: 1123
+2025-09-02 01:48:20 INFO ui.main_window: System panel clicked signal received: 1123
+2025-09-02 01:48:22 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:48:22 INFO ui.system_location_list: System location item clicked
+2025-09-02 01:48:22 INFO ui.system_location_list: Item data: 1349
+2025-09-02 01:48:22 INFO ui.system_location_list: Emitting clicked signal with value: 1349
+2025-09-02 01:48:22 INFO ui.main_window: System panel clicked signal received: 1349
+2025-09-02 01:48:23 INFO ui.system_location_list: System location item clicked
+2025-09-02 01:48:23 INFO ui.system_location_list: Item data: 1349
+2025-09-02 01:48:23 INFO ui.system_location_list: Emitting clicked signal with value: 1349
+2025-09-02 01:48:23 INFO ui.main_window: System panel clicked signal received: 1349
+2025-09-02 01:48:23 INFO ui.system_location_list: System location item double clicked
+2025-09-02 01:48:23 INFO ui.system_location_list: Emitting doubleClicked signal with value: 1349
+2025-09-02 01:48:23 INFO ui.main_window: System panel doubleClicked signal received: 1349
+2025-09-02 01:48:23 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:48:25 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:48:26 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:48:28 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:48:29 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:48:30 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:48:32 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:48:34 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:48:35 INFO ui.system_location_list: System location item clicked
+2025-09-02 01:48:35 INFO ui.system_location_list: Item data: 1747
+2025-09-02 01:48:35 INFO ui.system_location_list: Emitting clicked signal with value: 1747
+2025-09-02 01:48:35 INFO ui.main_window: System panel clicked signal received: 1747
+2025-09-02 01:48:35 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:48:35 INFO ui.system_location_list: System location item double clicked
+2025-09-02 01:48:35 INFO ui.system_location_list: Emitting doubleClicked signal with value: 1747
+2025-09-02 01:48:35 INFO ui.main_window: System panel doubleClicked signal received: 1747
+2025-09-02 01:48:36 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:48:38 INFO ui.system_location_list: System location item clicked
+2025-09-02 01:48:38 INFO ui.system_location_list: Item data: 1747
+2025-09-02 01:48:38 INFO ui.system_location_list: Emitting clicked signal with value: 1747
+2025-09-02 01:48:38 INFO ui.main_window: System panel clicked signal received: 1747
+2025-09-02 01:48:38 INFO ui.system_location_list: System location item double clicked
+2025-09-02 01:48:38 INFO ui.system_location_list: Emitting doubleClicked signal with value: 1747
+2025-09-02 01:48:38 INFO ui.main_window: System panel doubleClicked signal received: 1747
+2025-09-02 01:48:38 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:48:39 INFO ui.system_location_list: System location item clicked
+2025-09-02 01:48:39 INFO ui.system_location_list: Item data: 1349
+2025-09-02 01:48:39 INFO ui.system_location_list: Emitting clicked signal with value: 1349
+2025-09-02 01:48:39 INFO ui.main_window: System panel clicked signal received: 1349
+2025-09-02 01:48:39 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:48:41 INFO ui.system_location_list: System location item clicked
+2025-09-02 01:48:41 INFO ui.system_location_list: Item data: 1123
+2025-09-02 01:48:41 INFO ui.system_location_list: Emitting clicked signal with value: 1123
+2025-09-02 01:48:41 INFO ui.main_window: System panel clicked signal received: 1123
+2025-09-02 01:48:41 INFO ui.system_location_list: System location item double clicked
+2025-09-02 01:48:41 INFO ui.system_location_list: Emitting doubleClicked signal with value: 1123
+2025-09-02 01:48:41 INFO ui.main_window: System panel doubleClicked signal received: 1123
+2025-09-02 01:48:41 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:48:42 INFO ui.system_location_list: System location item clicked
+2025-09-02 01:48:42 INFO ui.system_location_list: Item data: 1123
+2025-09-02 01:48:42 INFO ui.system_location_list: Emitting clicked signal with value: 1123
+2025-09-02 01:48:42 INFO ui.main_window: System panel clicked signal received: 1123
+2025-09-02 01:48:42 INFO ui.system_location_list: System location item double clicked
+2025-09-02 01:48:42 INFO ui.system_location_list: Emitting doubleClicked signal with value: 1123
+2025-09-02 01:48:42 INFO ui.main_window: System panel doubleClicked signal received: 1123
+2025-09-02 01:48:42 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:48:43 INFO ui.galaxy_system_list: Galaxy system item clicked
+2025-09-02 01:48:43 INFO ui.galaxy_system_list: Tree widget enabled: True
+2025-09-02 01:48:43 INFO ui.galaxy_system_list: Tree widget visible: True
+2025-09-02 01:48:43 INFO ui.galaxy_system_list: Tree selection mode: SelectionMode.SingleSelection
+2025-09-02 01:48:43 INFO ui.galaxy_system_list: Item data: -43
+2025-09-02 01:48:43 INFO ui.galaxy_system_list: Item flags: ItemFlag.ItemIsSelectable|ItemIsDragEnabled|ItemIsDropEnabled|ItemIsUserCheckable|ItemIsEnabled
+2025-09-02 01:48:43 INFO ui.galaxy_system_list: Emitting clicked signal with value: -43
+2025-09-02 01:48:43 INFO ui.main_window: Galaxy panel clicked signal received: -43
+2025-09-02 01:48:43 INFO ui.galaxy_system_list: Galaxy system item double clicked
+2025-09-02 01:48:43 INFO ui.galaxy_system_list: Emitting doubleClicked signal with value: -43
+2025-09-02 01:48:43 INFO ui.main_window: Galaxy panel doubleClicked signal received: -43
+2025-09-02 01:48:44 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:48:45 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:48:46 INFO ui.system_location_list: System location item clicked
+2025-09-02 01:48:46 INFO ui.system_location_list: Item data: 257
+2025-09-02 01:48:46 INFO ui.system_location_list: Emitting clicked signal with value: 257
+2025-09-02 01:48:46 INFO ui.main_window: System panel clicked signal received: 257
+2025-09-02 01:48:46 INFO ui.system_location_list: System location item double clicked
+2025-09-02 01:48:46 INFO ui.system_location_list: Emitting doubleClicked signal with value: 257
+2025-09-02 01:48:46 INFO ui.main_window: System panel doubleClicked signal received: 257
+2025-09-02 01:48:47 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:48:48 INFO ui.system_location_list: System location item clicked
+2025-09-02 01:48:48 INFO ui.system_location_list: Item data: 259
+2025-09-02 01:48:48 INFO ui.system_location_list: Emitting clicked signal with value: 259
+2025-09-02 01:48:48 INFO ui.main_window: System panel clicked signal received: 259
+2025-09-02 01:48:48 INFO ui.system_location_list: System location item double clicked
+2025-09-02 01:48:48 INFO ui.system_location_list: Emitting doubleClicked signal with value: 259
+2025-09-02 01:48:48 INFO ui.main_window: System panel doubleClicked signal received: 259
+2025-09-02 01:48:49 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:48:50 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:48:51 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:48:53 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:48:55 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:48:56 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:48:58 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:48:59 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:49:01 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:49:02 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:49:03 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:49:05 INFO ui.system_location_list: System location item clicked
+2025-09-02 01:49:05 INFO ui.system_location_list: Item data: 1201
+2025-09-02 01:49:05 INFO ui.system_location_list: Emitting clicked signal with value: 1201
+2025-09-02 01:49:05 INFO ui.main_window: System panel clicked signal received: 1201
+2025-09-02 01:49:05 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:49:06 INFO ui.system_location_list: System location item clicked
+2025-09-02 01:49:06 INFO ui.system_location_list: Item data: 1201
+2025-09-02 01:49:06 INFO ui.system_location_list: Emitting clicked signal with value: 1201
+2025-09-02 01:49:06 INFO ui.main_window: System panel clicked signal received: 1201
+2025-09-02 01:49:07 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:49:08 INFO ui.system_location_list: System location item clicked
+2025-09-02 01:49:08 INFO ui.system_location_list: Item data: 1201
+2025-09-02 01:49:08 INFO ui.system_location_list: Emitting clicked signal with value: 1201
+2025-09-02 01:49:08 INFO ui.main_window: System panel clicked signal received: 1201
+2025-09-02 01:49:08 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:49:09 INFO ui.system_location_list: System location item clicked
+2025-09-02 01:49:09 INFO ui.system_location_list: Item data: 1436
+2025-09-02 01:49:09 INFO ui.system_location_list: Emitting clicked signal with value: 1436
+2025-09-02 01:49:09 INFO ui.main_window: System panel clicked signal received: 1436
+2025-09-02 01:49:09 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:49:11 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:49:19 DEBUG ui.travel_overlay: Travel status overlay initialized
+2025-09-02 01:49:19 DEBUG ui.travel_overlay: Travel status overlay initialized
+2025-09-02 01:49:19 DEBUG ui.main_window: _ensure_travel_flow called - current travel_flow: None
+2025-09-02 01:49:19 DEBUG ui.main_window: Created new travel_flow: <game.travel_flow.TravelFlow(0x21258fe6430) at 0x000002125A01B040>
+2025-09-02 01:49:19 DEBUG ui.main_window: Connected travel_flow progressTick to _safe_refresh_status
+2025-09-02 01:49:19 DEBUG ui.main_window: Setting up travel status tracking
+2025-09-02 01:49:19 DEBUG ui.main_window: Galaxy widget: <ui.maps.galaxy.GalaxyMapWidget(0x2124a72ef10) at 0x000002124AC2EA80>
+2025-09-02 01:49:19 DEBUG ui.main_window: System widget: <ui.maps.system.SystemMapWidget(0x2124a72f140) at 0x000002124B28D440>
+2025-09-02 01:49:19 DEBUG ui.simple_travel_status: Connected to TravelFlow progress ticks
+2025-09-02 01:49:19 DEBUG ui.main_window: Connected galaxy travel status to travel flow
+2025-09-02 01:49:19 DEBUG ui.simple_travel_status: Connected to TravelFlow progress ticks
+2025-09-02 01:49:19 DEBUG ui.main_window: Connected system travel status to travel flow
+2025-09-02 01:49:19 DEBUG ui.main_window: Travel status setup complete
+2025-09-02 01:49:20 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:49:21 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:51:10 DEBUG ui.travel_overlay: Travel status overlay initialized
+2025-09-02 01:51:11 DEBUG ui.travel_overlay: Travel status overlay initialized
+2025-09-02 01:51:11 DEBUG ui.main_window: _ensure_travel_flow called - current travel_flow: None
+2025-09-02 01:51:11 DEBUG ui.main_window: Created new travel_flow: <game.travel_flow.TravelFlow(0x1d856846a20) at 0x000001D8662E55C0>
+2025-09-02 01:51:11 DEBUG ui.main_window: Connected travel_flow progressTick to _safe_refresh_status
+2025-09-02 01:51:11 DEBUG ui.main_window: Setting up travel status tracking
+2025-09-02 01:51:11 DEBUG ui.main_window: Galaxy widget: <ui.maps.galaxy.GalaxyMapWidget(0x1d856688fe0) at 0x000001D857548A40>
+2025-09-02 01:51:11 DEBUG ui.main_window: System widget: <ui.maps.system.SystemMapWidget(0x1d8566889c0) at 0x000001D857549880>
+2025-09-02 01:51:11 DEBUG ui.simple_travel_status: Connected to TravelFlow progress ticks
+2025-09-02 01:51:11 DEBUG ui.main_window: Connected galaxy travel status to travel flow
+2025-09-02 01:51:11 DEBUG ui.simple_travel_status: Connected to TravelFlow progress ticks
+2025-09-02 01:51:11 DEBUG ui.main_window: Connected system travel status to travel flow
+2025-09-02 01:51:11 DEBUG ui.main_window: Travel status setup complete
+2025-09-02 01:51:11 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:51:13 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:51:14 INFO ui.galaxy_system_list: Galaxy system item clicked
+2025-09-02 01:51:14 INFO ui.galaxy_system_list: Tree widget enabled: True
+2025-09-02 01:51:14 INFO ui.galaxy_system_list: Tree widget visible: True
+2025-09-02 01:51:14 INFO ui.galaxy_system_list: Tree selection mode: SelectionMode.SingleSelection
+2025-09-02 01:51:14 INFO ui.galaxy_system_list: Item data: -139
+2025-09-02 01:51:14 INFO ui.galaxy_system_list: Item flags: ItemFlag.ItemIsSelectable|ItemIsDragEnabled|ItemIsDropEnabled|ItemIsUserCheckable|ItemIsEnabled
+2025-09-02 01:51:14 INFO ui.galaxy_system_list: Emitting clicked signal with value: -139
+2025-09-02 01:51:14 INFO ui.main_window: Galaxy panel clicked signal received: -139
+2025-09-02 01:51:15 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:51:15 INFO ui.galaxy_system_list: Galaxy system item double clicked
+2025-09-02 01:51:15 INFO ui.galaxy_system_list: Emitting doubleClicked signal with value: -139
+2025-09-02 01:51:15 INFO ui.main_window: Galaxy panel doubleClicked signal received: -139
+2025-09-02 01:51:16 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:51:17 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:51:18 INFO ui.system_location_list: System location item clicked
+2025-09-02 01:51:18 INFO ui.system_location_list: Item data: 796
+2025-09-02 01:51:18 INFO ui.system_location_list: Emitting clicked signal with value: 796
+2025-09-02 01:51:18 INFO ui.main_window: System panel clicked signal received: 796
+2025-09-02 01:51:19 INFO ui.system_location_list: System location item clicked
+2025-09-02 01:51:19 INFO ui.system_location_list: Item data: 1632
+2025-09-02 01:51:19 INFO ui.system_location_list: Emitting clicked signal with value: 1632
+2025-09-02 01:51:19 INFO ui.main_window: System panel clicked signal received: 1632
+2025-09-02 01:51:19 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:51:20 INFO ui.system_location_list: System location item clicked
+2025-09-02 01:51:20 INFO ui.system_location_list: Item data: 801
+2025-09-02 01:51:20 INFO ui.system_location_list: Emitting clicked signal with value: 801
+2025-09-02 01:51:20 INFO ui.main_window: System panel clicked signal received: 801
+2025-09-02 01:51:20 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:51:22 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:51:22 INFO ui.system_location_list: System location item clicked
+2025-09-02 01:51:22 INFO ui.system_location_list: Item data: 796
+2025-09-02 01:51:22 INFO ui.system_location_list: Emitting clicked signal with value: 796
+2025-09-02 01:51:22 INFO ui.main_window: System panel clicked signal received: 796
+2025-09-02 01:51:22 INFO ui.system_location_list: System location item double clicked
+2025-09-02 01:51:22 INFO ui.system_location_list: Emitting doubleClicked signal with value: 796
+2025-09-02 01:51:22 INFO ui.main_window: System panel doubleClicked signal received: 796
+2025-09-02 01:51:23 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:51:25 INFO ui.system_location_list: System location item clicked
+2025-09-02 01:51:25 INFO ui.system_location_list: Item data: 799
+2025-09-02 01:51:25 INFO ui.system_location_list: Emitting clicked signal with value: 799
+2025-09-02 01:51:25 INFO ui.main_window: System panel clicked signal received: 799
+2025-09-02 01:51:25 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:51:26 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:51:27 INFO ui.system_location_list: System location item clicked
+2025-09-02 01:51:27 INFO ui.system_location_list: Item data: 791
+2025-09-02 01:51:27 INFO ui.system_location_list: Emitting clicked signal with value: 791
+2025-09-02 01:51:27 INFO ui.main_window: System panel clicked signal received: 791
+2025-09-02 01:51:28 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:51:28 INFO ui.system_location_list: System location item clicked
+2025-09-02 01:51:28 INFO ui.system_location_list: Item data: 798
+2025-09-02 01:51:28 INFO ui.system_location_list: Emitting clicked signal with value: 798
+2025-09-02 01:51:28 INFO ui.main_window: System panel clicked signal received: 798
+2025-09-02 01:51:28 INFO ui.system_location_list: System location item double clicked
+2025-09-02 01:51:28 INFO ui.system_location_list: Emitting doubleClicked signal with value: 798
+2025-09-02 01:51:28 INFO ui.main_window: System panel doubleClicked signal received: 798
+2025-09-02 01:51:29 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:51:31 INFO ui.system_location_list: System location item clicked
+2025-09-02 01:51:31 INFO ui.system_location_list: Item data: 801
+2025-09-02 01:51:31 INFO ui.system_location_list: Emitting clicked signal with value: 801
+2025-09-02 01:51:31 INFO ui.main_window: System panel clicked signal received: 801
+2025-09-02 01:51:31 INFO ui.system_location_list: System location item double clicked
+2025-09-02 01:51:31 INFO ui.system_location_list: Emitting doubleClicked signal with value: 801
+2025-09-02 01:51:31 INFO ui.main_window: System panel doubleClicked signal received: 801
+2025-09-02 01:51:31 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:51:32 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:51:34 INFO ui.system_location_list: System location item clicked
+2025-09-02 01:51:34 INFO ui.system_location_list: Item data: 791
+2025-09-02 01:51:34 INFO ui.system_location_list: Emitting clicked signal with value: 791
+2025-09-02 01:51:34 INFO ui.main_window: System panel clicked signal received: 791
+2025-09-02 01:51:34 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:51:35 INFO ui.system_location_list: System location item clicked
+2025-09-02 01:51:35 INFO ui.system_location_list: Item data: 794
+2025-09-02 01:51:35 INFO ui.system_location_list: Emitting clicked signal with value: 794
+2025-09-02 01:51:35 INFO ui.main_window: System panel clicked signal received: 794
+2025-09-02 01:51:35 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:51:45 DEBUG ui.travel_overlay: Travel status overlay initialized
+2025-09-02 01:51:45 DEBUG ui.travel_overlay: Travel status overlay initialized
+2025-09-02 01:51:46 DEBUG ui.main_window: _ensure_travel_flow called - current travel_flow: None
+2025-09-02 01:51:46 DEBUG ui.main_window: Created new travel_flow: <game.travel_flow.TravelFlow(0x296f1183560) at 0x0000029681FC9580>
+2025-09-02 01:51:46 DEBUG ui.main_window: Connected travel_flow progressTick to _safe_refresh_status
+2025-09-02 01:51:46 DEBUG ui.main_window: Setting up travel status tracking
+2025-09-02 01:51:46 DEBUG ui.main_window: Galaxy widget: <ui.maps.galaxy.GalaxyMapWidget(0x296f12c37d0) at 0x00000296F1E13C00>
+2025-09-02 01:51:46 DEBUG ui.main_window: System widget: <ui.maps.system.SystemMapWidget(0x296f12c3680) at 0x00000296F1E20C40>
+2025-09-02 01:51:46 DEBUG ui.simple_travel_status: Connected to TravelFlow progress ticks
+2025-09-02 01:51:46 DEBUG ui.main_window: Connected galaxy travel status to travel flow
+2025-09-02 01:51:46 DEBUG ui.simple_travel_status: Connected to TravelFlow progress ticks
+2025-09-02 01:51:46 DEBUG ui.main_window: Connected system travel status to travel flow
+2025-09-02 01:51:46 DEBUG ui.main_window: Travel status setup complete
+2025-09-02 01:51:46 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:51:48 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:51:49 INFO ui.system_location_list: System location item clicked
+2025-09-02 01:51:49 INFO ui.system_location_list: Item data: 797
+2025-09-02 01:51:49 INFO ui.system_location_list: Emitting clicked signal with value: 797
+2025-09-02 01:51:49 INFO ui.main_window: System panel clicked signal received: 797
+2025-09-02 01:51:49 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:51:51 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:51:52 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:51:52 INFO ui.system_location_list: System location item clicked
+2025-09-02 01:51:52 INFO ui.system_location_list: Item data: 792
+2025-09-02 01:51:52 INFO ui.system_location_list: Emitting clicked signal with value: 792
+2025-09-02 01:51:52 INFO ui.main_window: System panel clicked signal received: 792
+2025-09-02 01:51:52 INFO ui.system_location_list: System location item double clicked
+2025-09-02 01:51:52 INFO ui.system_location_list: Emitting doubleClicked signal with value: 792
+2025-09-02 01:51:52 INFO ui.main_window: System panel doubleClicked signal received: 792
+2025-09-02 01:51:54 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:51:55 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:51:55 INFO ui.system_location_list: System location item clicked
+2025-09-02 01:51:55 INFO ui.system_location_list: Item data: 797
+2025-09-02 01:51:55 INFO ui.system_location_list: Emitting clicked signal with value: 797
+2025-09-02 01:51:55 INFO ui.main_window: System panel clicked signal received: 797
+2025-09-02 01:51:55 INFO ui.system_location_list: System location item double clicked
+2025-09-02 01:51:55 INFO ui.system_location_list: Emitting doubleClicked signal with value: 797
+2025-09-02 01:51:55 INFO ui.main_window: System panel doubleClicked signal received: 797
+2025-09-02 01:51:57 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:51:57 INFO ui.system_location_list: System location item clicked
+2025-09-02 01:51:57 INFO ui.system_location_list: Item data: 1634
+2025-09-02 01:51:57 INFO ui.system_location_list: Emitting clicked signal with value: 1634
+2025-09-02 01:51:57 INFO ui.main_window: System panel clicked signal received: 1634
+2025-09-02 01:51:57 INFO ui.system_location_list: System location item double clicked
+2025-09-02 01:51:57 INFO ui.system_location_list: Emitting doubleClicked signal with value: 1634
+2025-09-02 01:51:57 INFO ui.main_window: System panel doubleClicked signal received: 1634
+2025-09-02 01:51:58 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:52:00 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:52:01 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:52:02 INFO ui.galaxy_system_list: Galaxy system item clicked
+2025-09-02 01:52:02 INFO ui.galaxy_system_list: Tree widget enabled: True
+2025-09-02 01:52:02 INFO ui.galaxy_system_list: Tree widget visible: True
+2025-09-02 01:52:02 INFO ui.galaxy_system_list: Tree selection mode: SelectionMode.SingleSelection
+2025-09-02 01:52:02 INFO ui.galaxy_system_list: Item data: -43
+2025-09-02 01:52:02 INFO ui.galaxy_system_list: Item flags: ItemFlag.ItemIsSelectable|ItemIsDragEnabled|ItemIsDropEnabled|ItemIsUserCheckable|ItemIsEnabled
+2025-09-02 01:52:02 INFO ui.galaxy_system_list: Emitting clicked signal with value: -43
+2025-09-02 01:52:02 INFO ui.main_window: Galaxy panel clicked signal received: -43
+2025-09-02 01:52:03 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:52:04 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:52:06 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:52:07 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:52:09 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:52:10 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:52:11 INFO ui.galaxy_system_list: Galaxy system item clicked
+2025-09-02 01:52:11 INFO ui.galaxy_system_list: Tree widget enabled: True
+2025-09-02 01:52:11 INFO ui.galaxy_system_list: Tree widget visible: True
+2025-09-02 01:52:11 INFO ui.galaxy_system_list: Tree selection mode: SelectionMode.SingleSelection
+2025-09-02 01:52:11 INFO ui.galaxy_system_list: Item data: -181
+2025-09-02 01:52:11 INFO ui.galaxy_system_list: Item flags: ItemFlag.ItemIsSelectable|ItemIsDragEnabled|ItemIsDropEnabled|ItemIsUserCheckable|ItemIsEnabled
+2025-09-02 01:52:11 INFO ui.galaxy_system_list: Emitting clicked signal with value: -181
+2025-09-02 01:52:11 INFO ui.main_window: Galaxy panel clicked signal received: -181
+2025-09-02 01:52:12 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:52:13 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:52:15 INFO ui.galaxy_system_list: Galaxy system item clicked
+2025-09-02 01:52:15 INFO ui.galaxy_system_list: Tree widget enabled: True
+2025-09-02 01:52:15 INFO ui.galaxy_system_list: Tree widget visible: True
+2025-09-02 01:52:15 INFO ui.galaxy_system_list: Tree selection mode: SelectionMode.SingleSelection
+2025-09-02 01:52:15 INFO ui.galaxy_system_list: Item data: -24
+2025-09-02 01:52:15 INFO ui.galaxy_system_list: Item flags: ItemFlag.ItemIsSelectable|ItemIsDragEnabled|ItemIsDropEnabled|ItemIsUserCheckable|ItemIsEnabled
+2025-09-02 01:52:15 INFO ui.galaxy_system_list: Emitting clicked signal with value: -24
+2025-09-02 01:52:15 INFO ui.main_window: Galaxy panel clicked signal received: -24
+2025-09-02 01:52:15 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:52:16 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:52:18 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:52:19 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:52:21 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:52:22 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:52:24 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:52:25 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:52:27 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:52:28 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:52:30 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:52:31 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:52:33 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:52:34 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:52:36 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:52:37 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:52:39 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:52:40 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:52:42 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:52:43 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:52:45 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:52:46 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:52:48 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:52:49 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:52:51 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:52:52 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:52:54 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:52:55 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:52:56 INFO ui.galaxy_system_list: Galaxy system item clicked
+2025-09-02 01:52:56 INFO ui.galaxy_system_list: Tree widget enabled: True
+2025-09-02 01:52:56 INFO ui.galaxy_system_list: Tree widget visible: True
+2025-09-02 01:52:56 INFO ui.galaxy_system_list: Tree selection mode: SelectionMode.SingleSelection
+2025-09-02 01:52:56 INFO ui.galaxy_system_list: Item data: -58
+2025-09-02 01:52:56 INFO ui.galaxy_system_list: Item flags: ItemFlag.ItemIsSelectable|ItemIsDragEnabled|ItemIsDropEnabled|ItemIsUserCheckable|ItemIsEnabled
+2025-09-02 01:52:56 INFO ui.galaxy_system_list: Emitting clicked signal with value: -58
+2025-09-02 01:52:56 INFO ui.main_window: Galaxy panel clicked signal received: -58
+2025-09-02 01:52:57 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:52:58 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:53:00 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:53:01 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:53:03 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:53:04 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:53:06 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:53:07 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:53:09 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:53:10 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:53:12 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:53:13 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:53:15 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:53:16 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:53:18 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:53:19 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:53:21 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)
+2025-09-02 01:53:22 DEBUG ui.main_window: Ship state: 'orbiting' (traveling: False, type: OTHER)

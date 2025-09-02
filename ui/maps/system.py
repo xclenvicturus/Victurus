@@ -1241,6 +1241,10 @@ class SystemMapWidget(BackgroundView):
                 if now < sup:
                     return
 
+            # Clear any existing lock first so we don't jump back to the old location
+            self._center_lock_entity = None
+            self._center_target = None
+
             # Find the item and center on it
             item = self._items.get(location_id)
             if not item:

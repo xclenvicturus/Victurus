@@ -23,6 +23,7 @@ logger = get_ui_logger('file_menu')
 # NEW: background simulator + player system lookup
 from game_controller.sim_loop import universe_sim
 from data.db import get_player_full
+from ui.menus.view_menu import sync_panels_menu_state
 
 
 def install_file_menu(main_window):
@@ -551,6 +552,9 @@ def _on_close_game(win):
         
         # Update menu state (disable save actions, enable new/load)
         _update_menu_state(win)
+        
+        # Update View menu state (disable panel toggles when no game loaded)
+        sync_panels_menu_state(win)
         
         # Log the action
         try:
