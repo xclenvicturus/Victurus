@@ -889,6 +889,22 @@ class MainWindow(QMainWindow):
             panel_system.doubleClicked.connect(lambda eid: self.presenter_system and self.presenter_system.open(eid))
             panel_system.travelHere.connect(lambda eid: self.presenter_system and self.presenter_system.travel_here(eid))
 
+            # Connect map widget signals to presenter methods (matching list widget behavior)
+            try:
+                # Galaxy map signals
+                galaxy_widget = getattr(mv, "galaxy", None)
+                if galaxy_widget:
+                    galaxy_widget.systemClicked.connect(lambda sid: self.presenter_galaxy and self.presenter_galaxy.load_system_only(-sid))
+                    galaxy_widget.systemDoubleClicked.connect(lambda sid: self.presenter_galaxy and self.presenter_galaxy.open(-sid))
+                    
+                # System map signals
+                system_widget = getattr(mv, "system", None) 
+                if system_widget:
+                    system_widget.locationClicked.connect(lambda lid: self.presenter_system and self.presenter_system.focus(lid))
+                    system_widget.locationDoubleClicked.connect(lambda lid: self.presenter_system and self.presenter_system.open(lid))
+            except Exception as e:
+                logger.error(f"Error connecting map widget signals: {e}")
+
             try:
                 def save_system_panel_state():
                     if window_state.writes_suspended() or getattr(self, '_restoring_ui', False):
@@ -1286,6 +1302,17 @@ class MainWindow(QMainWindow):
                 if system_widget and hasattr(system_widget, 'get_travel_status'):
                     system_status = system_widget.get_travel_status()
                     system_status.set_travel_flow(self.travel_flow)
+                    
+                # Also connect travel flow to travel overlays for destination display
+                if galaxy_widget and hasattr(galaxy_widget, '_travel_overlay'):
+                    galaxy_overlay = getattr(galaxy_widget, '_travel_overlay', None)
+                    if galaxy_overlay and hasattr(galaxy_overlay, 'set_travel_flow'):
+                        galaxy_overlay.set_travel_flow(self.travel_flow)
+                        
+                if system_widget and hasattr(system_widget, '_travel_overlay'):
+                    system_overlay = getattr(system_widget, '_travel_overlay', None)
+                    if system_overlay and hasattr(system_overlay, 'set_travel_flow'):
+                        system_overlay.set_travel_flow(self.travel_flow)
             
         except Exception as e:
             logger.error(f"Failed to setup travel status: {e}")
@@ -1300,6 +1327,37 @@ class MainWindow(QMainWindow):
             self.refresh_status_counts()
             if self.status_panel:
                 self.status_panel.refresh()
+            
+            # Immediately refresh travel overlays after travel completes to show new system
+            if self._map_view:
+                if hasattr(self._map_view, 'galaxy') and self._map_view.galaxy:
+                    travel_overlay = getattr(self._map_view.galaxy, '_travel_overlay', None)
+                    if travel_overlay and hasattr(travel_overlay, '_status_overlay'):
+                        # Force immediate update of the status overlay
+                        travel_overlay._status_overlay._update_ship_status()
+                        # Connect travel flow to destination overlay
+                        if hasattr(travel_overlay, 'set_travel_flow') and self.travel_flow:
+                            logger.debug(f"Setting travel flow on galaxy travel overlay")
+                            travel_overlay.set_travel_flow(self.travel_flow)
+                            # Force destination overlay update
+                            if hasattr(travel_overlay, '_destination_overlay'):
+                                logger.debug(f"Triggering destination overlay update on galaxy")
+                                travel_overlay._destination_overlay._update_destination()
+                
+                if hasattr(self._map_view, 'system') and self._map_view.system:
+                    travel_overlay = getattr(self._map_view.system, '_travel_overlay', None)
+                    if travel_overlay and hasattr(travel_overlay, '_status_overlay'):
+                        # Force immediate update of the status overlay
+                        travel_overlay._status_overlay._update_ship_status()
+                        # Connect travel flow to destination overlay
+                        if hasattr(travel_overlay, 'set_travel_flow') and self.travel_flow:
+                            logger.debug(f"Setting travel flow on system travel overlay")
+                            travel_overlay.set_travel_flow(self.travel_flow)
+                            # Force destination overlay update
+                            if hasattr(travel_overlay, '_destination_overlay'):
+                                logger.debug(f"Triggering destination overlay update on system")
+                                travel_overlay._destination_overlay._update_destination()
+                        
         except Exception as e:
             logger.error(f"Error in _on_player_moved: {e}")
         mv_reload = getattr(self._map_view, "reload_all", None)

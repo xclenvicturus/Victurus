@@ -26,11 +26,12 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from PySide6.QtCore import QPoint, QPointF, QTimer, Qt, Signal, QEvent
-from PySide6.QtGui import QColor, QPen, QPainter
-from PySide6.QtWidgets import QGraphicsItem, QGraphicsScene, QGraphicsView, QApplication
+from PySide6.QtGui import QColor, QPen, QPainter, QAction, QCursor
+from PySide6.QtWidgets import QGraphicsItem, QGraphicsScene, QGraphicsView, QApplication, QMenu
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 
 from data import db
+from game import player_status
 from settings import system_config as cfg
 from .background_view import BackgroundView
 # uses list_images so static PNG/JPG/SVG are supported too (if present)
@@ -105,6 +106,9 @@ def _db_icons_only() -> bool:
 
 class SystemMapWidget(BackgroundView):
     logMessage = Signal(str)
+    locationClicked = Signal(int)  # Single click on location
+    locationDoubleClicked = Signal(int)  # Double click on location  
+    locationRightClicked = Signal(int, QPoint)  # Right click on location with global position
 
     def __init__(self, parent: object | None = None) -> None:
         super().__init__(parent)
@@ -241,10 +245,69 @@ class SystemMapWidget(BackgroundView):
         self._travel_status = SimpleTravelStatus()
         self._travel_overlay = TravelStatusOverlay(self)
         self._travel_status.travel_status_changed.connect(self._travel_overlay.set_travel_info)
+        
+        # Connect hyperlink navigation signals
+        self._travel_overlay.system_clicked.connect(self._navigate_to_system)
+        self._travel_overlay.location_clicked.connect(self._navigate_to_location)
 
         # Starfield & background
         self.enable_starfield(True)
         self.set_background_mode("viewport")
+
+    def _navigate_to_system(self, system_id: int) -> None:
+        """Navigate to a system when hyperlink is clicked"""
+        try:
+            # Get the parent MapTabs widget to call navigation methods
+            parent_widget = self.parent()
+            while parent_widget is not None:
+                if hasattr(parent_widget, 'center_system_on_system') and callable(getattr(parent_widget, 'center_system_on_system')):
+                    getattr(parent_widget, 'center_system_on_system')(system_id)
+                    break
+                parent_widget = parent_widget.parent()
+        except Exception as e:
+            from game_controller.log_config import get_ui_logger
+            logger = get_ui_logger(__name__)
+            logger.error(f"Failed to navigate to system {system_id}: {e}")
+
+    def _navigate_to_location(self, location_id: int) -> None:
+        """Navigate to a location when hyperlink is clicked"""
+        try:
+            # Get the location's system ID and ensure we're viewing the correct system
+            from data import db
+            location_data = db.get_location(location_id)
+            if not location_data:
+                from game_controller.log_config import get_ui_logger
+                logger = get_ui_logger(__name__)
+                logger.warning(f"Could not find location data for location_id {location_id}")
+                return
+            
+            location_system_id = location_data.get('system_id')
+            current_system_id = getattr(self, '_system_id', None)
+            
+            # If the location is in a different system, load that system first
+            if location_system_id and location_system_id != current_system_id:
+                try:
+                    self.load(int(location_system_id))
+                except Exception as e:
+                    from game_controller.log_config import get_ui_logger
+                    logger = get_ui_logger(__name__)
+                    logger.warning(f"Failed to load system {location_system_id}: {e}")
+            
+            # Get the parent MapTabs widget to call navigation methods
+            parent_widget = self.parent()
+            while parent_widget is not None:
+                if hasattr(parent_widget, 'center_system_on_location') and callable(getattr(parent_widget, 'center_system_on_location')):
+                    getattr(parent_widget, 'center_system_on_location')(location_id)
+                    
+                    from game_controller.log_config import get_ui_logger
+                    logger = get_ui_logger(__name__)
+                    logger.debug(f"Successfully navigated to location {location_id} in system {location_system_id}")
+                    break
+                parent_widget = parent_widget.parent()
+        except Exception as e:
+            from game_controller.log_config import get_ui_logger
+            logger = get_ui_logger(__name__)
+            logger.error(f"Failed to navigate to location {location_id}: {e}")
 
     # adjustable orbit layout
     def set_ring_gap_au(self, gap_au: float, *, reload: bool = True) -> None:
@@ -613,6 +676,8 @@ class SystemMapWidget(BackgroundView):
         star_item = make_map_symbol_item(star_path or "", int(desired_px_star), self, salt=system_id)
         star_item.setPos(0.0, 0.0)
         star_item.setZValue(-8)
+        # Store star entity ID (negative system_id) for context menu
+        star_item.setData(0, -system_id)  # Star uses negative system ID
         self._scene.addItem(star_item)
         try:
             star_item.setCacheMode(QGraphicsItem.CacheMode.DeviceCoordinateCache)
@@ -710,6 +775,8 @@ class SystemMapWidget(BackgroundView):
             item = make_map_symbol_item(icon or "", int(desired_px), self, salt=lid)
             item.setPos(x, y)
             item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
+            # Store location ID for context menu
+            item.setData(0, lid)  # Store location ID as data key 0
             self._scene.addItem(item)
             try:
                 item.setCacheMode(QGraphicsItem.CacheMode.DeviceCoordinateCache)
@@ -819,6 +886,8 @@ class SystemMapWidget(BackgroundView):
             item = make_map_symbol_item(icon or "", desired_px, self, salt=lid)
             item.setPos(sx, sy)
             item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
+            # Store location ID for context menu
+            item.setData(0, lid)  # Store location ID as data key 0
             self._scene.addItem(item)
             try:
                 item.setCacheMode(QGraphicsItem.CacheMode.DeviceCoordinateCache)
@@ -869,6 +938,8 @@ class SystemMapWidget(BackgroundView):
             item = make_map_symbol_item(icon or "", size_px, self, salt=lid)
             item.setPos(x, y)
             item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
+            # Store location ID for context menu
+            item.setData(0, lid)  # Store location ID as data key 0
             self._scene.addItem(item)
             try:
                 item.setCacheMode(QGraphicsItem.CacheMode.DeviceCoordinateCache)
@@ -937,6 +1008,8 @@ class SystemMapWidget(BackgroundView):
             item = make_map_symbol_item(icon or "", desired_px, self, salt=lid)
             item.setPos(mx, my)
             item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
+            # Store location ID for context menu
+            item.setData(0, lid)  # Store location ID as data key 0
             self._scene.addItem(item)
             try:
                 item.setCacheMode(QGraphicsItem.CacheMode.DeviceCoordinateCache)
@@ -988,6 +1061,8 @@ class SystemMapWidget(BackgroundView):
                 item = make_map_symbol_item(icon or "", size_px, self, salt=rid)
                 item.setPos(x, y)
                 item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
+                # Store location ID for context menu
+                item.setData(0, rid)  # Store location ID as data key 0
                 self._scene.addItem(item)
                 try:
                     item.setCacheMode(QGraphicsItem.CacheMode.DeviceCoordinateCache)
@@ -1708,3 +1783,215 @@ class SystemMapWidget(BackgroundView):
                     pass
         except Exception:
             pass
+    
+    # ---------- Mouse Event Handling ----------
+    
+    def mousePressEvent(self, ev):
+        """Handle mouse press events to detect clicks on location items"""
+        try:
+            if ev.button() == Qt.MouseButton.LeftButton:
+                # Handle left clicks (single and double click detection)
+                item = self.itemAt(ev.pos())
+                if item and item.data(0) is not None:
+                    location_id = item.data(0)
+                    if isinstance(location_id, int):
+                        self.locationClicked.emit(location_id)
+            elif ev.button() == Qt.MouseButton.RightButton:
+                # Handle right clicks for context menu
+                item = self.itemAt(ev.pos())
+                if item and item.data(0) is not None:
+                    location_id = item.data(0)
+                    if isinstance(location_id, int):
+                        # Convert to global position for menu display
+                        global_pos = self.mapToGlobal(ev.pos())
+                        # Show context menu directly instead of just emitting signal
+                        self._show_context_menu(location_id, global_pos)
+                        return  # Don't call super() to prevent default behavior
+            
+            # Call super for other mouse events (panning, etc.)
+            super().mousePressEvent(ev)
+        except Exception as e:
+            logger.error(f"Error in system map mouse press event: {e}")
+            super().mousePressEvent(ev)
+    
+    def mouseDoubleClickEvent(self, ev):
+        """Handle double clicks on location items"""
+        try:
+            if ev.button() == Qt.MouseButton.LeftButton:
+                item = self.itemAt(ev.pos())
+                if item and item.data(0) is not None:
+                    location_id = item.data(0)
+                    if isinstance(location_id, int):
+                        self.locationDoubleClicked.emit(location_id)
+                        return  # Don't call super() to prevent double processing
+            
+            super().mouseDoubleClickEvent(ev)
+        except Exception as e:
+            logger.error(f"Error in system map double click event: {e}")
+            super().mouseDoubleClickEvent(ev)
+
+    def _show_context_menu(self, location_id: int, global_pos: QPoint) -> None:
+        """Show context menu for location with actions based on player status and location type"""
+        try:
+            # Get current player status
+            snap = player_status.get_status_snapshot() or {}
+            current_location_id = None
+            try:
+                current_location_id = int(snap.get("location_id", 0))
+            except Exception:
+                current_location_id = 0
+                
+            current_status = snap.get("status", "Unknown")
+            
+            # Get location information
+            location = db.get_location(location_id)
+            if not location:
+                return
+                
+            location_type = (location.get("location_type") or location.get("kind") or "").lower()
+            location_name = location.get("location_name") or location.get("name") or f"Location {location_id}"
+
+            # Create context menu
+            menu = QMenu(self)
+            
+            # If this is our current location, show current-location actions
+            if location_id == current_location_id:
+                self._add_current_location_actions(menu, location_type, location_name, current_status)
+            else:
+                # Different location - show travel option
+                travel_action = QAction(f"Travel to {location_name}", self)
+                travel_action.triggered.connect(lambda: self._travel_to_location(location_id))
+                menu.addAction(travel_action)
+            
+            # Show menu at global position
+            menu.exec(global_pos)
+        except Exception as e:
+            logger.error(f"Error showing context menu: {e}")
+
+    def _add_current_location_actions(self, menu: QMenu, location_type: str, location_name: str, current_status: str) -> None:
+        """Add context-sensitive actions for the current location"""
+        try:
+            if location_type == "station":
+                if current_status.lower() == "orbiting":
+                    # Orbiting a station - show docking options
+                    dock_action = QAction("Request Docking...", self)
+                    dock_action.triggered.connect(lambda: self._request_docking(location_name))
+                    menu.addAction(dock_action)
+                    
+                    refuel_action = QAction("Request Refueling...", self)
+                    refuel_action.triggered.connect(lambda: self._request_refueling(location_name))
+                    menu.addAction(refuel_action)
+                    
+                elif current_status.lower() == "docked":
+                    # Docked at station - show docked actions
+                    menu.addAction(QAction("Access Market", self))
+                    menu.addAction(QAction("Ship Services", self))
+                    menu.addAction(QAction("Station Services", self))
+                    menu.addSeparator()
+                    undock_action = QAction("Undock", self)
+                    undock_action.triggered.connect(lambda: self._undock_from_station(location_name))
+                    menu.addAction(undock_action)
+                    
+            elif location_type == "planet":
+                if current_status.lower() == "orbiting":
+                    # Orbiting a planet
+                    scan_action = QAction("Scan Planet", self)
+                    menu.addAction(scan_action)
+                    
+                    shuttle_action = QAction("Take Shuttle to Surface...", self)
+                    menu.addAction(shuttle_action)
+                    
+            elif location_type == "moon":
+                if current_status.lower() == "orbiting":
+                    # Orbiting a moon
+                    scan_action = QAction("Scan Moon", self)
+                    menu.addAction(scan_action)
+                    
+            elif location_type in ["asteroid_field", "gas_clouds", "ice_field", "crystal_vein"]:
+                if current_status.lower() == "orbiting":
+                    # At a resource node
+                    mine_action = QAction("Begin Mining Operations", self)
+                    menu.addAction(mine_action)
+                    
+                    scan_action = QAction("Scan Resources", self)
+                    menu.addAction(scan_action)
+                    
+            # Add generic options
+            menu.addSeparator()
+            info_action = QAction(f"Location: {location_name}", self)
+            info_action.setEnabled(False)
+            menu.addAction(info_action)
+            
+        except Exception as e:
+            logger.error(f"Error adding current location actions: {e}")
+
+    def _request_docking(self, location_name: str) -> None:
+        """Initiate docking request process"""
+        try:
+            # Start docking process
+            from PySide6.QtCore import QTimer
+            
+            # Show immediate feedback
+            player_status.set_ship_state("Requesting docking clearance...")
+            
+            # Simulate docking approval process (10 seconds)
+            def complete_docking():
+                try:
+                    # Get current location
+                    snap = player_status.get_status_snapshot() or {}
+                    current_location_id = int(snap.get("location_id", 0))
+                    
+                    # Set status to docked
+                    player_status.dock_at_location(current_location_id)
+                    player_status.set_ship_state("Docked")
+                    
+                    logger.info(f"Successfully docked at {location_name}")
+                except Exception as e:
+                    logger.error(f"Error completing docking: {e}")
+                    player_status.set_ship_state("Orbiting")
+            
+            # Set up timer for docking completion
+            docking_timer = QTimer()
+            docking_timer.setSingleShot(True)
+            docking_timer.timeout.connect(complete_docking)
+            docking_timer.start(10000)  # 10 seconds
+            
+            logger.info(f"Initiated docking request at {location_name}")
+            
+        except Exception as e:
+            logger.error(f"Error requesting docking: {e}")
+
+    def _request_refueling(self, location_name: str) -> None:
+        """Request refueling while in orbit (placeholder)"""
+        try:
+            logger.info(f"Refueling request at {location_name} - not yet implemented")
+        except Exception as e:
+            logger.error(f"Error requesting refueling: {e}")
+
+    def _undock_from_station(self, location_name: str) -> None:
+        """Undock from station and return to orbit"""
+        try:
+            # Get current location
+            snap = player_status.get_status_snapshot() or {}
+            current_location_id = int(snap.get("location_id", 0))
+            
+            # Set status back to orbiting
+            player_status.enter_orbit(current_location_id)
+            player_status.set_ship_state("Orbiting")
+            
+            logger.info(f"Undocked from {location_name}, now orbiting")
+            
+        except Exception as e:
+            logger.error(f"Error undocking: {e}")
+
+    def _travel_to_location(self, entity_id: int) -> None:
+        """Emit travel signal with entity_id"""
+        try:
+            # Find the main window and its presenter
+            main_window = self.window()
+            if main_window:
+                presenter = getattr(main_window, 'presenter_system', None)
+                if presenter and hasattr(presenter, 'travel_here'):
+                    presenter.travel_here(entity_id)
+        except Exception as e:
+            logger.error(f"Error initiating travel: {e}")

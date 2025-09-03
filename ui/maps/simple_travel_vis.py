@@ -126,10 +126,21 @@ class SimpleTravelStatus(QObject):
                 # Overall progress
                 overall_progress = (completed_phases + phase_progress) / total_phases if total_phases > 0 else 1.0
                 
-                # Calculate time remaining
+                # Calculate time remaining properly by summing actual phase durations
                 remaining_phases = max(0, total_phases - seq_index)
                 current_phase_remaining = phase_duration_ms - (phase_timer.elapsed() if phase_timer else 0)
-                time_remaining = max(0, current_phase_remaining + (remaining_phases - 1) * phase_duration_ms)
+                
+                # Sum up the durations of all remaining phases after the current one
+                future_phases_time = 0
+                if seq_index < len(travel_phases) - 1:  # If there are phases after current
+                    for i in range(seq_index + 1, len(travel_phases)):
+                        if i < len(seq):
+                            future_phase = seq[i]
+                            future_phase_duration = future_phase.get('ms', 0)  # Duration is stored in 'ms' field
+                            future_phases_time += future_phase_duration
+                
+                # Total time remaining = current phase remaining + all future phases
+                time_remaining = max(0, current_phase_remaining + future_phases_time)
                 time_remaining_seconds = int(time_remaining / 1000)
                 
                 # Update travel info

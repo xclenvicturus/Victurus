@@ -84,9 +84,14 @@ See `docs/structure.md` for detailed information about the codebase organization
 
 ### Running Tests
 ```bash
+# Run core test suite
 python tests/test_error_handler.py
 python tests/test_load_multiple_saves.py
+python tests/travel_visualization_test.py
+python tests/travel_visualization_safety_test.py
 ```
+
+**Note:** Development test scripts have been moved to `archive/obsolete_tests/` to keep the project root clean.
 
 ### Database
 The game uses SQLite for data storage with WAL mode and foreign key constraints enabled. The database is automatically created and seeded on first run.
@@ -152,6 +157,17 @@ def ui_slot_function(self):
 - `logging.getLogger()` (use centralized system)
 - Unprotected Qt slots (add error decorators)
 - Silent exception swallowing (log all errors)
+
+## Project Cleanup
+
+**September 3, 2025**: Project has been cleaned up and organized:
+- **25+ obsolete test files** moved to `archive/obsolete_tests/`
+- **7+ debug/utility scripts** moved to `archive/debug_scripts/`  
+- **5+ redundant documentation files** moved to `archive/obsolete_docs/`
+- **Project root** now contains only essential files
+- **Development history** fully preserved in `archive/` directory
+
+If you need to reference any archived files for development, they're available in the `archive/` directory with a detailed cleanup summary.
 
 ## Contributing
 

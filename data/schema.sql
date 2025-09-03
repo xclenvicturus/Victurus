@@ -80,6 +80,8 @@ CREATE TABLE IF NOT EXISTS player (
     current_player_ship_energy  INTEGER NOT NULL,
     current_player_ship_cargo   INTEGER NOT NULL,
     current_player_location_id  INTEGER NULL,
+    current_location_status     TEXT NOT NULL DEFAULT 'orbiting',  -- 'orbiting' | 'docked' | 'traveling'
+    custom_ship_name            TEXT NULL,  -- Player's custom name for their current ship
     FOREIGN KEY (current_player_system_id) REFERENCES systems(system_id),
     FOREIGN KEY (current_player_ship_id) REFERENCES ships(ship_id),
     FOREIGN KEY (current_player_location_id) REFERENCES locations(location_id)

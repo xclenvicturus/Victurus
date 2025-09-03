@@ -101,6 +101,9 @@ def _ensure_schema_and_seed(conn: sqlite3.Connection) -> None:
         # Keep compatibility columns (idempotent checks)
         _ensure_icon_column(conn)
         _deprecated_ensure_system_star_column(conn)
+        _ensure_location_status_column(conn)
+        _ensure_custom_ship_name_column(conn)
+        _ensure_docked_bay_column(conn)
 
         _is_initialized = True
 
@@ -124,6 +127,59 @@ def _deprecated_ensure_system_star_column(conn: sqlite3.Connection) -> None:
     if "icon_path" not in columns:
         conn.execute("ALTER TABLE systems ADD COLUMN icon_path TEXT;")
         conn.commit()
+
+
+def _ensure_location_status_column(conn: sqlite3.Connection) -> None:
+    """Add current_location_status column to player table for orbit/docked tracking."""
+    try:
+        cur = conn.execute("PRAGMA table_info(player)")
+        columns = [row[1] for row in cur.fetchall()]
+        if "current_location_status" not in columns:
+            conn.execute("ALTER TABLE player ADD COLUMN current_location_status TEXT NOT NULL DEFAULT 'orbiting';")
+            conn.commit()
+            print("Added current_location_status column to player table")
+    except Exception as e:
+        print(f"Warning: Could not add current_location_status column: {e}")
+
+
+def _ensure_custom_ship_name_column(conn: sqlite3.Connection) -> None:
+    """Add custom_ship_name column to player table for custom ship naming."""
+    try:
+        cur = conn.execute("PRAGMA table_info(player)")
+        columns = [row[1] for row in cur.fetchall()]
+        if "custom_ship_name" not in columns:
+            conn.execute("ALTER TABLE player ADD COLUMN custom_ship_name TEXT NULL;")
+            conn.commit()
+            print("Added custom_ship_name column to player table")
+    except Exception as e:
+        print(f"Warning: Could not add custom_ship_name column: {e}")
+
+
+def _ensure_docked_bay_column(conn: sqlite3.Connection) -> None:
+    """Add docked_bay column to player table for bay number tracking."""
+    from game_controller.log_config import get_system_logger
+    logger = get_system_logger("database")
+    
+    try:
+        cur = conn.execute("PRAGMA table_info(player)")
+        columns = [row[1] for row in cur.fetchall()]
+        logger.debug(f"Player table columns: {columns}")
+        
+        if "docked_bay" not in columns:
+            logger.info("Adding docked_bay column to player table")
+            conn.execute("ALTER TABLE player ADD COLUMN docked_bay INTEGER NULL;")
+            conn.commit()
+            logger.info("Successfully added docked_bay column to player table")
+            # Force a checkpoint to ensure the change is written to disk
+            conn.execute("PRAGMA wal_checkpoint(FULL);")
+            logger.debug("WAL checkpoint completed")
+        else:
+            logger.debug("docked_bay column already exists")
+            
+    except Exception as e:
+        logger.error(f"Error adding docked_bay column: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 def get_connection() -> sqlite3.Connection:
@@ -494,3 +550,119 @@ def set_resource_node_icons_bulk(pairs: List[tuple[int, Optional[str]]]) -> None
         [(p, lid) for (lid, p) in pairs],
     )
     conn.commit()
+
+
+def get_custom_ship_name() -> Optional[str]:
+    """Get the player's custom name for their current ship."""
+    try:
+        conn = get_connection()
+        row = conn.execute("SELECT custom_ship_name FROM player WHERE id = 1").fetchone()
+        return row[0] if row and row[0] else None
+    except Exception:
+        # Column doesn't exist yet (old DB) or other error
+        return None
+
+
+def set_custom_ship_name(ship_name: str) -> None:
+    """Set the player's custom name for their current ship."""
+    try:
+        conn = get_connection()
+        conn.execute("UPDATE player SET custom_ship_name = ? WHERE id = 1", (ship_name,))
+        conn.commit()
+        logger.debug(f"Set custom ship name to: {ship_name}")
+    except Exception as e:
+        logger.error(f"Error setting custom ship name: {e}")
+
+
+def clear_custom_ship_name() -> None:
+    """Clear the player's custom ship name (revert to default ship name)."""
+    try:
+        conn = get_connection()
+        conn.execute("UPDATE player SET custom_ship_name = NULL WHERE id = 1")
+        conn.commit()
+        logger.debug("Cleared custom ship name")
+    except Exception as e:
+        logger.error(f"Error clearing custom ship name: {e}")
+
+
+def set_docked_bay(bay_number: int) -> None:
+    """Set the bay number where the player is currently docked."""
+    from game_controller.log_config import get_system_logger
+    logger = get_system_logger("database")
+    
+    try:
+        conn = get_connection()
+        logger.debug(f"Setting docked bay to: {bay_number}")
+        
+        # Verify column exists before trying to use it
+        cur = conn.execute("PRAGMA table_info(player)")
+        columns = [row[1] for row in cur.fetchall()]
+        if "docked_bay" not in columns:
+            logger.error(f"docked_bay column missing! Available columns: {columns}")
+            _ensure_docked_bay_column(conn)
+            
+        conn.execute("UPDATE player SET docked_bay = ? WHERE id = 1", (bay_number,))
+        conn.commit()
+        logger.debug(f"Successfully set docked bay to: {bay_number}")
+        
+    except Exception as e:
+        logger.error(f"Error setting docked bay: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+
+
+def get_docked_bay() -> Optional[int]:
+    """Get the bay number where the player is currently docked."""
+    from game_controller.log_config import get_system_logger
+    logger = get_system_logger("database")
+    
+    try:
+        conn = get_connection()
+        logger.debug("Getting docked bay number")
+        
+        # Verify column exists before trying to use it
+        cur = conn.execute("PRAGMA table_info(player)")
+        columns = [row[1] for row in cur.fetchall()]
+        if "docked_bay" not in columns:
+            logger.error(f"docked_bay column missing! Available columns: {columns}")
+            _ensure_docked_bay_column(conn)
+            return None
+            
+        cur = conn.execute("SELECT docked_bay FROM player WHERE id = 1")
+        result = cur.fetchone()
+        bay_number = int(result[0]) if result and result[0] is not None else None
+        logger.debug(f"Retrieved docked bay: {bay_number}")
+        return bay_number
+        
+    except Exception as e:
+        logger.error(f"Error getting docked bay: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return None
+
+
+def clear_docked_bay() -> None:
+    """Clear the docked bay (when undocking)."""
+    from game_controller.log_config import get_system_logger
+    logger = get_system_logger("database")
+    
+    try:
+        conn = get_connection()
+        logger.debug("Clearing docked bay")
+        
+        # Verify column exists before trying to use it
+        cur = conn.execute("PRAGMA table_info(player)")
+        columns = [row[1] for row in cur.fetchall()]
+        if "docked_bay" not in columns:
+            logger.error(f"docked_bay column missing! Available columns: {columns}")
+            _ensure_docked_bay_column(conn)
+            return
+            
+        conn.execute("UPDATE player SET docked_bay = NULL WHERE id = 1")
+        conn.commit()
+        logger.debug("Successfully cleared docked bay")
+        
+    except Exception as e:
+        logger.error(f"Error clearing docked bay: {e}")
+        import traceback
+        logger.error(traceback.format_exc())

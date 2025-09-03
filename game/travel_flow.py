@@ -132,6 +132,16 @@ class TravelFlow(QObject):
 
         # Track where we are for status/location hints
         self._phase_name: str = ""
+        
+        # Track travel route for destination overlay
+        self._origin_system_id: Optional[int] = None
+        self._origin_location_id: Optional[int] = None
+        self._origin_system_name: str = ""
+        self._origin_location_name: str = ""
+        self._dest_system_id: Optional[int] = None
+        self._dest_location_id: Optional[int] = None
+        self._dest_system_name: str = ""
+        self._dest_location_name: str = ""
 
     # ---------------- Public API ----------------
 
@@ -142,12 +152,70 @@ class TravelFlow(QObject):
             self._log("Unable to plan travel.")
             return
 
+        # Capture origin information
+        try:
+            player = db.get_player_full() or {}
+            self._origin_system_id = player.get("current_player_system_id") or player.get("system_id")
+            self._origin_location_id = player.get("current_player_location_id") or player.get("location_id")
+            
+            # Get origin names
+            if self._origin_system_id:
+                origin_sys = db.get_system(self._origin_system_id)
+                self._origin_system_name = origin_sys.get("name", "Unknown System") if origin_sys else "Unknown System"
+            
+            if self._origin_location_id:
+                origin_loc = db.get_location(self._origin_location_id)
+                self._origin_location_name = origin_loc.get("name", "Unknown Location") if origin_loc else "Unknown Location"
+            else:
+                self._origin_location_name = f"{self._origin_system_name} (Star)"
+                
+        except Exception:
+            self._origin_system_name = "Unknown System"
+            self._origin_location_name = "Unknown Location"
+
+        # Capture destination information
+        try:
+            if kind == "star":
+                self._dest_system_id = ident
+                self._dest_location_id = None
+                dest_sys = db.get_system(ident)
+                self._dest_system_name = dest_sys.get("name", "Unknown System") if dest_sys else "Unknown System"
+                self._dest_location_name = f"{self._dest_system_name} (Star)"
+            elif kind == "loc":
+                self._dest_location_id = ident
+                dest_loc = db.get_location(ident)
+                if dest_loc:
+                    self._dest_location_name = dest_loc.get("name", "Unknown Location")
+                    self._dest_system_id = dest_loc.get("system_id")
+                    if self._dest_system_id:
+                        dest_sys = db.get_system(self._dest_system_id)
+                        self._dest_system_name = dest_sys.get("name", "Unknown System") if dest_sys else "Unknown System"
+                else:
+                    self._dest_location_name = "Unknown Location"
+                    self._dest_system_name = "Unknown System"
+        except Exception:
+            self._dest_system_name = "Unknown System"
+            self._dest_location_name = "Unknown Location"
+
         self._seq = self._plan_sequence(route, kind, ident)
         self._seq_index = 0
         if not self._seq:
             self._log("Nothing to do.")
             return
         self._start_next_phase()
+
+    def get_travel_route(self) -> Dict[str, Any]:
+        """Get the current travel route information for UI displays"""
+        return {
+            "origin_system_id": self._origin_system_id,
+            "origin_location_id": self._origin_location_id, 
+            "origin_system_name": self._origin_system_name,
+            "origin_location_name": self._origin_location_name,
+            "dest_system_id": self._dest_system_id,
+            "dest_location_id": self._dest_location_id,
+            "dest_system_name": self._dest_system_name,
+            "dest_location_name": self._dest_location_name,
+        }
 
     # ---------------- Internals ----------------
 
@@ -274,14 +342,12 @@ class TravelFlow(QObject):
             # cruise
             _add_phase("cruising", cruise_segments_ms[0][1], next(ia), set_state="Cruising", loc_hint=tgt_name)
             # leave cruise
-            _add_phase("leaving_cruise",  wrap_ms, next(ia), set_state="Leaving Cruise")
-            # entering orbit/docking (based on target kind)
-            arrive_state = "Docking" if route.get("target_kind") == "station" else "Entering Orbit"
-            _add_phase("approach", wrap_ms, next(ia), set_state=arrive_state)
+            _add_phase("leaving_cruise",  wrap_ms, next(ia), set_state="Leaving Cruise", loc_hint=tgt_name)
+            # Always show "Entering Orbit" for all destinations
+            _add_phase("approach", wrap_ms, next(ia), set_state="Entering Orbit", loc_hint=tgt_name)
         else:
-            # undock/leave orbit -> enter cruise to gate
-            _add_phase("undocking_or_depart", wrap_ms, next(ia),
-                       set_state="Undocking" if route.get("source_kind") == "station" else "Leaving Orbit")
+            # Always show "Leaving Orbit" for departures (since we no longer auto-dock)
+            _add_phase("undocking_or_depart", wrap_ms, next(ia), set_state="Leaving Orbit")
             _add_phase("entering_cruise_src", wrap_ms, next(ia), set_state="Entering Cruise", loc_hint=src_name)
 
             # cruise to gate
@@ -295,7 +361,7 @@ class TravelFlow(QObject):
                 wa = iter(warp_alloc)
                 _add_phase("init_warp",  warp_enter_ms, next(wa), set_state="Initializing Warp", loc_hint="The Warp")
                 _add_phase("warping",    warp_mid_ms,   next(wa), set_state="Warping",          loc_hint="The Warp")
-                _add_phase("exit_warp",  warp_exit_ms,  next(wa), set_state="Leaving Warp")
+                _add_phase("exit_warp",  warp_exit_ms,  next(wa), set_state="Leaving Warp",     loc_hint=tgt_name)
 
             # enter cruise from gate
             _add_phase("entering_cruise_dst", wrap_ms, next(ia), set_state="Entering Cruise", loc_hint=tgt_name)
@@ -308,9 +374,9 @@ class TravelFlow(QObject):
                        loc_hint=tgt_name)
 
             # leave cruise / approach target
-            _add_phase("leaving_cruise_dst", wrap_ms, next(ia), set_state="Leaving Cruise")
-            arrive_state = "Docking" if route.get("target_kind") == "station" else "Entering Orbit"
-            _add_phase("approach", wrap_ms, next(ia), set_state=arrive_state)
+            _add_phase("leaving_cruise_dst", wrap_ms, next(ia), set_state="Leaving Cruise", loc_hint=tgt_name)
+            # Always show "Entering Orbit" for all destinations  
+            _add_phase("approach", wrap_ms, next(ia), set_state="Entering Orbit", loc_hint=tgt_name)
 
         # Final arrival commit (no fuel; instant)
         seq.append({

@@ -330,44 +330,6 @@ class SystemLocationList(QWidget):
             menu.addAction(act_travel_loc)
 
         if menu.actions():
-            # Add a 'Set Icon...' action for both locations and stars/systems
-            def _set_icon_action():
-                # Open file dialog to pick an image
-                filters = "Image Files (*.gif *.png *.jpg *.jpeg *.svg);;All Files (*)"
-                start_dir = str(Path(__file__).resolve().parents[2] / "assets")
-                fn, _ = QFileDialog.getOpenFileName(self, "Choose Icon", start_dir, filters)
-                if not fn:
-                    return
-
-                # Persist the choice
-                try:
-                    if entity_id < 0:
-                        # negative entity ids represent stars/system rows
-                        sys_id = -int(entity_id)
-                        if persist_system_icon is not None:
-                            persist_system_icon(sys_id, fn)
-                    else:
-                        if persist_location_icon is not None:
-                            persist_location_icon(entity_id, fn)
-                except Exception:
-                    # ignore persistence failures (UI shouldn't crash)
-                    pass
-
-                # Update the list item's icon immediately
-                it = self.find_item_by_id(entity_id)
-                if it is not None:
-                    try:
-                        from PySide6.QtGui import QIcon
-
-                        icon_obj = QIcon(fn)
-                        if not icon_obj.isNull():
-                            it.setIcon(0, icon_obj)
-                    except Exception:
-                        pass
-
-            act_set_icon = QAction("Set Icon...", self)
-            act_set_icon.triggered.connect(_set_icon_action)
-            menu.addAction(act_set_icon)
             menu.exec(self.tree.viewport().mapToGlobal(pos))
 
     # ----- Event plumbing -----

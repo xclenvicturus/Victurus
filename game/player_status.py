@@ -31,27 +31,24 @@ _LOCAL_TEMP_STATE: Optional[str] = None
 def _stable_status(player: Dict[str, Any]) -> str:
     """
     Derive a stable ship status from the DB when no temporary UI state is active.
-    - If at a station location -> "Docked"
-    - If at any other location or in a system without a location -> "Orbiting"
-    - Otherwise -> "Traveling"
+    Uses the new current_location_status field if available, with fallbacks:
+    - If current_location_status exists: use it directly
+    - Fallback: Always default to "Orbiting" when at any location
+    - If no location -> "Traveling"
     """
     if not player:
         return "Unknown"
 
+    # Use the new location status field if available
+    location_status = player.get("current_location_status")
+    if location_status:
+        return location_status.title()  # Convert to Title Case
+
+    # Fallback to "Orbiting" for any location (we never auto-dock anymore)
     loc_id = player.get("current_player_location_id") or player.get("location_id")
     sys_id = player.get("current_player_system_id") or player.get("system_id")
 
-    if loc_id:
-        try:
-            loc = cast(Optional[Dict[str, Any]], db.get_location(int(loc_id)))
-        except Exception:
-            loc = None
-        kind = (loc.get("kind") or loc.get("location_type") or "").lower() if loc else ""
-        if kind == "station":
-            return "Docked"
-        return "Orbiting"
-
-    if sys_id:
+    if loc_id or sys_id:
         return "Orbiting"
 
     return "Traveling"
@@ -248,15 +245,30 @@ def get_status_snapshot() -> Dict[str, Any]:
         ),
     ) or "—"
 
-    # db.get_player_ship() aliases ship_name AS name; keep fallbacks too
-    ship_name = _first_nonempty_str(
-        ship,
-        (
-            "name",
-            "ship_name",
-            "current_player_ship_name",
-        ),
-    ) or "—"
+    # Custom ship name takes priority over default ship name
+    custom_ship_name = player.get("custom_ship_name")
+    if custom_ship_name:
+        ship_name = custom_ship_name
+    else:
+        # Generate unique ship name like "Shuttle-NE345" from base ship type
+        base_ship_type = _first_nonempty_str(
+            ship,
+            (
+                "name",
+                "ship_name",
+                "current_player_ship_name",
+            ),
+        ) or "Ship"
+        
+        # Generate unique identifier based on player ID and ship ID for consistency
+        import hashlib
+        player_id = str(player.get("id", 1))
+        ship_id = str(ship.get("ship_id", 1))
+        hash_input = f"{player_id}_{ship_id}".encode('utf-8')
+        hash_hex = hashlib.md5(hash_input).hexdigest()[:5].upper()
+        
+        # Create unique ship name
+        ship_name = f"{base_ship_type}-{hash_hex}"
 
     # ---- Jump range (ly): populate `current_jump_distance` if any known field exists ----
     # Try likely player fields first (runtime/current values), then ship/base fields.
@@ -340,3 +352,83 @@ def get_status_snapshot() -> Dict[str, Any]:
         "current_jump_distance": current_jump_distance,
         "jump_distance": current_jump_distance,  # alias for legacy readers
     }
+
+
+# ---------- Location Status Management ----------
+
+def set_location_status(status: str) -> None:
+    """Set the player's current location status (orbiting, docked, traveling)."""
+    try:
+        conn = db.get_connection()
+        try:
+            conn.execute("UPDATE player SET current_location_status = ? WHERE id = 1", (status.lower(),))
+            conn.commit()
+            logger.debug(f"Set location status to: {status}")
+        except Exception:
+            # Column doesn't exist yet - skip silently
+            logger.debug(f"Could not set location status (column may not exist): {status}")
+    except Exception as e:
+        logger.error(f"Error setting location status: {e}")
+
+
+def get_location_status() -> str:
+    """Get the player's current location status."""
+    try:
+        player = db.get_player_full()
+        if player:
+            status = player.get("current_location_status", "orbiting")
+            return status.title() if status else "Orbiting"
+        return "Unknown"
+    except Exception as e:
+        logger.error(f"Error getting location status: {e}")
+        return "Unknown"
+
+
+def enter_orbit(location_id: int) -> None:
+    """Enter orbit around a location (used after travel completion)."""
+    try:
+        conn = db.get_connection()
+        try:
+            # Try to update with location status
+            conn.execute("""
+                UPDATE player 
+                SET current_player_location_id = ?, 
+                    current_location_status = 'orbiting' 
+                WHERE id = 1
+            """, (location_id,))
+        except Exception:
+            # Fallback without location status
+            conn.execute("""
+                UPDATE player 
+                SET current_player_location_id = ? 
+                WHERE id = 1
+            """, (location_id,))
+        conn.commit()
+        logger.debug(f"Entered orbit around location {location_id}")
+    except Exception as e:
+        logger.error(f"Error entering orbit: {e}")
+
+
+def dock_at_location(location_id: int) -> None:
+    """Dock at a location (changes status from orbiting to docked)."""
+    try:
+        conn = db.get_connection()
+        try:
+            # Try to update with location status
+            conn.execute("""
+                UPDATE player 
+                SET current_player_location_id = ?, 
+                    current_location_status = 'docked' 
+                WHERE id = 1
+            """, (location_id,))
+        except Exception:
+            # Fallback without location status
+            conn.execute("""
+                UPDATE player 
+                SET current_player_location_id = ? 
+                WHERE id = 1
+            """, (location_id,))
+        conn.commit()
+        logger.debug(f"Docked at location {location_id}")
+    except Exception as e:
+        logger.error(f"Error docking: {e}")

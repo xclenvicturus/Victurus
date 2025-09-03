@@ -379,26 +379,45 @@ def perform_travel(kind: str, ident: int) -> str:
         if not dest_loc:
             return "Destination not found."
         dest_sys_id = _safe_int(dest_loc.get("system_id"), 0)
+        dest_loc_id = _safe_int(dest_loc.get("location_id") or dest_loc.get("id"), 0)
+        
+        # Always enter orbit around the destination, never dock directly
         conn = db.get_connection()
-        conn.execute(
-            "UPDATE player SET current_player_system_id=?, current_player_location_id=? WHERE id=1",
-            (dest_sys_id, _safe_int(dest_loc.get("location_id") or dest_loc.get("id"), 0)),
-        )
+        try:
+            # Try to use the new location status field
+            conn.execute(
+                "UPDATE player SET current_player_system_id=?, current_player_location_id=?, current_location_status='orbiting' WHERE id=1",
+                (dest_sys_id, dest_loc_id),
+            )
+        except Exception:
+            # Fallback for databases without the new column
+            conn.execute(
+                "UPDATE player SET current_player_system_id=?, current_player_location_id=? WHERE id=1",
+                (dest_sys_id, dest_loc_id),
+            )
         conn.commit()
+        
         sys_row = cast(Optional[Dict[str, Any]], db.get_system(dest_sys_id))
-        return f"Arrived in {_sys_name(sys_row)} at {_loc_name(dest_loc)}."
+        return f"Arrived in {_sys_name(sys_row)}, now orbiting {_loc_name(dest_loc)}."
     elif kind == "star":
         dest_sys = cast(Optional[Dict[str, Any]], db.get_system(int(ident)))
         if not dest_sys:
             return "Destination system not found."
         dest_sys_id = _safe_int(dest_sys.get("system_id") or dest_sys.get("id"), 0)
         conn = db.get_connection()
-        # move to system; clear location (free-flying / at star)
-        conn.execute(
-            "UPDATE player SET current_player_system_id=?, current_player_location_id=NULL WHERE id=1",
-            (dest_sys_id,),
-        )
+        try:
+            # Try to use the new location status field
+            conn.execute(
+                "UPDATE player SET current_player_system_id=?, current_player_location_id=NULL, current_location_status='orbiting' WHERE id=1",
+                (dest_sys_id,),
+            )
+        except Exception:
+            # Fallback for databases without the new column
+            conn.execute(
+                "UPDATE player SET current_player_system_id=?, current_player_location_id=NULL WHERE id=1",
+                (dest_sys_id,),
+            )
         conn.commit()
-        return f"Arrived in {_sys_name(dest_sys)}."
+        return f"Arrived in {_sys_name(dest_sys)}, orbiting the star."
     else:
         return "Unsupported travel target."

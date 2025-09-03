@@ -1,4 +1,4 @@
-# Victurus — Project Structure (updated 2025-09-01)
+# Victurus — Project Structure (updated 2025-09-03)
 
 This document summarizes the repository layout and what each part is responsible for.
 
@@ -10,9 +10,10 @@ This document summarizes the repository layout and what each part is responsible
 - **Save (`save/`)** — Save‑game models, paths, serialization, and lifecycle management.
 - **Game Controller (`game_controller/`)** — Background simulation and new game creation.
 - **Settings (`settings/`)** — Configuration management.
-- **Tests (`tests/`)** — Test files and debugging utilities.
-- **Docs (`docs/`)** — Developer‑facing documentation.
+- **Tests (`tests/`)** — Essential test files for core functionality.
+- **Docs (`docs/`)** — Current developer documentation.
 - **Assets (`assets/`)** — Star, planet, station, and other art assets (GIF/PNG) organized by type (e.g., `assets/planets/p01.gif`). The UI selects deterministic assets per system/location so thumbnails match the map.
+- **Archive (`archive/`)** — Historical development files preserved for reference.
 
 Note: resource art lives under the plural resource folders, e.g. `assets/asteroid_fields`, `assets/gas_clouds`, `assets/ice_fields`, `assets/crystal_veins`.
 
@@ -62,14 +63,23 @@ Victurus/
 │  ├─ `project_status.md`
 │  ├─ `ui_state_management.md`
 │  ├─ `error_handling.md`
-│  └─ `VIEW_MENU_FIX.md`
+│  ├─ `logging_system.md`
+│  ├─ `travel_visualization.md`
+│  ├─ `planet_landing_system.md`
+│  └─ `STANDARD_FILE_HEADERS.md`
 │
 ├─ tests/
 │  ├─ `README.md`
-│  ├─ `debug_crash.py`
-│  ├─ `debug_dialog_step_by_step.py`
 │  ├─ `test_error_handler.py`
-│  └─ `test_load_multiple_saves.py`
+│  ├─ `test_load_multiple_saves.py`
+│  ├─ `travel_visualization_test.py`
+│  └─ `travel_visualization_safety_test.py`
+│
+├─ archive/
+│  ├─ obsolete_tests/          # Archived development test scripts
+│  ├─ debug_scripts/           # Archived debug and utility scripts
+│  ├─ obsolete_docs/           # Archived documentation summaries
+│  └─ `CLEANUP_SUMMARY.md`
 │
 ├─ game/
 │  ├─ `player_status.py`

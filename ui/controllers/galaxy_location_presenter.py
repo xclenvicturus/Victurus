@@ -159,6 +159,28 @@ class GalaxyLocationPresenter:
         # Kick the System list to refresh immediately, regardless of which tab is active.
         self._trigger_system_list_refresh()
 
+    def load_system_only(self, entity_id: int) -> None:
+        """
+        Load system behavior for Galaxy map clicks:
+          • Load the system into the System view and refresh the System list.
+          • Do NOT center the galaxy map (system is already visible if clicked).
+        """
+        try:
+            sys_id = -int(entity_id) if int(entity_id) < 0 else int(entity_id)
+        except Exception:
+            return
+
+        # Load the selected system into the System widget (no tab switch).
+        system_widget = getattr(self._tabs, "system", None)
+        if system_widget is not None and hasattr(system_widget, "load"):
+            try:
+                system_widget.load(sys_id)
+            except Exception:
+                pass
+
+        # Kick the System list to refresh immediately, regardless of which tab is active.
+        self._trigger_system_list_refresh()
+
     def open(self, entity_id: int) -> None:
         """
         Double-click:

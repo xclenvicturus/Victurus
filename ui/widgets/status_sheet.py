@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QWidget,
     QGridLayout,
@@ -20,8 +20,32 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QFrame,
 )
+from PySide6.QtGui import QCursor
 
 from game import player_status
+
+
+class ClickableLabel(QLabel):
+    """A clickable QLabel that emits a clicked signal"""
+    clicked = Signal()
+    
+    def __init__(self, text: str, parent=None):
+        super().__init__(text, parent)
+        self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.setStyleSheet("""
+            QLabel {
+                color: #4CAF50;
+                text-decoration: underline;
+            }
+            QLabel:hover {
+                color: #45A049;
+            }
+        """)
+    
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(event)
 
 
 def _as_int(val: Any, default: int = 0) -> int:
@@ -125,7 +149,8 @@ class StatusSheet(QWidget):
         self.lbl_player = QLabel("Name: —")
         self.lbl_location = QLabel("Location: —")
         self.lbl_credits = QLabel("Credits: —")
-        self.lbl_ship = QLabel("Active Ship: —")
+        self.lbl_ship = ClickableLabel("Active Ship: — (click to rename)")
+        self.lbl_ship.clicked.connect(self._on_ship_name_clicked)
         self.lbl_jump = QLabel("Jump Range: 0.0 ly")
 
         # Gauges (decimals: fuel/energy 2dp; others integer)
@@ -153,11 +178,11 @@ class StatusSheet(QWidget):
 
         root.addLayout(top)
 
-        # Separator
-        sep = QFrame(self)
-        sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setFrameShadow(QFrame.Shadow.Sunken)
-        root.addWidget(sep)
+        # Separator - REMOVED since all top labels are now hidden
+        # sep = QFrame(self)
+        # sep.setFrameShape(QFrame.Shape.HLine)
+        # sep.setFrameShadow(QFrame.Shadow.Sunken)
+        # root.addWidget(sep)
 
         # Gauges block (labels already centered in each _GaugeRow)
         root.addWidget(self.g_hull)
@@ -179,31 +204,40 @@ class StatusSheet(QWidget):
         """
         snapshot = player_status.get_status_snapshot() or {}
 
-        # Basic strings
+        # Basic strings - HIDDEN per user request
         # Name (keep old behavior; fallback if not provided)
-        self.lbl_player.setText(f"Name: {snapshot.get('player_name','—')}")
+        # self.lbl_player.setText(f"Name: {snapshot.get('player_name','—')}")
+        self.lbl_player.hide()
 
         # Location: prefer new key 'display_location', keep legacy fallbacks
-        loc = (
-            snapshot.get('display_location') or
-            snapshot.get('location_name') or
-            snapshot.get('system_name') or
-            '—'
-        )
-        self.lbl_location.setText(f"Location: {loc}")
+        # loc = (
+        #     snapshot.get('display_location') or
+        #     snapshot.get('location_name') or
+        #     snapshot.get('system_name') or
+        #     '—'
+        # )
+        # self.lbl_location.setText(f"Location: {loc}")
+        self.lbl_location.hide()
 
         # Credits: format with thousands separator, but only if numeric-ish
-        val = snapshot.get('credits', None)
-        if isinstance(val, (int, float)) or (isinstance(val, str) and val.replace('_', '').replace(',', '').isdigit()):
-            try:
-                self.lbl_credits.setText(f"Credits: {int(float(val)):,}")
-            except Exception:
-                self.lbl_credits.setText(f"Credits: {val}")
-        else:
-            self.lbl_credits.setText(f"Credits: {str(val) if val is not None else '—'}")
+        # val = snapshot.get('credits', None)
+        # if isinstance(val, (int, float)) or (isinstance(val, str) and val.replace('_', '').replace(',', '').isdigit()):
+        #     try:
+        #         self.lbl_credits.setText(f"Credits: {int(float(val)):,}")
+        #     except Exception:
+        #         self.lbl_credits.setText(f"Credits: {val}")
+        # else:
+        #     self.lbl_credits.setText(f"Credits: {str(val) if val is not None else '—'}")
+        self.lbl_credits.hide()
 
-        # Ship name (legacy key retained; safe if missing)
-        self.lbl_ship.setText(f"Active Ship: {snapshot.get('ship_name','—')}")
+        # Ship name (legacy key retained; safe if missing) - clickable for station services
+        # ship_name = snapshot.get('ship_name','—')
+        # current_status = snapshot.get('status', 'Unknown')
+        # if current_status == 'Docked':
+        #     self.lbl_ship.setText(f"Active Ship: {ship_name} (click for station services)")
+        # else:
+        #     self.lbl_ship.setText(f"Active Ship: {ship_name}")
+        self.lbl_ship.hide()
 
         # Gauges (use floats for fuel/energy to keep smooth)
         self.g_hull.set_values(_as_int(snapshot.get("hull", 0)), _as_int(snapshot.get("hull_max", 1), 1))
@@ -219,6 +253,35 @@ class StatusSheet(QWidget):
 
         self.g_cargo.set_values(_as_int(snapshot.get("cargo", 0)), _as_int(snapshot.get("cargo_max", 1), 1))
 
-        # Jump distance label — keep legacy keys if present
-        curr = _as_float(snapshot.get('current_jump_distance', snapshot.get('jump_distance', 0.0)))
-        self.lbl_jump.setText(f"Jump Range: {curr:.1f} ly")
+        # Jump distance label — keep legacy keys if present - HIDDEN per user request
+        # curr = _as_float(snapshot.get('current_jump_distance', snapshot.get('jump_distance', 0.0)))
+        # self.lbl_jump.setText(f"Jump Range: {curr:.1f} ly")
+        self.lbl_jump.hide()
+    
+    def _on_ship_name_clicked(self):
+        """Handle ship name click to open station services or show info"""
+        try:
+            from game import player_status
+            
+            # Get current status
+            status = player_status.get_status_snapshot()
+            current_status = status.get('status', 'Unknown') if status else 'Unknown'
+            
+            if current_status == 'Docked':
+                # Open station services dialog
+                from ui.dialogs.station_services_dialog import show_station_services_dialog
+                if show_station_services_dialog(self):
+                    # Refresh the display if changes were made
+                    self.refresh()
+            else:
+                # Show info that station services are only available when docked
+                from PySide6.QtWidgets import QMessageBox
+                QMessageBox.information(
+                    self,
+                    "Station Services",
+                    "Station services (including ship renaming) are only available when docked at a station.\n\n"
+                    f"Current status: {current_status}"
+                )
+        except Exception as e:
+            # Simple fallback error handling
+            print(f"Error handling ship name click: {e}")
