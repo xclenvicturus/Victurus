@@ -392,89 +392,102 @@ class ActionsPanel(QWidget):
         self.actions_layout.addStretch(1)
     
     def _get_station_docked_actions(self) -> List[Dict[str, str]]:
-        """Get dynamic actions for when docked at a station based on available facilities"""
+        """Get dynamic actions for when docked at a station based on available services"""
         actions = []
         
         # Always available actions first
         actions.extend(self._action_definitions['station_docked'])
         
-        # Get facility-specific actions
-        facilities = self._current_context.get('facilities', [])
-        facility_types = [f.get('type', '').lower() for f in facilities]
-        
-        logger.debug(f"Generating station actions for facilities: {facility_types}")
-        
-        # Fuel services
-        if any(ftype in ['fuel', 'refinery', 'fueling'] for ftype in facility_types):
-            actions.append({
-                'name': 'refuel', 
-                'label': 'Refuel Ship', 
-                'description': 'Refuel your ship to maximum capacity'
-            })
-        
-        # Repair services  
-        if any(ftype in ['repair', 'maintenance', 'hangar'] for ftype in facility_types):
-            actions.append({
-                'name': 'repair', 
-                'label': 'Repair Ship', 
-                'description': 'Repair hull and shield damage'
-            })
-        
-        # Market/Trading
-        if any(ftype in ['market', 'trading', 'commerce'] for ftype in facility_types):
-            actions.append({
-                'name': 'market', 
-                'label': 'Commodities Market', 
-                'description': 'Buy and sell commodities'
-            })
-        
-        # Hangar services
-        if any(ftype in ['hangar', 'shipyard', 'docking'] for ftype in facility_types):
-            actions.append({
-                'name': 'hangar', 
-                'label': 'Hangar Services', 
-                'description': 'Manage ships and storage'
-            })
-        
-        # Outfitting
-        if any(ftype in ['outfitting', 'equipment', 'modules'] for ftype in facility_types):
-            actions.append({
-                'name': 'outfitting', 
-                'label': 'Outfitting', 
-                'description': 'Upgrade ship modules and equipment'
-            })
-        
-        # Manufacturing
-        if any(ftype in ['factory', 'manufacturing', 'production'] for ftype in facility_types):
-            actions.append({
-                'name': 'manufacturing', 
-                'label': 'Manufacturing', 
-                'description': 'Access manufacturing facilities'
-            })
-        
-        # Mining/Processing
-        if any(ftype in ['mine', 'refinery', 'processing'] for ftype in facility_types):
-            actions.append({
-                'name': 'processing', 
-                'label': 'Ore Processing', 
-                'description': 'Process raw materials and ores'
-            })
-        
-        # Research
-        if any(ftype in ['research', 'lab', 'laboratory'] for ftype in facility_types):
-            actions.append({
-                'name': 'research', 
-                'label': 'Research Lab', 
-                'description': 'Access research and development facilities'
-            })
-        
-        # Agricultural
-        if any(ftype in ['agridome', 'agriculture', 'farming'] for ftype in facility_types):
-            actions.append({
-                'name': 'agriculture', 
-                'label': 'Agricultural Center', 
-                'description': 'Visit agricultural facilities and food production'
-            })
+        # Get available services at this station
+        location_id = self._current_context.get('location_id')
+        if location_id:
+            available_services = db.get_station_services(location_id)
+            logger.debug(f"Station {location_id} has services: {available_services}")
+            
+            # Add service-specific actions based on actual facility availability
+            service_actions = {
+                'refuel': {
+                    'name': 'refuel', 
+                    'label': 'Refuel Ship', 
+                    'description': 'Refuel your ship to maximum capacity'
+                },
+                'repair': {
+                    'name': 'repair', 
+                    'label': 'Repair Ship', 
+                    'description': 'Repair hull and shield damage'
+                },
+                'market': {
+                    'name': 'market', 
+                    'label': 'Commodities Market', 
+                    'description': 'Buy and sell commodities'
+                },
+                'outfitting': {
+                    'name': 'outfitting', 
+                    'label': 'Ship Outfitting', 
+                    'description': 'Upgrade ship modules and equipment'
+                },
+                'storage': {
+                    'name': 'storage', 
+                    'label': 'Storage Vault', 
+                    'description': 'Access personal storage'
+                },
+                'medical': {
+                    'name': 'medical', 
+                    'label': 'Medical Bay', 
+                    'description': 'Medical and crew services'
+                }
+            }
+            
+            # Add available service actions
+            for service in available_services:
+                if service in service_actions:
+                    actions.append(service_actions[service])
+            
+            # Add production facility actions (existing manufacturing/mining logic)
+            facilities = self._current_context.get('facilities', [])
+            facility_types = [f.get('type', '').lower() for f in facilities]
+            
+            # Manufacturing
+            if any(ftype in ['factory', 'manufacturing', 'production'] for ftype in facility_types):
+                actions.append({
+                    'name': 'manufacturing', 
+                    'label': 'Manufacturing', 
+                    'description': 'Access manufacturing facilities'
+                })
+            
+            # Fabricator access
+            if any(ftype == 'fabricator' for ftype in facility_types):
+                actions.append({
+                    'name': 'fabricator', 
+                    'label': 'Fabricator', 
+                    'description': 'Custom manufacturing services'
+                })
+            
+            # Mining/Processing
+            if any(ftype in ['mine', 'refinery', 'processing'] for ftype in facility_types):
+                actions.append({
+                    'name': 'processing', 
+                    'label': 'Ore Processing', 
+                    'description': 'Process raw materials and ores'
+                })
+            
+            # Research
+            if any(ftype in ['research', 'lab', 'laboratory'] for ftype in facility_types):
+                actions.append({
+                    'name': 'research', 
+                    'label': 'Research Lab', 
+                    'description': 'Access research and development facilities'
+                })
+            
+            # Agricultural
+            if any(ftype in ['agridome', 'agriculture', 'farming'] for ftype in facility_types):
+                actions.append({
+                    'name': 'agriculture', 
+                    'label': 'Agricultural Center', 
+                    'description': 'Visit agricultural facilities and food production'
+                })
+        else:
+            logger.warning("No location_id available for station service check")
         
         return actions
     

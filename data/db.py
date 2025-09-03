@@ -405,6 +405,50 @@ def get_facilities(system_id: int) -> List[Dict]:
     return [dict(r) for r in rows]
 
 
+def get_location_facilities(location_id: int) -> List[Dict]:
+    """Get all facilities at a specific location."""
+    conn = get_connection()
+    rows = conn.execute(
+        """
+        SELECT f.*, l.location_name, l.location_type
+        FROM facilities f
+        JOIN locations l ON l.location_id = f.location_id
+        WHERE f.location_id = ?
+        ORDER BY f.facility_type
+        """,
+        (location_id,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_station_services(location_id: int) -> List[str]:
+    """Get available services at a station based on its facilities."""
+    facilities = get_location_facilities(location_id)
+    
+    services = []
+    service_mappings = {
+        'Repair Bay': 'repair',
+        'Fuel Depot': 'refuel', 
+        'Trading Post': 'market',
+        'Mission Board': 'missions',
+        'Ship Outfitter': 'outfitting',
+        'Storage Vault': 'storage',
+        # Production facilities that might offer services
+        'Fabricator': 'outfitting',  # Can craft ship parts
+        'Med Lab': 'medical',        # Medical services
+        'Refinery': 'market',        # May sell refined goods
+    }
+    
+    for facility in facilities:
+        facility_type = facility['facility_type']
+        if facility_type in service_mappings:
+            service = service_mappings[facility_type]
+            if service not in services:  # Avoid duplicates
+                services.append(service)
+    
+    return services
+
+
 def get_facility_io(facility_id: int) -> Dict[str, List[Dict]]:
     """Inputs/outputs for a facility (per-tick rates)."""
     conn = get_connection()

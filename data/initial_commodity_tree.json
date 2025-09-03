@@ -1,0 +1,1192 @@
+{
+  "commodities": {
+    "iron_ore": {
+      "id": "iron_ore",
+      "name": "Iron Ore",
+      "category": "Raw Resources",
+      "tier": 1,
+      "description": "Basic iron ore mined from planets, moons, and asteroids. Foundation of steel production.",
+      "base_value": 2.5,
+      "volume": 1.0,
+      "perishable": false,
+      "x": -267.1477008310249,
+      "y": -476.26105263157893,
+      "produced_by": "mine"
+    },
+    "copper_ore": {
+      "id": "copper_ore",
+      "name": "Copper Ore",
+      "category": "Raw Resources",
+      "tier": 1,
+      "description": "Essential conductor metal ore for electronics production.",
+      "base_value": 3.0,
+      "volume": 1.0,
+      "perishable": false,
+      "x": 4.480886426592718,
+      "y": -484.2885318559557,
+      "produced_by": "mine"
+    },
+    "aluminum_ore": {
+      "id": "aluminum_ore",
+      "name": "Aluminum Ore",
+      "category": "Raw Resources",
+      "tier": 1,
+      "description": "Lightweight metal ore for advanced construction materials.",
+      "base_value": 3.5,
+      "volume": 1.0,
+      "perishable": false,
+      "x": 338.3224376731299,
+      "y": -490.30914127423824,
+      "produced_by": "mine"
+    },
+    "titanium_ore": {
+      "id": "titanium_ore",
+      "name": "Titanium Ore",
+      "category": "Raw Resources",
+      "tier": 1,
+      "description": "High-strength titanium ore for advanced alloys and aerospace applications.",
+      "base_value": 8.0,
+      "volume": 1.0,
+      "perishable": false,
+      "x": 674.1708587257614,
+      "y": -494.3228808864265,
+      "produced_by": "mine"
+    },
+    "rare_earth_elements": {
+      "id": "rare_earth_elements",
+      "name": "Rare Earth Elements",
+      "category": "Raw Resources",
+      "tier": 1,
+      "description": "Critical elements for advanced electronics and superconductor production.",
+      "base_value": 15.0,
+      "volume": 0.5,
+      "perishable": false,
+      "x": -937.8411080332407,
+      "y": -478.26792243767306,
+      "produced_by": "mine"
+    },
+    "silicon": {
+      "id": "silicon",
+      "name": "Silicon",
+      "category": "Raw Resources",
+      "tier": 1,
+      "description": "Basic semiconductor material for electronics and glass production.",
+      "base_value": 4.0,
+      "volume": 1.0,
+      "perishable": false,
+      "x": 992.9608864265923,
+      "y": -489.3057063711911,
+      "produced_by": "mine"
+    },
+    "carbon": {
+      "id": "carbon",
+      "name": "Carbon",
+      "category": "Raw Resources",
+      "tier": 1,
+      "description": "Versatile element for steel, plastics, and advanced material production.",
+      "base_value": 2.0,
+      "volume": 0.8,
+      "perishable": false,
+      "x": -590.9549030470912,
+      "y": -471.24387811634347,
+      "produced_by": "harvester"
+    },
+    "hydrogen": {
+      "id": "hydrogen",
+      "name": "Hydrogen",
+      "category": "Raw Resources",
+      "tier": 1,
+      "description": "Primary fuel source and chemical feedstock.",
+      "base_value": 1.5,
+      "volume": 2.0,
+      "perishable": false,
+      "x": 1357.9089196675893,
+      "y": -488.30227146814406,
+      "produced_by": "gas_collector"
+    },
+    "radioactive_ore": {
+      "id": "radioactive_ore",
+      "name": "Radioactive Ore",
+      "category": "Raw Resources",
+      "tier": 1,
+      "description": "High-energy radioactive materials for reactor core production.",
+      "base_value": 25.0,
+      "volume": 0.5,
+      "perishable": false,
+      "x": 1727.8741274238218,
+      "y": -477.264487534626,
+      "produced_by": "specialized_mine"
+    },
+    "organic_compounds": {
+      "id": "organic_compounds",
+      "name": "Organic Compounds",
+      "category": "Raw Resources",
+      "tier": 1,
+      "description": "Biological materials for medical supplies and advanced chemistry.",
+      "base_value": 5.0,
+      "volume": 1.2,
+      "perishable": true,
+      "x": 2131.9561218836557,
+      "y": -484.2885318559556,
+      "produced_by": "bio_harvester"
+    },
+    "steel": {
+      "id": "steel",
+      "name": "Steel",
+      "category": "Refined Resources",
+      "tier": 2,
+      "description": "Primary construction alloy combining iron and carbon.",
+      "base_value": 8.0,
+      "volume": 1.0,
+      "perishable": false,
+      "x": -400.0,
+      "y": -90.07756232686995,
+      "produced_by": "refinery"
+    },
+    "aluminum": {
+      "id": "aluminum",
+      "name": "Aluminum",
+      "category": "Refined Resources",
+      "tier": 2,
+      "description": "Refined lightweight metal for advanced construction.",
+      "base_value": 12.0,
+      "volume": 0.8,
+      "perishable": false,
+      "x": 347.6232686980607,
+      "y": -86.94182825484782,
+      "produced_by": "refinery"
+    },
+    "copper": {
+      "id": "copper",
+      "name": "Copper",
+      "category": "Refined Resources",
+      "tier": 2,
+      "description": "Pure copper for electrical systems and electronics.",
+      "base_value": 10.0,
+      "volume": 1.0,
+      "perishable": false,
+      "x": 8.509695290858872,
+      "y": -79.10249307479242,
+      "produced_by": "refinery"
+    },
+    "titanium": {
+      "id": "titanium",
+      "name": "Titanium",
+      "category": "Refined Resources",
+      "tier": 2,
+      "description": "Refined titanium for high-performance alloys and advanced systems.",
+      "base_value": 30.0,
+      "volume": 0.8,
+      "perishable": false,
+      "x": 687.6454293628801,
+      "y": -82.23822714681455,
+      "produced_by": "refinery"
+    },
+    "fuel": {
+      "id": "fuel",
+      "name": "Fuel",
+      "category": "Refined Resources",
+      "tier": 2,
+      "description": "Processed hydrogen fuel for ship propulsion and power generation.",
+      "base_value": 6.0,
+      "volume": 1.5,
+      "perishable": false,
+      "x": 1355.9667590027695,
+      "y": -104.18836565096963,
+      "produced_by": "refinery"
+    },
+    "plastics": {
+      "id": "plastics",
+      "name": "Plastics",
+      "category": "Refined Resources",
+      "tier": 2,
+      "description": "Versatile polymer materials for manufacturing and construction.",
+      "base_value": 7.0,
+      "volume": 1.2,
+      "perishable": false,
+      "x": -585.9168975069248,
+      "y": -91.64542936288105,
+      "produced_by": "chemical_plant"
+    },
+    "superconductors": {
+      "id": "superconductors",
+      "name": "Superconductors",
+      "category": "Refined Resources",
+      "tier": 2,
+      "description": "Advanced materials enabling zero-resistance electrical transmission.",
+      "base_value": 80.0,
+      "volume": 0.3,
+      "perishable": false,
+      "x": -929.7340720221598,
+      "y": -91.64542936288098,
+      "produced_by": "advanced_facility"
+    },
+    "composite_materials": {
+      "id": "composite_materials",
+      "name": "Composite Materials",
+      "category": "Refined Resources",
+      "tier": 2,
+      "description": "Advanced engineered materials with superior strength-to-weight ratios.",
+      "base_value": 35.0,
+      "volume": 0.9,
+      "perishable": false,
+      "x": -702.1883656509686,
+      "y": -93.21329639889211,
+      "produced_by": "advanced_facility"
+    },
+    "basic_electronics": {
+      "id": "basic_electronics",
+      "name": "Basic Electronics",
+      "category": "Base Components",
+      "tier": 3,
+      "description": "Standard electronic components for basic systems and devices.",
+      "base_value": 25.0,
+      "volume": 0.5,
+      "perishable": false,
+      "x": 1001.9867036011067,
+      "y": 184.7246537396121,
+      "produced_by": "factory"
+    },
+    "computer_cores": {
+      "id": "computer_cores",
+      "name": "Computer Cores",
+      "category": "Base Components",
+      "tier": 3,
+      "description": "Advanced processing units for navigation, automation, and system control.",
+      "base_value": 120.0,
+      "volume": 0.3,
+      "perishable": false,
+      "x": -1100.29030470914,
+      "y": 273.77950138504127,
+      "produced_by": "factory"
+    },
+    "mechanical_parts": {
+      "id": "mechanical_parts",
+      "name": "Mechanical Parts",
+      "category": "Base Components",
+      "tier": 3,
+      "description": "Precision-manufactured mechanical components for machinery and systems.",
+      "base_value": 40.0,
+      "volume": 1.0,
+      "perishable": false,
+      "x": 37.59002770083088,
+      "y": 332.7313019390578,
+      "produced_by": "factory"
+    },
+    "power_cells": {
+      "id": "power_cells",
+      "name": "Power Cells",
+      "category": "Base Components",
+      "tier": 3,
+      "description": "Compact energy storage units for portable power applications.",
+      "base_value": 60.0,
+      "volume": 0.8,
+      "perishable": false,
+      "x": -1272.991689750691,
+      "y": 382.90304709141236,
+      "produced_by": "factory"
+    },
+    "air_recyclers": {
+      "id": "air_recyclers",
+      "name": "Air Recyclers",
+      "category": "Base Components",
+      "tier": 3,
+      "description": "Life support components for atmosphere processing and recycling.",
+      "base_value": 85.0,
+      "volume": 1.5,
+      "perishable": false,
+      "x": -498.3878116343483,
+      "y": 199.46260387811623,
+      "produced_by": "factory"
+    },
+    "structural_framework": {
+      "id": "structural_framework",
+      "name": "Structural Framework",
+      "category": "Base Components",
+      "tier": 3,
+      "description": "Standard structural elements for construction and assembly.",
+      "base_value": 55.0,
+      "volume": 2.0,
+      "perishable": false,
+      "x": 448.29362880886356,
+      "y": 324.89196675900234,
+      "produced_by": "factory"
+    },
+    "thruster_arrays": {
+      "id": "thruster_arrays",
+      "name": "Thruster Arrays",
+      "category": "Advanced Components",
+      "tier": 4,
+      "description": "Complete propulsion systems for spacecraft maneuvering and thrust.",
+      "base_value": 300.0,
+      "volume": 3.0,
+      "perishable": false,
+      "x": -1273.889889196675,
+      "y": 779.940096952908,
+      "produced_by": "shipyard"
+    },
+    "reactor_cores": {
+      "id": "reactor_cores",
+      "name": "Reactor Cores",
+      "category": "Advanced Components",
+      "tier": 4,
+      "description": "High-output power generation systems for ships and facilities.",
+      "base_value": 800.0,
+      "volume": 2.5,
+      "perishable": false,
+      "x": -1278.6139196675886,
+      "y": 1207.1838642659268,
+      "produced_by": "factory"
+    },
+    "armor_plating": {
+      "id": "armor_plating",
+      "name": "Armor Plating",
+      "category": "Advanced Components",
+      "tier": 4,
+      "description": "Advanced protective armor systems for ships and installations.",
+      "base_value": 400.0,
+      "volume": 2.0,
+      "perishable": false,
+      "x": -1273.6367728531836,
+      "y": 1450.3012465373943,
+      "produced_by": "shipyard"
+    },
+    "shield_emitters": {
+      "id": "shield_emitters",
+      "name": "Shield Emitters",
+      "category": "Advanced Components",
+      "tier": 4,
+      "description": "Energy field generation systems for defensive shielding.",
+      "base_value": 600.0,
+      "volume": 1.5,
+      "perishable": false,
+      "x": -1267.9736842105244,
+      "y": 1690.8708448753446,
+      "produced_by": "shipyard"
+    },
+    "navigation_arrays": {
+      "id": "navigation_arrays",
+      "name": "Navigation Arrays",
+      "category": "Advanced Components",
+      "tier": 4,
+      "description": "Sophisticated navigation and sensor systems for space travel.",
+      "base_value": 350.0,
+      "volume": 1.0,
+      "perishable": false,
+      "x": -1272.109764542934,
+      "y": 1007.378808864265,
+      "produced_by": "factory"
+    },
+    "communication_systems": {
+      "id": "communication_systems",
+      "name": "Communication Systems",
+      "category": "Advanced Components",
+      "tier": 4,
+      "description": "Long-range communication arrays for interstellar coordination.",
+      "base_value": 280.0,
+      "volume": 1.2,
+      "perishable": false,
+      "x": -1250.9639889196649,
+      "y": 1935.06613573407,
+      "produced_by": "factory"
+    },
+    "refuel_module": {
+      "id": "refuel_module",
+      "name": "Refuel Module",
+      "category": "Modules",
+      "tier": 5,
+      "description": "Complete refueling system that can be installed on any station to provide fuel services.",
+      "base_value": 2000.0,
+      "volume": 5.0,
+      "perishable": false,
+      "x": 279.2011772853183,
+      "y": 1753.8542243767295,
+      "produced_by": "shipyard"
+    },
+    "repair_module": {
+      "id": "repair_module",
+      "name": "Repair Module",
+      "category": "Modules",
+      "tier": 5,
+      "description": "Comprehensive repair system that enables any station to service and repair ships.",
+      "base_value": 2500.0,
+      "volume": 6.0,
+      "perishable": false,
+      "x": -357.4646814404431,
+      "y": 1759.243767313017,
+      "produced_by": "shipyard"
+    },
+    "medical_module": {
+      "id": "medical_module",
+      "name": "Medical Module",
+      "category": "Modules",
+      "tier": 5,
+      "description": "Complete medical facility that can be added to stations to provide health services.",
+      "base_value": 1800.0,
+      "volume": 4.0,
+      "perishable": false,
+      "x": 516.6385041551242,
+      "y": 1751.4044321329618,
+      "produced_by": "medical_facility"
+    },
+    "trading_module": {
+      "id": "trading_module",
+      "name": "Trading Module",
+      "category": "Modules",
+      "tier": 5,
+      "description": "Market system that enables stations to buy, sell, and store commodities.",
+      "base_value": 1500.0,
+      "volume": 3.0,
+      "perishable": false,
+      "x": 876.075484764542,
+      "y": 1729.3563019390558,
+      "produced_by": "factory"
+    },
+    "shield_generator_module": {
+      "id": "shield_generator_module",
+      "name": "Shield Generator Module",
+      "category": "Modules",
+      "tier": 5,
+      "description": "Defensive shielding system that can be installed on ships for protection.",
+      "base_value": 3000.0,
+      "volume": 4.0,
+      "perishable": false,
+      "x": -839.38434903047,
+      "y": 1749.4445983379478,
+      "produced_by": "shipyard"
+    },
+    "weapon_system_module": {
+      "id": "weapon_system_module",
+      "name": "Weapon System Module",
+      "category": "Modules",
+      "tier": 5,
+      "description": "Complete weapon platform that can be installed on ships or stations.",
+      "base_value": 3500.0,
+      "volume": 5.0,
+      "perishable": false,
+      "x": -146.18767313019376,
+      "y": 1753.3642659279756,
+      "produced_by": "shipyard"
+    },
+    "mining_module": {
+      "id": "mining_module",
+      "name": "Mining Module",
+      "category": "Modules",
+      "tier": 5,
+      "description": "Resource extraction system that enables ships to mine raw materials.",
+      "base_value": 2200.0,
+      "volume": 6.0,
+      "perishable": false,
+      "x": 689.2790858725746,
+      "y": 1747.4847645429338,
+      "produced_by": "shipyard"
+    },
+    "production_module": {
+      "id": "production_module",
+      "name": "Production Module",
+      "category": "Modules",
+      "tier": 5,
+      "description": "Manufacturing system that can be configured to produce specific commodities.",
+      "base_value": 2800.0,
+      "volume": 8.0,
+      "perishable": false,
+      "x": 84.88019390581707,
+      "y": 1767.0831024930728,
+      "produced_by": "factory"
+    },
+    "life_support_module": {
+      "id": "life_support_module",
+      "name": "Life Support Module",
+      "category": "Modules",
+      "tier": 5,
+      "description": "Complete life support system for maintaining habitability in space environments.",
+      "base_value": 1900.0,
+      "volume": 5.0,
+      "perishable": false,
+      "x": -556.9826869806094,
+      "y": 1751.404432132962,
+      "produced_by": "shipyard"
+    },
+    "research_module": {
+      "id": "research_module",
+      "name": "Research Module",
+      "category": "Modules",
+      "tier": 5,
+      "description": "Scientific research facility for conducting experiments and development.",
+      "base_value": 3200.0,
+      "volume": 7.0,
+      "perishable": false,
+      "x": 1256.0907202216056,
+      "y": 1746.504847645427,
+      "produced_by": "lab"
+    },
+    "civilian_ships": {
+      "id": "civilian_ships",
+      "name": "Civilian Ships",
+      "category": "Ships",
+      "tier": 6,
+      "description": "Complete civilian spacecraft for transportation and commerce.",
+      "base_value": 8000.0,
+      "volume": 50.0,
+      "perishable": false,
+      "x": -601.8628808864266,
+      "y": 2384.9934210526294,
+      "produced_by": "shipyard"
+    },
+    "military_ships": {
+      "id": "military_ships",
+      "name": "Military Ships",
+      "category": "Ships",
+      "tier": 6,
+      "description": "Armed combat vessels with advanced defensive and offensive capabilities.",
+      "base_value": 15000.0,
+      "volume": 60.0,
+      "perishable": false,
+      "x": 314.16135734071986,
+      "y": 2368.628808864264,
+      "produced_by": "shipyard"
+    },
+    "industrial_ships": {
+      "id": "industrial_ships",
+      "name": "Industrial Ships",
+      "category": "Ships",
+      "tier": 6,
+      "description": "Specialized vessels designed for mining, construction, and industrial operations.",
+      "base_value": 12000.0,
+      "volume": 70.0,
+      "perishable": false,
+      "x": 1336.2126038781153,
+      "y": 2427.4238227146793,
+      "produced_by": "shipyard"
+    },
+    "trading_stations": {
+      "id": "trading_stations",
+      "name": "Trading Stations",
+      "category": "Stations",
+      "tier": 6,
+      "description": "Complete commercial stations equipped with trading and market facilities.",
+      "base_value": 20000.0,
+      "volume": 200.0,
+      "perishable": false,
+      "x": -96.22783933517997,
+      "y": 2364.7818559556767,
+      "produced_by": "shipyard"
+    },
+    "mining_facilities": {
+      "id": "mining_facilities",
+      "name": "Mining Facilities",
+      "category": "Buildings",
+      "tier": 6,
+      "description": "Complete resource extraction facilities for planetary or asteroid mining.",
+      "base_value": 18000.0,
+      "volume": 150.0,
+      "perishable": false,
+      "x": -1056.936288088642,
+      "y": 2376.9075484764526,
+      "produced_by": "shipyard"
+    },
+    "habitat_complexes": {
+      "id": "habitat_complexes",
+      "name": "Habitat Complexes",
+      "category": "Buildings",
+      "tier": 6,
+      "description": "Complete living facilities for housing populations in space environments.",
+      "base_value": 25000.0,
+      "volume": 300.0,
+      "perishable": false,
+      "x": 842.7264542936282,
+      "y": 2411.6945983379483,
+      "produced_by": "shipyard"
+    }
+  },
+  "connections": [
+    {
+      "input_id": "iron_ore",
+      "output_id": "steel",
+      "quantity_ratio": 2.0,
+      "facility_type": "refinery",
+      "processing_time": 2.0
+    },
+    {
+      "input_id": "carbon",
+      "output_id": "steel",
+      "quantity_ratio": 0.5,
+      "facility_type": "refinery",
+      "processing_time": 2.0
+    },
+    {
+      "input_id": "aluminum_ore",
+      "output_id": "aluminum",
+      "quantity_ratio": 1.5,
+      "facility_type": "refinery",
+      "processing_time": 1.5
+    },
+    {
+      "input_id": "copper_ore",
+      "output_id": "copper",
+      "quantity_ratio": 1.2,
+      "facility_type": "refinery",
+      "processing_time": 1.5
+    },
+    {
+      "input_id": "titanium_ore",
+      "output_id": "titanium",
+      "quantity_ratio": 1.8,
+      "facility_type": "refinery",
+      "processing_time": 3.0
+    },
+    {
+      "input_id": "hydrogen",
+      "output_id": "fuel",
+      "quantity_ratio": 2.0,
+      "facility_type": "refinery",
+      "processing_time": 1.0
+    },
+    {
+      "input_id": "carbon",
+      "output_id": "plastics",
+      "quantity_ratio": 1.5,
+      "facility_type": "factory",
+      "processing_time": 2.5
+    },
+    {
+      "input_id": "rare_earth_elements",
+      "output_id": "superconductors",
+      "quantity_ratio": 3.0,
+      "facility_type": "factory",
+      "processing_time": 8.0
+    },
+    {
+      "input_id": "carbon",
+      "output_id": "composite_materials",
+      "quantity_ratio": 2.0,
+      "facility_type": "factory",
+      "processing_time": 4.0
+    },
+    {
+      "input_id": "silicon",
+      "output_id": "basic_electronics",
+      "quantity_ratio": 1.0,
+      "facility_type": "factory",
+      "processing_time": 3.0
+    },
+    {
+      "input_id": "copper",
+      "output_id": "basic_electronics",
+      "quantity_ratio": 0.8,
+      "facility_type": "factory",
+      "processing_time": 3.0
+    },
+    {
+      "input_id": "basic_electronics",
+      "output_id": "computer_cores",
+      "quantity_ratio": 2.0,
+      "facility_type": "factory",
+      "processing_time": 5.0
+    },
+    {
+      "input_id": "rare_earth_elements",
+      "output_id": "computer_cores",
+      "quantity_ratio": 0.5,
+      "facility_type": "factory",
+      "processing_time": 5.0
+    },
+    {
+      "input_id": "steel",
+      "output_id": "mechanical_parts",
+      "quantity_ratio": 1.5,
+      "facility_type": "factory",
+      "processing_time": 2.0
+    },
+    {
+      "input_id": "aluminum",
+      "output_id": "mechanical_parts",
+      "quantity_ratio": 0.8,
+      "facility_type": "factory",
+      "processing_time": 2.0
+    },
+    {
+      "input_id": "basic_electronics",
+      "output_id": "power_cells",
+      "quantity_ratio": 1.0,
+      "facility_type": "factory",
+      "processing_time": 3.0
+    },
+    {
+      "input_id": "rare_earth_elements",
+      "output_id": "power_cells",
+      "quantity_ratio": 0.3,
+      "facility_type": "factory",
+      "processing_time": 3.0
+    },
+    {
+      "input_id": "steel",
+      "output_id": "air_recyclers",
+      "quantity_ratio": 1.0,
+      "facility_type": "factory",
+      "processing_time": 4.0
+    },
+    {
+      "input_id": "basic_electronics",
+      "output_id": "air_recyclers",
+      "quantity_ratio": 0.5,
+      "facility_type": "factory",
+      "processing_time": 4.0
+    },
+    {
+      "input_id": "plastics",
+      "output_id": "air_recyclers",
+      "quantity_ratio": 0.8,
+      "facility_type": "factory",
+      "processing_time": 4.0
+    },
+    {
+      "input_id": "steel",
+      "output_id": "structural_framework",
+      "quantity_ratio": 2.0,
+      "facility_type": "factory",
+      "processing_time": 3.0
+    },
+    {
+      "input_id": "titanium",
+      "output_id": "structural_framework",
+      "quantity_ratio": 0.5,
+      "facility_type": "factory",
+      "processing_time": 3.0
+    },
+    {
+      "input_id": "mechanical_parts",
+      "output_id": "thruster_arrays",
+      "quantity_ratio": 3.0,
+      "facility_type": "shipyard",
+      "processing_time": 8.0
+    },
+    {
+      "input_id": "power_cells",
+      "output_id": "thruster_arrays",
+      "quantity_ratio": 2.0,
+      "facility_type": "shipyard",
+      "processing_time": 8.0
+    },
+    {
+      "input_id": "radioactive_ore",
+      "output_id": "reactor_cores",
+      "quantity_ratio": 1.0,
+      "facility_type": "factory",
+      "processing_time": 12.0
+    },
+    {
+      "input_id": "superconductors",
+      "output_id": "reactor_cores",
+      "quantity_ratio": 2.0,
+      "facility_type": "factory",
+      "processing_time": 12.0
+    },
+    {
+      "input_id": "titanium",
+      "output_id": "armor_plating",
+      "quantity_ratio": 2.0,
+      "facility_type": "shipyard",
+      "processing_time": 6.0
+    },
+    {
+      "input_id": "composite_materials",
+      "output_id": "armor_plating",
+      "quantity_ratio": 1.0,
+      "facility_type": "shipyard",
+      "processing_time": 6.0
+    },
+    {
+      "input_id": "superconductors",
+      "output_id": "shield_emitters",
+      "quantity_ratio": 1.5,
+      "facility_type": "shipyard",
+      "processing_time": 10.0
+    },
+    {
+      "input_id": "basic_electronics",
+      "output_id": "shield_emitters",
+      "quantity_ratio": 2.0,
+      "facility_type": "shipyard",
+      "processing_time": 10.0
+    },
+    {
+      "input_id": "computer_cores",
+      "output_id": "navigation_arrays",
+      "quantity_ratio": 1.0,
+      "facility_type": "factory",
+      "processing_time": 6.0
+    },
+    {
+      "input_id": "basic_electronics",
+      "output_id": "navigation_arrays",
+      "quantity_ratio": 3.0,
+      "facility_type": "factory",
+      "processing_time": 6.0
+    },
+    {
+      "input_id": "basic_electronics",
+      "output_id": "communication_systems",
+      "quantity_ratio": 2.0,
+      "facility_type": "factory",
+      "processing_time": 5.0
+    },
+    {
+      "input_id": "rare_earth_elements",
+      "output_id": "communication_systems",
+      "quantity_ratio": 0.3,
+      "facility_type": "factory",
+      "processing_time": 5.0
+    },
+    {
+      "input_id": "structural_framework",
+      "output_id": "refuel_module",
+      "quantity_ratio": 2.0,
+      "facility_type": "shipyard",
+      "processing_time": 15.0
+    },
+    {
+      "input_id": "mechanical_parts",
+      "output_id": "refuel_module",
+      "quantity_ratio": 3.0,
+      "facility_type": "shipyard",
+      "processing_time": 15.0
+    },
+    {
+      "input_id": "basic_electronics",
+      "output_id": "refuel_module",
+      "quantity_ratio": 2.0,
+      "facility_type": "shipyard",
+      "processing_time": 15.0
+    },
+    {
+      "input_id": "mechanical_parts",
+      "output_id": "repair_module",
+      "quantity_ratio": 4.0,
+      "facility_type": "shipyard",
+      "processing_time": 18.0
+    },
+    {
+      "input_id": "computer_cores",
+      "output_id": "repair_module",
+      "quantity_ratio": 1.0,
+      "facility_type": "shipyard",
+      "processing_time": 18.0
+    },
+    {
+      "input_id": "basic_electronics",
+      "output_id": "repair_module",
+      "quantity_ratio": 3.0,
+      "facility_type": "shipyard",
+      "processing_time": 18.0
+    },
+    {
+      "input_id": "organic_compounds",
+      "output_id": "medical_module",
+      "quantity_ratio": 2.0,
+      "facility_type": "factory",
+      "processing_time": 12.0
+    },
+    {
+      "input_id": "basic_electronics",
+      "output_id": "medical_module",
+      "quantity_ratio": 1.5,
+      "facility_type": "factory",
+      "processing_time": 12.0
+    },
+    {
+      "input_id": "plastics",
+      "output_id": "medical_module",
+      "quantity_ratio": 1.0,
+      "facility_type": "factory",
+      "processing_time": 12.0
+    },
+    {
+      "input_id": "structural_framework",
+      "output_id": "trading_module",
+      "quantity_ratio": 1.5,
+      "facility_type": "shipyard",
+      "processing_time": 10.0
+    },
+    {
+      "input_id": "computer_cores",
+      "output_id": "trading_module",
+      "quantity_ratio": 1.0,
+      "facility_type": "shipyard",
+      "processing_time": 10.0
+    },
+    {
+      "input_id": "shield_emitters",
+      "output_id": "shield_generator_module",
+      "quantity_ratio": 2.0,
+      "facility_type": "shipyard",
+      "processing_time": 20.0
+    },
+    {
+      "input_id": "power_cells",
+      "output_id": "shield_generator_module",
+      "quantity_ratio": 3.0,
+      "facility_type": "shipyard",
+      "processing_time": 20.0
+    },
+    {
+      "input_id": "computer_cores",
+      "output_id": "shield_generator_module",
+      "quantity_ratio": 1.0,
+      "facility_type": "shipyard",
+      "processing_time": 20.0
+    },
+    {
+      "input_id": "mechanical_parts",
+      "output_id": "weapon_system_module",
+      "quantity_ratio": 4.0,
+      "facility_type": "shipyard",
+      "processing_time": 25.0
+    },
+    {
+      "input_id": "basic_electronics",
+      "output_id": "weapon_system_module",
+      "quantity_ratio": 3.0,
+      "facility_type": "shipyard",
+      "processing_time": 25.0
+    },
+    {
+      "input_id": "power_cells",
+      "output_id": "weapon_system_module",
+      "quantity_ratio": 2.0,
+      "facility_type": "shipyard",
+      "processing_time": 25.0
+    },
+    {
+      "input_id": "mechanical_parts",
+      "output_id": "mining_module",
+      "quantity_ratio": 5.0,
+      "facility_type": "shipyard",
+      "processing_time": 20.0
+    },
+    {
+      "input_id": "basic_electronics",
+      "output_id": "mining_module",
+      "quantity_ratio": 2.0,
+      "facility_type": "shipyard",
+      "processing_time": 20.0
+    },
+    {
+      "input_id": "structural_framework",
+      "output_id": "mining_module",
+      "quantity_ratio": 2.0,
+      "facility_type": "shipyard",
+      "processing_time": 20.0
+    },
+    {
+      "input_id": "mechanical_parts",
+      "output_id": "production_module",
+      "quantity_ratio": 4.0,
+      "facility_type": "factory",
+      "processing_time": 22.0
+    },
+    {
+      "input_id": "computer_cores",
+      "output_id": "production_module",
+      "quantity_ratio": 2.0,
+      "facility_type": "factory",
+      "processing_time": 22.0
+    },
+    {
+      "input_id": "basic_electronics",
+      "output_id": "production_module",
+      "quantity_ratio": 3.0,
+      "facility_type": "factory",
+      "processing_time": 22.0
+    },
+    {
+      "input_id": "air_recyclers",
+      "output_id": "life_support_module",
+      "quantity_ratio": 2.0,
+      "facility_type": "shipyard",
+      "processing_time": 16.0
+    },
+    {
+      "input_id": "mechanical_parts",
+      "output_id": "life_support_module",
+      "quantity_ratio": 2.0,
+      "facility_type": "shipyard",
+      "processing_time": 16.0
+    },
+    {
+      "input_id": "basic_electronics",
+      "output_id": "life_support_module",
+      "quantity_ratio": 1.5,
+      "facility_type": "shipyard",
+      "processing_time": 16.0
+    },
+    {
+      "input_id": "computer_cores",
+      "output_id": "research_module",
+      "quantity_ratio": 3.0,
+      "facility_type": "lab",
+      "processing_time": 24.0
+    },
+    {
+      "input_id": "basic_electronics",
+      "output_id": "research_module",
+      "quantity_ratio": 4.0,
+      "facility_type": "lab",
+      "processing_time": 24.0
+    },
+    {
+      "input_id": "structural_framework",
+      "output_id": "research_module",
+      "quantity_ratio": 3.0,
+      "facility_type": "lab",
+      "processing_time": 24.0
+    },
+    {
+      "input_id": "structural_framework",
+      "output_id": "civilian_ships",
+      "quantity_ratio": 8.0,
+      "facility_type": "shipyard",
+      "processing_time": 48.0
+    },
+    {
+      "input_id": "thruster_arrays",
+      "output_id": "civilian_ships",
+      "quantity_ratio": 2.0,
+      "facility_type": "shipyard",
+      "processing_time": 48.0
+    },
+    {
+      "input_id": "life_support_module",
+      "output_id": "civilian_ships",
+      "quantity_ratio": 1.0,
+      "facility_type": "shipyard",
+      "processing_time": 48.0
+    },
+    {
+      "input_id": "navigation_arrays",
+      "output_id": "civilian_ships",
+      "quantity_ratio": 1.0,
+      "facility_type": "shipyard",
+      "processing_time": 48.0
+    },
+    {
+      "input_id": "armor_plating",
+      "output_id": "military_ships",
+      "quantity_ratio": 4.0,
+      "facility_type": "shipyard",
+      "processing_time": 72.0
+    },
+    {
+      "input_id": "shield_generator_module",
+      "output_id": "military_ships",
+      "quantity_ratio": 1.0,
+      "facility_type": "shipyard",
+      "processing_time": 72.0
+    },
+    {
+      "input_id": "weapon_system_module",
+      "output_id": "military_ships",
+      "quantity_ratio": 2.0,
+      "facility_type": "shipyard",
+      "processing_time": 72.0
+    },
+    {
+      "input_id": "thruster_arrays",
+      "output_id": "military_ships",
+      "quantity_ratio": 3.0,
+      "facility_type": "shipyard",
+      "processing_time": 72.0
+    },
+    {
+      "input_id": "structural_framework",
+      "output_id": "industrial_ships",
+      "quantity_ratio": 10.0,
+      "facility_type": "shipyard",
+      "processing_time": 60.0
+    },
+    {
+      "input_id": "mining_module",
+      "output_id": "industrial_ships",
+      "quantity_ratio": 1.0,
+      "facility_type": "shipyard",
+      "processing_time": 60.0
+    },
+    {
+      "input_id": "repair_module",
+      "output_id": "industrial_ships",
+      "quantity_ratio": 1.0,
+      "facility_type": "shipyard",
+      "processing_time": 60.0
+    },
+    {
+      "input_id": "structural_framework",
+      "output_id": "trading_stations",
+      "quantity_ratio": 15.0,
+      "facility_type": "shipyard",
+      "processing_time": 96.0
+    },
+    {
+      "input_id": "trading_module",
+      "output_id": "trading_stations",
+      "quantity_ratio": 3.0,
+      "facility_type": "shipyard",
+      "processing_time": 96.0
+    },
+    {
+      "input_id": "life_support_module",
+      "output_id": "trading_stations",
+      "quantity_ratio": 2.0,
+      "facility_type": "shipyard",
+      "processing_time": 96.0
+    },
+    {
+      "input_id": "reactor_cores",
+      "output_id": "trading_stations",
+      "quantity_ratio": 1.0,
+      "facility_type": "shipyard",
+      "processing_time": 96.0
+    },
+    {
+      "input_id": "structural_framework",
+      "output_id": "mining_facilities",
+      "quantity_ratio": 12.0,
+      "facility_type": "shipyard",
+      "processing_time": 80.0
+    },
+    {
+      "input_id": "mining_module",
+      "output_id": "mining_facilities",
+      "quantity_ratio": 2.0,
+      "facility_type": "shipyard",
+      "processing_time": 80.0
+    },
+    {
+      "input_id": "production_module",
+      "output_id": "mining_facilities",
+      "quantity_ratio": 1.0,
+      "facility_type": "shipyard",
+      "processing_time": 80.0
+    },
+    {
+      "input_id": "structural_framework",
+      "output_id": "habitat_complexes",
+      "quantity_ratio": 20.0,
+      "facility_type": "shipyard",
+      "processing_time": 120.0
+    },
+    {
+      "input_id": "life_support_module",
+      "output_id": "habitat_complexes",
+      "quantity_ratio": 4.0,
+      "facility_type": "shipyard",
+      "processing_time": 120.0
+    },
+    {
+      "input_id": "reactor_cores",
+      "output_id": "habitat_complexes",
+      "quantity_ratio": 2.0,
+      "facility_type": "shipyard",
+      "processing_time": 120.0
+    }
+  ]
+}
